@@ -22,6 +22,7 @@ from agent.intent_router import IntentRouter
 from agent.retriever import HybridRetriever
 from agent.reranker import Reranker
 from config.env_config import EnvConfig
+from llm.base import DisabledLLMClient, LLMClient
 from utils import data_verify
 
 logger = logging.getLogger(__name__)
@@ -31,8 +32,10 @@ class Agent(BaseAgent):
     """TechJam2026 购物副驾 Agent（官方接口兼容，业务逻辑完全替换基线）。"""
 
     def __init__(self, catalog_path: str | Path = "data/catalog.jsonl",
-                 env: EnvConfig | None = None) -> None:
+                 env: EnvConfig | None = None,
+                 llm_client: LLMClient | None = None) -> None:
         self.env = env or EnvConfig.from_env()
+        self.llm_client = llm_client or DisabledLLMClient()
 
         # 数据集完整性校验（Pillar IV / 硬性约束 3），可 SKIP_DATA_VERIFY=1 跳过
         if not self.env.skip_data_verify:
@@ -40,7 +43,7 @@ class Agent(BaseAgent):
 
         # 组件装配（Pillar I/II/III）
         self.retriever = HybridRetriever(catalog_path=catalog_path, env=self.env)
-        self.reranker = Reranker(env=self.env)
+        self.reranker = Reranker(env=self.env, llm_client=self.llm_client)
         self.state_machine = DialogueStateMachine(override_erase=self.env.override_erase)
         self.router = IntentRouter(env=self.env)
         self.clarifier = Clarifier(env=self.env)

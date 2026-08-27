@@ -4,7 +4,7 @@
     final = 0.50*约束覆盖度 + 0.25*品类匹配 + 0.15*RRF融合分 + 0.05*热度 + 0.05*画像弱先验
 - 约束覆盖度：hard 槽位权重 1.0、soft 槽位 0.4；
   短语子串命中给满分，否则按 token 覆盖率给分。
-- LLM 重排：LLM_BACKEND=openai 且配置密钥时启用（LLM_RERANK=0 关闭）；
+- LLM 重排：注入的统一 LLM 客户端可用且 LLM_RERANK 启用时执行；
   任何异常都回退规则排序，保证离线可用。
 - 目标：Pillar IV —— 把目标商品尽量推到 Top-K 靠前（提升 MRR / HitRate@K）。
 """
@@ -18,6 +18,7 @@ from agent.dialogue_state_machine import DialogueState
 from agent.intent_router import IntentRoute
 from agent.retriever import HybridRetriever
 from config.env_config import EnvConfig
+from llm.base import DisabledLLMClient, LLMClient, LLMState
 from utils import session_utils as su
 
 logger = logging.getLogger(__name__)
@@ -33,13 +34,16 @@ W_PROFILE = 0.05
 class Reranker:
     """候选池精排：约束覆盖 + 品类匹配 + 融合分 + 可选 LLM 语义重排。"""
 
-    def __init__(self, env: EnvConfig | None = None) -> None:
+    def __init__(self, env: EnvConfig | None = None,
+                 llm_client: LLMClient | None = None) -> None:
         self.env = env or EnvConfig.from_env()
+        self.llm_client = llm_client or DisabledLLMClient()
         self.last_usage: dict = {"prompt_tokens": 0, "completion_tokens": 0}
 
     # ------------------------------------------------------------------
     def rerank(self, retriever: HybridRetriever, candidates: list[dict],
                state: DialogueState, route: IntentRoute, top_k: int, mode: str) -> list[str]:
+        self.last_usage = {"prompt_tokens": 0, "completion_tokens": 0}
         if not candidates:
             return []
         max_rrf = max((c.get("rrf", 0.0) for c in candidates), default=1.0) or 1.0
@@ -55,11 +59,13 @@ class Reranker:
             scored.append((score, asin, cand))
 
         scored.sort(key=lambda x: x[0], reverse=True)
-        order = [asin for _, asin, _ in scored[: max(top_k * 2, top_k)]]
+        order = [asin for _, asin, _ in scored]
 
         # 可选 LLM 语义重排（Pillar I 管道末端；失败自动回退）
-        if self.env.llm_rerank and self.env.llm_backend == "openai":
-            llm_order = self._llm_rerank_openai(order, scored, state)
+        if (self.env.llm.rerank_enabled
+                and self.llm_client.status.state == LLMState.AVAILABLE
+                and len(order) >= 2):
+            llm_order = self._llm_rerank(order, retriever, state)
             if llm_order:
                 order = llm_order
         return order[:top_k]
@@ -142,47 +148,86 @@ class Reranker:
         return min(1.0, hits * 0.25)
 
     # ------------------------------------------------------------------
-    # 可选 LLM 语义重排（Pillar I：LLM 语义排序；无网络/无 key 时自动回退）
+    # 可选 LLM 语义重排（Pillar I：共享客户端；无网络/无 key 时自动回退）
     # ------------------------------------------------------------------
-    def _llm_rerank_openai(self, order: list[str], scored, state: DialogueState) -> list[str]:
-        self.last_usage = {"prompt_tokens": 0, "completion_tokens": 0}
-        if not self.env.openai_api_key:
-            return []
+    def _llm_rerank(self, order: list[str], retriever: HybridRetriever,
+                    state: DialogueState) -> list[str]:
+        submitted = order[:self.env.llm.rerank_candidates]
+        compact_candidates = [self._compact_candidate(retriever.product(asin) or {}, asin)
+                              for asin in submitted]
+        constraints = "; ".join(str(c.value) for c in state.active) or "no constraints yet"
+        payload = json.dumps(
+            {"constraints": constraints[:800], "candidates": compact_candidates},
+            ensure_ascii=False,
+        )
         try:
-            import openai  # 可选依赖，未安装则回退
-        except ImportError:
-            return []
-        try:
-            client = openai.OpenAI(
-                api_key=self.env.openai_api_key,
-                base_url=self.env.openai_base_url or None,
-            )
-            # 上下文蒸馏：把约束压缩成一行（Pillar III）
-            constraints = "; ".join(c.value for c in state.active) or "no constraints yet"
-            top = [a for a, _, _ in scored[:12]]
-            lines = [f"{i+1}. {a}" for i, a in enumerate(top)]
-            prompt = (
-                "You are a shopping recommendation reranker. Given the user requirements "
-                f"({constraints}), rank the following product IDs from best to worst. "
-                "Respond ONLY with a JSON array of IDs, e.g. [\"B...\", \"B...\"]\n" + "\n".join(lines)
-            )
-            resp = client.chat.completions.create(
-                model=self.env.llm_model or "gpt-4o-mini",
-                messages=[{"role": "user", "content": prompt}],
+            result = self.llm_client.chat(
+                [
+                    {
+                        "role": "system",
+                        "content": (
+                            "Rank the submitted shopping candidates. Respond only with JSON: "
+                            "{\"ranked_parent_asins\": [\"...\"]}."
+                        ),
+                    },
+                    {"role": "user", "content": payload},
+                ],
                 temperature=0.0,
                 max_tokens=200,
             )
-            content = resp.choices[0].message.content or ""
-            usage = getattr(resp, "usage", None)
-            if usage is not None:
-                self.last_usage = {
-                    "prompt_tokens": int(getattr(usage, "prompt_tokens", 0) or 0),
-                    "completion_tokens": int(getattr(usage, "completion_tokens", 0) or 0),
-                }
-            arr = json.loads(content[content.find("["): content.rfind("]") + 1])
-            valid = [str(x) for x in arr if str(x) in set(order)]
-            rest = [a for a in order if a not in valid]
-            return valid + rest
         except Exception as exc:
             logger.warning("[reranker] LLM rerank failed, fallback to rule order: %s", exc)
             return []
+
+        self.last_usage = {
+            "prompt_tokens": result.usage.prompt_tokens,
+            "completion_tokens": result.usage.completion_tokens,
+        }
+        if not result.success:
+            return []
+
+        ranked = self._parse_ranked_asins(result.content)
+        if not ranked:
+            return []
+        submitted_set = set(submitted)
+        valid: list[str] = []
+        for asin in ranked:
+            if isinstance(asin, str) and asin in submitted_set and asin not in valid:
+                valid.append(asin)
+        if not valid:
+            return []
+        return valid + [asin for asin in submitted if asin not in valid] + order[len(submitted):]
+
+    @staticmethod
+    def _compact_candidate(product: dict, asin: str) -> dict[str, str]:
+        categories = product.get("categories") or []
+        if not isinstance(categories, (list, tuple)):
+            categories = [categories]
+        features = product.get("features") or []
+        if not isinstance(features, (list, tuple)):
+            features = [features]
+        normalized_features = " ".join(" ".join(str(value) for value in features).split())
+        return {
+            "parent_asin": asin,
+            "title": str(product.get("title") or "")[:240],
+            "categories": " ".join(str(value) for value in categories)[:240],
+            "features": normalized_features[:800],
+        }
+
+    @staticmethod
+    def _parse_ranked_asins(content: str) -> list[object] | None:
+        text = content.strip()
+        if text.startswith("```") and text.endswith("```"):
+            newline = text.find("\n")
+            if newline == -1:
+                return None
+            text = text[newline + 1:-3].strip()
+        try:
+            parsed = json.loads(text)
+        except (TypeError, json.JSONDecodeError):
+            return None
+        if isinstance(parsed, list):
+            return parsed
+        if isinstance(parsed, dict) and isinstance(parsed.get("ranked_parent_asins"), list):
+            return parsed["ranked_parent_asins"]
+        return None

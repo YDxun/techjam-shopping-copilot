@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from dataclasses import FrozenInstanceError
 from pathlib import Path
+from config.env_config import EnvConfig
 
 from config.loader import ConfigError, load_config
 
@@ -120,6 +121,38 @@ class ConfigLoaderTest(unittest.TestCase):
         config = load_config(environ={})
         with self.assertRaises(FrozenInstanceError):
             config.llm.retry.max_retries = 3
+
+class EnvConfigCompatibilityTest(unittest.TestCase):
+    def test_exposes_existing_flat_fields_and_nested_llm(self) -> None:
+        env = EnvConfig.from_env(environ={
+            "TOP_K": "8",
+            "SAMPLE_LIMIT": "4",
+            "LLM_MODEL": "deepseek-reasoner",
+            "DEEPSEEK_API_KEY": "secret-value",
+        })
+        self.assertEqual(env.top_k, 8)
+        self.assertEqual(env.sample_limit, 4)
+        self.assertEqual(env.llm.model, "deepseek-reasoner")
+        self.assertEqual(env.llm_model, "deepseek-reasoner")
+        self.assertFalse(env.offline)
+        self.assertFalse(hasattr(env, "env_overrides"))
+        self.assertNotIn("secret-value", repr(env))
+
+    def test_legacy_openai_fields_remain_targeted_environment_reads(self) -> None:
+        env = EnvConfig.from_env(environ={
+            "OPENAI_API_KEY": "legacy-secret",
+            "OPENAI_BASE_URL": "https://legacy.invalid",
+        })
+        self.assertEqual(env.openai_api_key, "legacy-secret")
+        self.assertEqual(env.openai_base_url, "https://legacy.invalid")
+        self.assertNotIn("legacy-secret", repr(env))
+
+    def test_submit_mode_is_not_offline_with_configured_deepseek(self) -> None:
+        env = EnvConfig.from_env(environ={
+            "ENV_MODE": "submit",
+            "DEEPSEEK_API_KEY": "deepseek-secret",
+        })
+        self.assertFalse(env.offline)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,34 @@
+{
+  "env_mode": "dev",
+  "llm_backend": "none",
+  "retrieval_backend": "bm25",
+  "top_k": 10,
+  "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+  "reranker_model": "BAAI/bge-reranker-v2-m3",
+  "clarify_strategy": "other",
+  "llm_rerank": true,
+  "override_erase": false,
+  "skip_data_verify": false,
+  "sample_limit": null,
+  "output_path": "results.json",
+  "rerank_candidates": 300,
+  "max_constraint_asks": 3,
+  "llm": {
+    "provider": "deepseek",
+    "model": "deepseek-chat",
+    "base_url": "https://api.deepseek.com",
+    "health_check_enabled": true,
+    "connect_timeout_seconds": 3.0,
+    "timeout_seconds": 8.0,
+    "temperature": 0.0,
+    "max_tokens": 256,
+    "retry": {
+      "max_retries": 2,
+      "base_delay_seconds": 0.5,
+      "max_delay_seconds": 1.5
+    },
+    "circuit_breaker": {
+      "failure_threshold": 2
+    }
+  }
+}

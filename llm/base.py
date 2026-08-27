@@ -57,6 +57,9 @@ class LLMClient(Protocol):
     @property
     def status(self) -> LLMStatus: ...
 
+    @property
+    def cumulative_usage(self) -> LLMUsage: ...
+
     def initialize(self) -> LLMStatus: ...
 
     def chat(self, messages: Sequence[dict[str, str]], *, temperature: float | None = None, max_tokens: int | None = None) -> LLMResult: ...
@@ -69,6 +72,10 @@ class DisabledLLMClient:
     @property
     def status(self) -> LLMStatus:
         return self._status
+
+    @property
+    def cumulative_usage(self) -> LLMUsage:
+        return LLMUsage()
 
     def initialize(self) -> LLMStatus:
         return self._status

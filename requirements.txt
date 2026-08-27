@@ -7,7 +7,7 @@
 #   numpy>=1.24
 #   torch>=2.0            # sentence-transformers 的依赖，CPU 版即可
 #
-# LLM 语义重排 / 澄清（DeepSeek OpenAI SDK）：
+# OpenAI-compatible DeepSeek/OpenAI client and optional reranking:
 openai>=1.0,<2.0
 #
 # 本地 LLM（LLM_BACKEND=local，可选）：

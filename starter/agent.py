@@ -1,102 +1,16 @@
+﻿"""官方入口：直接复用新 Agent（避免官方评估器跑到旧 BM25 基线）。
+
+官方评估器 `evaluator/local_evaluator.py` 固定从本模块导入 `Agent`：
+    from starter.agent import Agent
+
+此处仅做"再导出"（re-export），不改动官方评估器任何一行。
+新的完整实现位于 `agent/main_agent.py`；旧 BM25 基线保留在 git 历史中。
+
+注意：依赖模块（agent/capability_probe.py、runtime_controller.py、llm_intent.py 等）
+必须随提交包一起提供，否则干净检出下本入口 import 会失败。
+"""
 from __future__ import annotations
 
-import json
-import re
-import sqlite3
-from pathlib import Path
+from agent.main_agent import Agent
 
-
-TOKEN_RE = re.compile(r"[a-z0-9]+", re.IGNORECASE)
-STOPWORDS = {
-    "a", "an", "and", "are", "as", "at", "be", "but", "by", "for", "from",
-    "i", "in", "is", "it", "me", "my", "of", "on", "or", "please", "some",
-    "that", "the", "this", "to", "want", "with", "would", "you", "looking",
-}
-
-
-def _text(value: object) -> str:
-    if value is None:
-        return ""
-    if isinstance(value, dict):
-        return " ".join(f"{key} {item}" for key, item in value.items())
-    if isinstance(value, list):
-        return " ".join(str(item) for item in value)
-    return str(value)
-
-
-def _terms(text: str) -> list[str]:
-    return [
-        token.lower()
-        for token in TOKEN_RE.findall(text)
-        if len(token) > 1 and token.lower() not in STOPWORDS
-    ]
-
-
-class Agent:
-    """Editable weak baseline: stateless BM25 retrieval with no LLM dependency."""
-
-    def __init__(self, catalog_path: str | Path = "data/catalog.jsonl") -> None:
-        self.catalog_path = Path(catalog_path)
-        self.connection = sqlite3.connect(":memory:")
-        self._sessions: set[str] = set()
-        self._build_index()
-
-    def _build_index(self) -> None:
-        cursor = self.connection.cursor()
-        cursor.execute(
-            "CREATE VIRTUAL TABLE products USING fts5("
-            "parent_asin UNINDEXED, title, categories, features, details, store, description, "
-            "tokenize='unicode61 remove_diacritics 2')"
-        )
-        batch: list[tuple[str, str, str, str, str, str, str]] = []
-        with self.catalog_path.open(encoding="utf-8") as handle:
-            for line in handle:
-                product = json.loads(line)
-                batch.append(
-                    (
-                        str(product["parent_asin"]),
-                        _text(product.get("title")),
-                        _text(product.get("categories")),
-                        _text(product.get("features")),
-                        _text(product.get("details")),
-                        _text(product.get("store")),
-                        _text(product.get("description")),
-                    )
-                )
-                if len(batch) >= 1000:
-                    cursor.executemany("INSERT INTO products VALUES (?, ?, ?, ?, ?, ?, ?)", batch)
-                    batch.clear()
-        if batch:
-            cursor.executemany("INSERT INTO products VALUES (?, ?, ?, ?, ?, ?, ?)", batch)
-        self.connection.commit()
-
-    def reset(self, session_id: str, user_profile: dict) -> None:
-        # The profile is anonymized and may be used for personalization.
-        self._sessions.add(session_id)
-
-    def respond(
-        self,
-        session_id: str,
-        user_message: str,
-        turn: int,
-        top_k: int,
-    ) -> dict:
-        if session_id not in self._sessions:
-            raise RuntimeError("reset must be called before respond")
-        unique_terms = list(dict.fromkeys(_terms(user_message)))[:40]
-        expression = " OR ".join(f'"{term}"' for term in unique_terms)
-        if not expression:
-            recommendations: list[dict] = []
-        else:
-            rows = self.connection.execute(
-                "SELECT parent_asin FROM products WHERE products MATCH ? "
-                "ORDER BY bm25(products, 0.0, 6.0, 4.0, 2.5, 2.5, 1.5, 1.0) LIMIT ?",
-                (expression, top_k),
-            ).fetchall()
-            recommendations = [{"parent_asin": str(row[0])} for row in rows]
-        return {
-            "message": "Here are the closest matches I found.",
-            "ask_attribute": None,
-            "recommendations": recommendations,
-            "usage": {"prompt_tokens": 0, "completion_tokens": 0},
-        }
+__all__ = ["Agent"]

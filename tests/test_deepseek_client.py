@@ -102,6 +102,39 @@ class DeepSeekClientTest(unittest.TestCase):
         self.assertEqual(status.error_category, LLMErrorCategory.SERVER)
         self.assertEqual(sdk.chat.completions.create.call_count, 3)
 
+
+    def test_probe_attempts_are_capped_at_three_when_configured_retries_are_higher(self) -> None:
+        sdk = Mock()
+        sdk.chat.completions.create.side_effect = StatusError("temporary", 503)
+        client = DeepSeekClient(
+            self.make_config(retry=RetryConfig(max_retries=10, base_delay_seconds=0.0, max_delay_seconds=0.0)),
+            sdk_factory=Mock(return_value=sdk),
+            sleep=lambda _: None,
+            jitter=lambda: 0.0,
+            failure_classifier=lambda _: FailureDisposition(LLMErrorCategory.SERVER, True),
+        )
+        status = client.initialize()
+        self.assertEqual(status.state, LLMState.UNAVAILABLE)
+        self.assertEqual(status.attempts, 3)
+        self.assertEqual(sdk.chat.completions.create.call_count, 3)
+
+    def test_malformed_probe_response_is_a_structured_unavailable_failure(self) -> None:
+        sdk = Mock()
+        sdk.chat.completions.create.return_value = SimpleNamespace(choices=[])
+        client = DeepSeekClient(self.make_config(), sdk_factory=Mock(return_value=sdk))
+        status = client.initialize()
+        self.assertEqual(status.state, LLMState.UNAVAILABLE)
+        self.assertEqual(status.error_category, LLMErrorCategory.UNKNOWN)
+
+    def test_malformed_chat_response_is_a_structured_runtime_failure(self) -> None:
+        sdk = Mock()
+        sdk.chat.completions.create.side_effect = [completion(), SimpleNamespace(choices=[])]
+        client = DeepSeekClient(self.make_config(), sdk_factory=Mock(return_value=sdk))
+        client.initialize()
+        result = client.chat([{ "role": "user", "content": "hello" }])
+        self.assertFalse(result.success)
+        self.assertEqual(result.error_category, LLMErrorCategory.UNKNOWN)
+
     def test_errors_and_repr_do_not_expose_api_key(self) -> None:
         sdk = Mock()
         sdk.chat.completions.create.side_effect = StatusError("Bearer test-key Authorization: test-key")

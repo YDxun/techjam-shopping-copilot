@@ -74,7 +74,8 @@ class DeepSeekClient:
     def _create(self, messages: Sequence[dict[str, str]], temperature: float, max_tokens: int):
         return self._make_sdk().chat.completions.create(model=self._config.model, messages=list(messages), temperature=temperature, max_tokens=max_tokens)
 
-    def _attempt(self, messages: Sequence[dict[str, str]], temperature: float, max_tokens: int):
+    def _attempt(self, messages: Sequence[dict[str, str]], temperature: float, max_tokens: int, max_retries: int | None = None):
+        max_retries = self._config.retry.max_retries if max_retries is None else max_retries
         attempts = 0
         while True:
             attempts += 1
@@ -82,10 +83,23 @@ class DeepSeekClient:
                 return self._create(messages, temperature, max_tokens), attempts, None, None
             except Exception as error:
                 disposition = self._failure_classifier(error)
-                if not disposition.retryable or attempts > self._config.retry.max_retries:
+                if not disposition.retryable or attempts > max_retries:
                     return None, attempts, error, disposition
                 delay = min(self._config.retry.max_delay_seconds, self._config.retry.base_delay_seconds * 2 ** (attempts - 1)) + self._jitter()
                 self._sleep(delay)
+
+    def _decode_completion(self, response: object) -> tuple[str, LLMUsage]:
+        try:
+            content = response.choices[0].message.content
+            usage = response.usage
+        except (AttributeError, IndexError, TypeError) as error:
+            raise ValueError("malformed completion response") from error
+        if content is not None and not isinstance(content, str):
+            raise ValueError("malformed completion response")
+        return content or "", LLMUsage(
+            getattr(usage, "prompt_tokens", 0) or 0,
+            getattr(usage, "completion_tokens", 0) or 0,
+        )
 
     def initialize(self) -> LLMStatus:
         if not self._config.api_key:
@@ -98,9 +112,13 @@ class DeepSeekClient:
         if not self._config.health_check_enabled:
             self._status = LLMStatus(LLMState.AVAILABLE, "deepseek", self._config.model)
             return self._status
-        _, attempts, error, disposition = self._attempt([{"role": "user", "content": "health check"}], 0.0, 1)
+        response, attempts, error, disposition = self._attempt([{ "role": "user", "content": "health check" }], 0.0, 1, max_retries=min(self._config.retry.max_retries, 2))
         if error is not None:
             return self._failure_status(attempts, error, disposition)
+        try:
+            self._decode_completion(response)
+        except Exception as error:
+            return self._failure_status(attempts, error, self._failure_classifier(error))
         self._status = LLMStatus(LLMState.AVAILABLE, "deepseek", self._config.model, attempts=attempts)
         return self._status
 
@@ -117,6 +135,11 @@ class DeepSeekClient:
         if error is not None:
             self._runtime_failures += 1
             return LLMResult(False, "deepseek", self._config.model, latency_ms=latency_ms, error_category=disposition.category, error_message=self._sanitize(error))
+        try:
+            content, usage = self._decode_completion(result)
+        except Exception as error:
+            self._runtime_failures += 1
+            disposition = self._failure_classifier(error)
+            return LLMResult(False, "deepseek", self._config.model, latency_ms=latency_ms, error_category=disposition.category, error_message=self._sanitize(error))
         self._runtime_failures = 0
-        usage = getattr(result, "usage", None)
-        return LLMResult(True, "deepseek", self._config.model, content=result.choices[0].message.content or "", usage=LLMUsage(getattr(usage, "prompt_tokens", 0) or 0, getattr(usage, "completion_tokens", 0) or 0), latency_ms=latency_ms)
+        return LLMResult(True, "deepseek", self._config.model, content=content, usage=usage, latency_ms=latency_ms)

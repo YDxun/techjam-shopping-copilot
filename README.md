@@ -13,7 +13,7 @@
 | Efficiency | 0.119 | 0.926 |
 | TechnicalScore | 0.1067 | **0.8626** |
 
-> 复现方式：`python run_local_eval.py`（默认 ENV_MODE=dev / LLM_BACKEND=none / RETRIEVAL_BACKEND=bm25）。
+> 复现方式：`python run_local_eval.py`（默认 ENV_MODE=dev / LLM_PROVIDER=deepseek；未配置 selected key 时离线 / RETRIEVAL_BACKEND=bm25）。
 
 ---
 
@@ -29,7 +29,7 @@
   - 稠密向量路由（可选，`RETRIEVAL_BACKEND=dense/hybrid`）：本地 sentence-transformers，未安装自动降级。
   - 融合：Reciprocal Rank Fusion（RRF）。
 - **重排序** `agent/reranker.py`：规则融合打分（约束覆盖度 0.5 / 品类 0.25 / RRF 0.15 / 热度 0.05 / 画像 0.05）
-  + 可选 LLM 语义重排（`LLM_BACKEND=openai`）；`LLM_BACKEND=none` 时纯规则排序，完全离线可跑。
+  + 可选的统一 LLM 语义重排（`LLM_PROVIDER=deepseek/openai`）；无 selected key、`LLM_PROVIDER=none` 或 `LLM_RERANK=0` 时纯规则排序，完全离线可跑。
 
 ### 支柱 II｜对话策略：多轮场景演进
 - **动态状态机** `agent/dialogue_state_machine.py`：
@@ -69,7 +69,7 @@ pip install -r requirements.txt
 
 数据集使用竞赛冻结工具包内的 `data/catalog.jsonl`（50,000 行）与 `data/public_set.jsonl`（200 行）。首次运行会自动做 SHA256 完整性校验（`utils/data_verify.py`）；`SKIP_DATA_VERIFY=1` 可跳过该校验。
 
-## 3. 配置与 DeepSeek 可用性
+## 3. 统一 LLM provider 配置与可用性
 
 配置不再是直接解析环境变量。通用设置按以下四层由低到高合并：
 
@@ -78,26 +78,27 @@ pip install -r requirements.txt
 3. 环境变量；
 4. 调用 `load_config(..., overrides=...)` 时传入的显式运行时覆盖。
 
-默认 JSON 文件可由 `APP_CONFIG_PATH` 指向其他非机密配置文件；直接传给 `load_config(path=...)` 的路径优先于 `APP_CONFIG_PATH`。DeepSeek 凭据是例外：它只能来自 `DEEPSEEK_API_KEY`，不能写入 JSON 或显式覆盖，且不会出现在配置摘要、启动输出或错误文本中。
+默认 JSON 文件可由 `APP_CONFIG_PATH` 指向其他非机密配置文件；直接传给 `load_config(path=...)` 的路径优先于 `APP_CONFIG_PATH`。凭据只能来自 selected provider 的 `DEEPSEEK_API_KEY` 或 `OPENAI_API_KEY`，不能写入 JSON 或显式覆盖，且不会出现在配置摘要、启动输出或错误文本中。
 
 | 变量 | 默认 | 说明 |
 |---|---:|---|
 | `ENV_MODE` | `dev` | 本地开发或 `submit` 提交模拟；submit 模式强制离线约束 |
-| `LLM_BACKEND` | `none` | 现有业务路径的 `none` / `local` / `openai` 选择；`none` 保持离线 |
+| `LLM_BACKEND` | 未设置 | 兼容映射：`none/local → none`，`openai → openai`；若设置 `LLM_PROVIDER` 则后者优先 |
 | `RETRIEVAL_BACKEND` | `bm25` | `bm25` / `dense` / `hybrid` |
 | `TOP_K` | `10` | 推荐数量 K |
 | `APP_CONFIG_PATH` | `config/default.json` | 非机密 JSON 配置文件的位置 |
-| `DEEPSEEK_API_KEY` | 空 | DeepSeek 的唯一凭据来源；未设置时不会发起网络请求 |
-| `LLM_PROVIDER` | `deepseek` | DeepSeek 客户端提供者（也可设为 `none`） |
-| `LLM_MODEL` | `deepseek-chat` | DeepSeek 模型名 |
-| `LLM_BASE_URL` | `https://api.deepseek.com` | DeepSeek API 基地址 |
+| `DEEPSEEK_API_KEY` / `OPENAI_API_KEY` | 空 | 仅 selected provider 的匹配 key 生效；未设置时不会发起网络请求 |
+| `LLM_PROVIDER` | `deepseek` | 统一 provider：`none` / `deepseek` / `openai` |
+| `DEEPSEEK_MODEL` / `DEEPSEEK_BASE_URL` | 见 JSON | DeepSeek profile 覆盖 |
+| `OPENAI_MODEL` / `OPENAI_BASE_URL` | 见 JSON | OpenAI profile 覆盖 |
+| `LLM_MODEL` / `LLM_BASE_URL` | 见 selected profile | 仅覆盖 selected provider 的 model / base URL |
 | `LLM_HEALTH_CHECK_ENABLED` | `true` | 是否在启动时发送轻量可用性探测 |
 | `LLM_CONNECT_TIMEOUT_SECONDS` / `LLM_TIMEOUT_SECONDS` | `3` / `8` | 连接超时 / 请求超时（秒） |
 | `LLM_MAX_RETRIES` | `2` | 可重试探测的额外重试次数（启动探测最多 3 次请求） |
 | `LLM_RETRY_BASE_DELAY_SECONDS` / `LLM_RETRY_MAX_DELAY_SECONDS` | `0.5` / `1.5` | 重试退避范围（秒） |
 | `LLM_CIRCUIT_BREAKER_FAILURE_THRESHOLD` | `2` | 运行期失败后打开断路器的阈值 |
 | `EMBEDDING_MODEL` / `RERANKER_MODEL` | 见 `config/default.json` | 可选检索与重排模型 |
-| `CLARIFY_STRATEGY` / `OVERRIDE_ERASE` / `LLM_RERANK` | `other` / `0` / `1` | 对话和重排策略 |
+| `CLARIFY_STRATEGY` / `OVERRIDE_ERASE` / `LLM_RERANK` | `other` / `0` / `1` | 对话策略；`LLM_RERANK=0` 强制确定性规则重排 |
 | `SAMPLE_LIMIT` / `SKIP_DATA_VERIFY` / `OUTPUT_PATH` | 空 / `0` / `results.json` | 冒烟范围、数据校验和结果路径 |
 
 每次 `run_local_eval.py` 启动都会在数据校验前打印经脱敏的 LLM 状态，包含 provider、model、state、attempts，以及可用时的错误类别：
@@ -106,7 +107,50 @@ pip install -r requirements.txt
 - `available`：SDK 已准备就绪，且健康检查成功；若关闭健康检查，则不发送探测请求也可进入此状态。
 - `unavailable`：探测失败但评估不会因它抛出异常；输出仅显示分类（如 `timeout`），不显示凭据。
 
-当前版本的 DeepSeek 集成仅用于启动可用性探测和状态报告；**它尚未传入推荐、澄清问题或其他业务模块，因此不会改变推荐或提问行为。** 离线用法保持不变：不设置 `DEEPSEEK_API_KEY`，再以默认 `LLM_BACKEND=none` 运行即可，无网络请求。
+统一客户端已在启动后注入 Agent，并仅由 Reranker 的可选语义重排使用；澄清仍是本地规则逻辑，并未实现 LLM 澄清。离线用法保持不变：不设置 selected-provider key，或设 `LLM_PROVIDER=none`，即可无网络运行。
+
+### Provider profiles, capabilities, and selection
+
+The JSON configuration contains independent DeepSeek and OpenAI-compatible profiles. Profiles are non-secret; keys are accepted only from the selected provider's environment variable.
+
+~~~json
+{
+  "llm": {
+    "provider": "deepseek",
+    "rerank_enabled": true,
+    "rerank_candidates": 12,
+    "providers": {
+      "deepseek": {
+        "model": "deepseek-chat",
+        "base_url": "https://api.deepseek.com",
+        "token_limit_parameter": "max_tokens",
+        "supports_temperature": true
+      },
+      "openai": {
+        "model": "gpt-4o-mini",
+        "base_url": "https://api.openai.com/v1",
+        "token_limit_parameter": "max_completion_tokens",
+        "supports_temperature": true
+      }
+    }
+  }
+}
+~~~
+
+Set LLM_PROVIDER to "none", "deepseek", or "openai". It takes precedence over the legacy LLM_BACKEND mapping; legacy "none" and "local" map to "none", and legacy "openai" maps to "openai". Selected-provider credentials are DEEPSEEK_API_KEY and OPENAI_API_KEY respectively. DeepSeek and OpenAI profile defaults can be overridden independently with DEEPSEEK_MODEL / DEEPSEEK_BASE_URL and OPENAI_MODEL / OPENAI_BASE_URL; LLM_MODEL and LLM_BASE_URL override only the selected profile.
+
+A profile's token_limit_parameter is either "max_tokens" or "max_completion_tokens", and supports_temperature controls whether a temperature field is sent. For example, a profile that requires max_completion_tokens and sets supports_temperature to false receives the former token parameter and no temperature field. This supports provider/model API differences without per-call provider branching.
+
+One process selects exactly one provider and constructs one shared client. There is no automatic DeepSeek-to-OpenAI fallback, no OpenAI-to-DeepSeek fallback, and no local-model implementation in this change. Missing selected credentials leave the client offline.
+
+### Startup, retry, and reranking
+
+The runner loads EnvConfig, enforces submit-mode offline policy, initializes the selected client, verifies/loads data, then constructs Agent with that exact client before evaluation. It prints only sanitized provider, model, state, attempts, and error category. States are disabled (no selected key or provider "none", no SDK/network), available, and unavailable. Health-check failures use bounded retry/backoff (at most three startup attempts); runtime failures are retried according to the profile and open the configured circuit breaker after its threshold, preserving rule ordering.
+
+When an available client is selected, Reranker sends at most 12 candidates by default. Its compact payload contains only active constraints plus each candidate's parent_asin, title, categories, and normalized features; it excludes the conversation history and user profile. The response must be locally parseable JSON (a ranked_parent_asins object or list, optionally fenced), and only submitted unique ASINs are retained. Unknown, duplicate, empty, or malformed output falls back to the complete deterministic rule order. Set LLM_RERANK=0 for a deterministic opt-out even with an available key.
+
+Usage is split deliberately: startup health-check tokens accumulate on the shared client, while each Agent response reports only that turn's reranking prompt/completion tokens. The former Reranker-owned OpenAI loader has been removed: create and initialize the client once at runner startup, then inject it into Agent (and therefore Reranker).
+
 
 ## 4. 本地复现测试
 
@@ -123,10 +167,15 @@ $env:SAMPLE_LIMIT="10"; python run_local_eval.py  # Windows PowerShell
 RETRIEVAL_BACKEND=hybrid python run_local_eval.py
 CLARIFY_STRATEGY=attribute python run_local_eval.py
 
-# ④ 提交模拟模式（强制离线约束检查）
-ENV_MODE=submit LLM_BACKEND=none python run_local_eval.py
+# ④ 不含 key 的离线模式，以及 provider-specific 在线重排
+LLM_PROVIDER=none python run_local_eval.py
+LLM_PROVIDER=deepseek DEEPSEEK_API_KEY="$DEEPSEEK_API_KEY" python run_local_eval.py
+LLM_PROVIDER=openai OPENAI_API_KEY="$OPENAI_API_KEY" python run_local_eval.py
 
-# ⑤ 官方单元测试（评估器未被修改，应全部通过）
+# ⑤ 提交模拟模式（强制离线约束检查）
+ENV_MODE=submit LLM_PROVIDER=none python run_local_eval.py
+
+# ⑥ 官方单元测试（评估器未被修改，应全部通过）
 python -m unittest discover tests -v
 ```
 

@@ -7,10 +7,30 @@ from unittest.mock import Mock, patch
 
 from config.env_config import EnvConfig
 from llm.base import LLMErrorCategory, LLMState, LLMStatus
-from run_local_eval import initialize_llm
+from run_local_eval import initialize_llm, main
 
 
 class LLMStartupTest(unittest.TestCase):
+    def _run_main_with_client(self, env: EnvConfig, client: Mock) -> tuple[Mock, str]:
+        """Run the CLI through initialization while isolating evaluator I/O."""
+        agent_constructor = Mock(return_value=object())
+        output = io.StringIO()
+        with (
+            patch("run_local_eval.EnvConfig.from_env", return_value=env),
+            patch("run_local_eval.create_llm_client", return_value=client) as factory,
+            patch("run_local_eval.Agent", agent_constructor),
+            patch("run_local_eval.load_jsonl", return_value=[]),
+            patch("run_local_eval.catalog_index", return_value=(set(), set(), {})),
+            patch("run_local_eval.evaluate", return_value={}),
+            patch("run_local_eval.Path.write_text"),
+            patch("run_local_eval.sys.argv", ["run_local_eval.py"]),
+            redirect_stdout(output),
+        ):
+            self.assertEqual(main(), 0)
+        factory.assert_called_once_with(env.llm)
+        client.initialize.assert_called_once_with()
+        return agent_constructor, output.getvalue()
+
     def test_disabled_client_is_reported_without_error(self) -> None:
         env = EnvConfig.from_env(environ={})
         client = Mock()
@@ -57,6 +77,77 @@ class LLMStartupTest(unittest.TestCase):
         self.assertIn("error=timeout", output.getvalue())
         self.assertNotIn("test-key", output.getvalue())
 
+
+    def test_disabled_and_unavailable_clients_are_injected_without_reconstruction(self) -> None:
+        for state, env_vars in (
+            (LLMState.DISABLED, {"LLM_PROVIDER": "none"}),
+            (LLMState.UNAVAILABLE, {"DEEPSEEK_API_KEY": "deepseek-test-secret"}),
+        ):
+            with self.subTest(state=state):
+                env = EnvConfig.from_env(environ={"SKIP_DATA_VERIFY": "1", **env_vars})
+                client = Mock()
+                client.initialize.return_value = LLMStatus(
+                    state=state,
+                    provider=env.llm.provider,
+                    model=env.llm.model,
+                )
+                agent_constructor, _ = self._run_main_with_client(env, client)
+                self.assertIs(agent_constructor.call_args.kwargs.get("llm_client"), client)
+
+    def test_available_deepseek_and_openai_share_the_same_injection_path_and_hide_secrets(self) -> None:
+        deepseek_secret = "deepseek-test-secret"
+        openai_secret = "openai-test-secret"
+        for provider in ("deepseek", "openai"):
+            with self.subTest(provider=provider):
+                env = EnvConfig.from_env(environ={
+                    "SKIP_DATA_VERIFY": "1",
+                    "LLM_PROVIDER": provider,
+                    "DEEPSEEK_API_KEY": deepseek_secret,
+                    "OPENAI_API_KEY": openai_secret,
+                })
+                client = Mock()
+                client.initialize.return_value = LLMStatus(
+                    state=LLMState.AVAILABLE,
+                    provider=provider,
+                    model=env.llm.model,
+                )
+                agent_constructor, output = self._run_main_with_client(env, client)
+                self.assertIs(agent_constructor.call_args.kwargs.get("llm_client"), client)
+                self.assertIn(f"provider={provider}", output)
+                self.assertNotIn(deepseek_secret, output)
+                self.assertNotIn(openai_secret, output)
+
+    def test_submit_without_selected_key_stays_offline(self) -> None:
+        env = EnvConfig.from_env(environ={
+            "ENV_MODE": "submit",
+            "LLM_PROVIDER": "openai",
+            "DEEPSEEK_API_KEY": "inactive-test-secret",
+            "SKIP_DATA_VERIFY": "1",
+        })
+        client = Mock()
+        client.initialize.return_value = LLMStatus(
+            state=LLMState.DISABLED,
+            provider="openai",
+            model=env.llm.model,
+        )
+        agent_constructor, _ = self._run_main_with_client(env, client)
+        self.assertTrue(env.offline)
+        self.assertIs(agent_constructor.call_args.kwargs.get("llm_client"), client)
+
+    def test_submit_with_selected_key_rejects_before_initialization(self) -> None:
+        env = EnvConfig.from_env(environ={
+            "ENV_MODE": "submit",
+            "LLM_PROVIDER": "openai",
+            "OPENAI_API_KEY": "openai-test-secret",
+        })
+        with (
+            patch("run_local_eval.EnvConfig.from_env", return_value=env),
+            patch("run_local_eval.initialize_llm") as initialize,
+            patch("run_local_eval.sys.argv", ["run_local_eval.py"]),
+        ):
+            with self.assertRaises(AssertionError):
+                main()
+        initialize.assert_not_called()
 
 if __name__ == "__main__":
     unittest.main()

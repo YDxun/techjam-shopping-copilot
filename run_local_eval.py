@@ -62,7 +62,7 @@ def main() -> int:
         print("    [submit] 提交模拟模式：强制执行离线约束检查（LLM_BACKEND=none/local）。")
         assert env.offline, "submit 模式禁止依赖外部付费 API（请设置 LLM_BACKEND=none 或 local）"
 
-    initialize_llm(env)
+    llm_client = initialize_llm(env)
 
     # 数据集完整性校验（Pillar IV / 硬性约束 3）
     if not env.skip_data_verify:
@@ -80,7 +80,7 @@ def main() -> int:
           f"({time.time() - t0:.1f}s)")
 
     # 实例化业务 Agent（Pillar I~IV）
-    agent = Agent(catalog_path=args.catalog, env=env)
+    agent = Agent(catalog_path=args.catalog, env=env, llm_client=llm_client)
 
     # 调用官方评估器 evaluate()（唯一评分入口，未修改）
     t0 = time.time()

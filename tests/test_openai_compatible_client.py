@@ -110,6 +110,23 @@ class OpenAICompatibleClientTest(unittest.TestCase):
         self.assertEqual(status.state, LLMState.DISABLED)
         factory.assert_not_called()
 
+
+    def test_sdk_factory_import_error_reports_missing_sdk_without_probe(self) -> None:
+        factory = Mock(side_effect=ImportError("openai unavailable"))
+        status = OpenAICompatibleClient(config_with_selected_profile(), sdk_factory=factory).initialize()
+        self.assertEqual(status.state, LLMState.UNAVAILABLE)
+        self.assertEqual(status.attempts, 0)
+        self.assertEqual(status.error_category, LLMErrorCategory.SDK_MISSING)
+        factory.assert_called_once()
+
+    def test_sdk_factory_exception_is_sanitized_unavailable_without_probe(self) -> None:
+        factory = Mock(side_effect=ValueError("invalid credential deepseek-key"))
+        status = OpenAICompatibleClient(config_with_selected_profile(), sdk_factory=factory).initialize()
+        self.assertEqual(status.state, LLMState.UNAVAILABLE)
+        self.assertEqual(status.attempts, 0)
+        self.assertEqual(status.error_category, LLMErrorCategory.UNKNOWN)
+        self.assertNotIn("deepseek-key", status.error_message)
+        factory.assert_called_once()
     def test_factory_selects_one_shared_client_for_each_online_provider(self) -> None:
         for provider in ("deepseek", "openai"):
             with self.subTest(provider=provider):
@@ -154,6 +171,24 @@ class OpenAICompatibleClientTest(unittest.TestCase):
         result = client.chat([{"role": "user", "content": "rank"}])
         self.assertFalse(result.success)
         self.assertEqual(result.error_category, LLMErrorCategory.UNKNOWN)
+
+    def test_malformed_probe_usage_returns_unavailable_without_escaping(self) -> None:
+        client, sdk = make_client()
+        sdk.chat.completions.create.return_value = completion(prompt_tokens="two", completion_tokens=1)
+        status = client.initialize()
+        self.assertEqual(status.state, LLMState.UNAVAILABLE)
+        self.assertEqual(status.attempts, 1)
+        self.assertEqual(status.error_category, LLMErrorCategory.UNKNOWN)
+
+    def test_malformed_runtime_usage_returns_failed_result_without_accumulating(self) -> None:
+        client, sdk = make_client()
+        sdk.chat.completions.create.side_effect = [completion(prompt_tokens=2, completion_tokens=3), completion("answer", prompt_tokens=True, completion_tokens=1)]
+        client.initialize()
+        result = client.chat([{"role": "user", "content": "rank"}])
+        self.assertFalse(result.success)
+        self.assertEqual(result.error_category, LLMErrorCategory.UNKNOWN)
+        self.assertEqual(client.cumulative_usage.prompt_tokens, 2)
+        self.assertEqual(client.cumulative_usage.completion_tokens, 3)
 
     def test_error_messages_redact_selected_key(self) -> None:
         client, sdk = make_client(failure_classifier=lambda _: FailureDisposition(LLMErrorCategory.UNKNOWN, False))

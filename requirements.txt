@@ -10,9 +10,5 @@
 # OpenAI-compatible DeepSeek/OpenAI client and optional reranking:
 openai>=1.0,<2.0
 #
-# 本地 LLM（LLM_BACKEND=local，可选）：
-#   transformers>=4.40
-#   torch
-#
 # 电商重排模型（可选，离线 cross-encoder）：
 #   FlagEmbedding>=1.2      # BAAI/bge-reranker-v2-m3 等

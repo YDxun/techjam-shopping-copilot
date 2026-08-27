@@ -99,6 +99,42 @@ class ConfigLoaderTest(unittest.TestCase):
         self.assertEqual(config.llm.providers.deepseek.base_url, "https://deepseek.example/v1")
         self.assertEqual(config.llm.providers.openai.base_url, "https://selected.example/v1")
 
+
+    def test_explicit_provider_directs_generic_environment_values_to_openai_profile(self) -> None:
+        config = load_config(
+            environ={
+                "LLM_MODEL": "generic-model",
+                "LLM_BASE_URL": "https://generic.example/v1",
+                "DEEPSEEK_MODEL": "deepseek-environment-model",
+                "DEEPSEEK_BASE_URL": "https://deepseek.environment/v1",
+            },
+            overrides={"llm": {"provider": "openai"}},
+        )
+        self.assertEqual(config.llm.providers.openai.model, "generic-model")
+        self.assertEqual(config.llm.providers.openai.base_url, "https://generic.example/v1")
+        self.assertEqual(config.llm.providers.deepseek.model, "deepseek-environment-model")
+        self.assertEqual(config.llm.providers.deepseek.base_url, "https://deepseek.environment/v1")
+
+    def test_explicit_selected_profile_values_beat_generic_environment_values(self) -> None:
+        config = load_config(
+            environ={
+                "LLM_MODEL": "generic-model",
+                "LLM_BASE_URL": "https://generic.example/v1",
+            },
+            overrides={
+                "llm": {
+                    "provider": "openai",
+                    "providers": {
+                        "openai": {
+                            "model": "explicit-openai-model",
+                            "base_url": "https://explicit.openai/v1",
+                        }
+                    },
+                }
+            },
+        )
+        self.assertEqual(config.llm.selected_profile.model, "explicit-openai-model")
+        self.assertEqual(config.llm.selected_profile.base_url, "https://explicit.openai/v1")
     def test_only_selected_provider_receives_its_matching_key(self) -> None:
         config = load_config(environ={
             "LLM_PROVIDER": "openai",

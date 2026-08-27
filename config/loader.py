@@ -38,9 +38,14 @@ def load_config(
     _reject_secret_fields(data, source=str(selected_path))
     merged = _deep_merge(_dataclass_defaults(), data)
     json_provider = _mapping(merged.get("llm"), "llm").get("provider", "deepseek")
-    merged = _deep_merge(merged, _environment_overrides(env, json_provider))
     if overrides:
         _reject_secret_fields(overrides, source="explicit overrides")
+    final_provider = _selected_provider_after_overrides(env, json_provider, overrides)
+    merged = _deep_merge(
+        merged,
+        _environment_overrides(env, json_provider, final_provider),
+    )
+    if overrides:
         merged = _deep_merge(merged, overrides)
 
     llm_data = _mapping(merged.get("llm"), "llm")
@@ -97,7 +102,9 @@ def _deep_merge(base: Mapping[str, Any], changes: Mapping[str, Any]) -> dict[str
     return result
 
 
-def _environment_overrides(env: Mapping[str, str], json_provider: Any) -> dict[str, Any]:
+def _environment_overrides(
+    env: Mapping[str, str], json_provider: Any, generic_provider: Any
+) -> dict[str, Any]:
     result: dict[str, Any] = {}
     flat_fields: dict[str, tuple[str, Callable[[str, str], Any]]] = {
         "ENV_MODE": ("env_mode", _parse_text),
@@ -132,11 +139,11 @@ def _environment_overrides(env: Mapping[str, str], json_provider: Any) -> dict[s
         if value is not None:
             _set_nested(result, field_path, parser(value, name))
 
-    if provider in {"deepseek", "openai"}:
+    if generic_provider in {"deepseek", "openai"}:
         for name, field in (("LLM_MODEL", "model"), ("LLM_BASE_URL", "base_url")):
             value = _environment_value(env, name)
             if value is not None:
-                _set_nested(result, ("llm", "providers", provider, field), _parse_text(value, name))
+                _set_nested(result, ("llm", "providers", generic_provider, field), _parse_text(value, name))
 
     nested_fields: dict[str, tuple[tuple[str, ...], Callable[[str, str], Any]]] = {
         "LLM_RERANK": (("llm", "rerank_enabled"), _parse_bool),
@@ -164,6 +171,16 @@ def _selected_provider_from_environment(env: Mapping[str, str], json_provider: A
     if backend is not None:
         return {"openai": "openai", "none": "none", "local": "none"}.get(backend, backend)
     return json_provider if isinstance(json_provider, str) else "deepseek"
+
+
+def _selected_provider_after_overrides(
+    env: Mapping[str, str], json_provider: Any, overrides: Mapping[str, Any] | None
+) -> Any:
+    if overrides:
+        llm = overrides.get("llm")
+        if isinstance(llm, Mapping) and "provider" in llm:
+            return llm["provider"]
+    return _selected_provider_from_environment(env, json_provider)
 
 
 def _selected_api_key(env: Mapping[str, str], provider: str) -> str:

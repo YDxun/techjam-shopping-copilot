@@ -144,14 +144,22 @@ class OpenAICompatibleClient:
         try:
             content = response.choices[0].message.content
             usage = response.usage
+            prompt_tokens = self._usage_tokens(usage, "prompt_tokens")
+            completion_tokens = self._usage_tokens(usage, "completion_tokens")
         except (AttributeError, IndexError, TypeError) as error:
             raise ValueError("malformed completion response") from error
         if content is not None and not isinstance(content, str):
             raise ValueError("malformed completion response")
-        return content or "", LLMUsage(
-            getattr(usage, "prompt_tokens", 0) or 0,
-            getattr(usage, "completion_tokens", 0) or 0,
-        )
+        return content or "", LLMUsage(prompt_tokens, completion_tokens)
+
+    @staticmethod
+    def _usage_tokens(usage: object, field: str) -> int:
+        value = getattr(usage, field, None)
+        if value is None:
+            return 0
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ValueError("malformed completion response")
+        return value
 
     def _add_usage(self, usage: LLMUsage) -> None:
         self._cumulative_usage = LLMUsage(
@@ -167,6 +175,8 @@ class OpenAICompatibleClient:
             self._make_sdk()
         except ImportError as error:
             return self._failure_status(0, error, FailureDisposition(LLMErrorCategory.SDK_MISSING, False))
+        except Exception as error:
+            return self._failure_status(0, error, self._failure_classifier(error))
         if not self._config.health_check_enabled:
             self._status = LLMStatus(LLMState.AVAILABLE, self._config.provider, self._model)
             return self._status

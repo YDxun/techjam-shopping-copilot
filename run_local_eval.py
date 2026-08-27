@@ -59,8 +59,8 @@ def main() -> int:
     print(f"\n=== TechJam2026 购物副驾 Agent 本地评估 ===")
     print(f"    {env.summary()}")
     if env.env_mode == "submit":
-        print("    [submit] 提交模拟模式：强制执行离线约束检查（LLM_BACKEND=none/local）。")
-        assert env.offline, "submit 模式禁止依赖外部付费 API（请设置 LLM_BACKEND=none 或 local）"
+        print("    [submit] 提交模拟模式：强制执行离线约束检查（优先设置 LLM_PROVIDER=none；兼容 LLM_BACKEND=none/local）。")
+        assert env.offline, "submit 模式禁止依赖外部付费 API（请优先设置 LLM_PROVIDER=none；兼容 LLM_BACKEND=none 或 local）"
 
     llm_client = initialize_llm(env)
 

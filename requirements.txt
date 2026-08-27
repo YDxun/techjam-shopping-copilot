@@ -1,0 +1,18 @@
+﻿# TechJam2026 购物副驾 Agent —— 核心零依赖（Python 标准库即可跑通 bm25/无LLM 模式）
+# 环境要求：Python >= 3.10，sqlite3 自带 FTS5（Windows/macOS/Linux 均可用）
+
+# ---- 可选增强（按需安装，未安装时自动降级，不影响离线运行） ----
+# 稠密向量检索（RETRIEVAL_BACKEND=dense/hybrid，CPU 可跑）：
+#   sentence-transformers>=2.2.0
+#   numpy>=1.24
+#   torch>=2.0            # sentence-transformers 的依赖，CPU 版即可
+#
+# LLM 语义重排 / 澄清（LLM_BACKEND=openai）：
+#   openai>=1.0
+#
+# 本地 LLM（LLM_BACKEND=local，可选）：
+#   transformers>=4.40
+#   torch
+#
+# 电商重排模型（可选，离线 cross-encoder）：
+#   FlagEmbedding>=1.2      # BAAI/bge-reranker-v2-m3 等

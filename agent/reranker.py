@@ -37,7 +37,7 @@ class Reranker:
     def __init__(self, env: EnvConfig | None = None,
                  llm_client: LLMClient | None = None) -> None:
         self.env = env or EnvConfig.from_env()
-        self.llm_client = llm_client or DisabledLLMClient()
+        self.llm_client = llm_client if llm_client is not None else DisabledLLMClient()
         self.last_usage: dict = {"prompt_tokens": 0, "completion_tokens": 0}
 
     # ------------------------------------------------------------------

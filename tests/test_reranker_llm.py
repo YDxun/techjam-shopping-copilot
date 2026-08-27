@@ -51,6 +51,29 @@ class FakeUnavailableClient:
         return self._status
 
 
+class FalseyLLMClient:
+    def __init__(self) -> None:
+        self._status = LLMStatus(LLMState.AVAILABLE, "deepseek", "deepseek-chat")
+
+    def __bool__(self) -> bool:
+        return False
+
+    @property
+    def status(self) -> LLMStatus:
+        return self._status
+
+    @property
+    def cumulative_usage(self) -> LLMUsage:
+        return LLMUsage()
+
+    def initialize(self) -> LLMStatus:
+        return self._status
+
+    def chat(self, messages: object, *, temperature: float | None = None,
+             max_tokens: int | None = None) -> LLMResult:
+        return LLMResult(True, "deepseek", "deepseek-chat", content='["A", "B"]')
+
+
 def env_with_rerank(enabled: bool = True, candidates: int = 12) -> object:
     return SimpleNamespace(
         llm=SimpleNamespace(rerank_enabled=enabled, rerank_candidates=candidates)
@@ -191,6 +214,20 @@ class RerankerLLMTest(unittest.TestCase):
                 agent = Agent(catalog_path=catalog, env=env, llm_client=client)
         agent.retriever.close()
         self.assertIs(reranker_class.call_args.kwargs["llm_client"], client)
+
+    def test_falsey_injected_client_retains_identity(self) -> None:
+        client = FalseyLLMClient()
+        reranker = Reranker(env=env_with_rerank(True), llm_client=client)
+        self.assertIs(reranker.llm_client, client)
+
+        env = EnvConfig.from_env(overrides={"skip_data_verify": True}, environ={})
+        with tempfile.TemporaryDirectory() as directory:
+            catalog = Path(directory) / "catalog.jsonl"
+            catalog.write_text(json.dumps({"parent_asin": "A", "title": "Alpha"}) + "\n", encoding="utf-8")
+            agent = Agent(catalog_path=catalog, env=env, llm_client=client)
+        agent.retriever.close()
+        self.assertIs(agent.llm_client, client)
+        self.assertIs(agent.reranker.llm_client, client)
 
     def test_direct_construction_uses_disabled_clients_without_factory(self) -> None:
         env = EnvConfig.from_env(overrides={"skip_data_verify": True}, environ={})

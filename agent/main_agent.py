@@ -35,7 +35,7 @@ class Agent(BaseAgent):
                  env: EnvConfig | None = None,
                  llm_client: LLMClient | None = None) -> None:
         self.env = env or EnvConfig.from_env()
-        self.llm_client = llm_client or DisabledLLMClient()
+        self.llm_client = llm_client if llm_client is not None else DisabledLLMClient()
 
         # 数据集完整性校验（Pillar IV / 硬性约束 3），可 SKIP_DATA_VERIFY=1 跳过
         if not self.env.skip_data_verify:

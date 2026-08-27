@@ -57,40 +57,56 @@
 ## 2. 环境安装
 
 ```bash
-# Python >= 3.10（开发验证使用 3.12）；核心零第三方依赖（sqlite3 FTS5 内置）
+# Python >= 3.10（开发验证使用 3.12）；核心离线模式使用 sqlite3 FTS5
 python --version
 
-# 可选增强（按需安装，未安装自动降级，不影响离线运行）
-pip install -r requirements.txt            # 仅注释说明，核心不强制安装任何包
-# 稠密检索：pip install sentence-transformers numpy torch
-# LLM 重排：pip install openai
+# 安装项目声明的依赖，其中包含 DeepSeek 所需的 OpenAI Python SDK
+pip install -r requirements.txt
+
+# 可选的本地检索增强（未安装会自动降级）
+# pip install sentence-transformers numpy torch
 ```
 
-数据集：使用竞赛冻结工具包内的 `data/catalog.jsonl`（50,000 行）与 `data/public_set.jsonl`（200 行）。
-首次运行会自动做 SHA256 完整性校验（`utils/data_verify.py`），校验失败会中止（`SKIP_DATA_VERIFY=1` 可跳过）。
+数据集使用竞赛冻结工具包内的 `data/catalog.jsonl`（50,000 行）与 `data/public_set.jsonl`（200 行）。首次运行会自动做 SHA256 完整性校验（`utils/data_verify.py`）；`SKIP_DATA_VERIFY=1` 可跳过该校验。
 
----
+## 3. 配置与 DeepSeek 可用性
 
-## 3. 环境变量说明
+配置不再是直接解析环境变量。通用设置按以下四层由低到高合并：
 
-| 变量 | 取值 | 默认 | 说明 |
-|---|---|---|---|
-| `ENV_MODE` | `dev` / `submit` | `dev` | 本地开发测试 / 提交模拟模式。submit 模式下若 `LLM_BACKEND=openai` 且无 key 则强制降级为 `none`（离线约束检查） |
-| `LLM_BACKEND` | `none` / `local` / `openai` | `none` | 无大模型（纯规则）/ 本地模型 / OpenAI 兼容 API；`none` 完全离线可跑 |
-| `RETRIEVAL_BACKEND` | `bm25` / `dense` / `hybrid` | `bm25` | 关键词 / 稠密向量 / 混合检索；稠密依赖 sentence-transformers，缺失自动回退 BM25 |
-| `TOP_K` | 整数 | `10` | 推荐数 K，对齐 HitRate@K 评测 |
-| `LLM_MODEL` | 模型名 | `Qwen/Qwen3.5-4B` | 本地/API LLM 模型（占位） |
-| `OPENAI_API_KEY` / `OPENAI_BASE_URL` | 字符串 | 空 | OpenAI 兼容端点密钥（环境变量注入，代码不硬编码） |
-| `EMBEDDING_MODEL` | 模型名 | `sentence-transformers/all-MiniLM-L6-v2` | 稠密检索 embedding 模型 |
-| `RERANKER_MODEL` | 模型名 | `BAAI/bge-reranker-v2-m3` | 可选重排模型（预留） |
-| `CLARIFY_STRATEGY` | `other` / `attribute` | `other` | 澄清策略：最大信息量 / 按属性优先级 |
-| `OVERRIDE_ERASE` | `0` / `1` | `0` | 覆盖时是否激进擦除旧偏好槽（默认保守保留为弱信号） |
-| `LLM_RERANK` | `0` / `1` | `1` | 是否启用 LLM 语义重排（openai 后端时） |
-| `SAMPLE_LIMIT` | 整数 | 无 | 开发冒烟测试：只跑前 N 个会话 |
-| `SKIP_DATA_VERIFY` | `0` / `1` | `0` | 跳过 SHA256 校验 |
-| `OUTPUT_PATH` | 路径 | `results.json` | 评估结果输出 |
+1. 内置 `AppConfig` 默认值；
+2. 受版本控制的非机密文件 `config/default.json`；
+3. 环境变量；
+4. 调用 `load_config(..., overrides=...)` 时传入的显式运行时覆盖。
 
----
+默认 JSON 文件可由 `APP_CONFIG_PATH` 指向其他非机密配置文件；直接传给 `load_config(path=...)` 的路径优先于 `APP_CONFIG_PATH`。DeepSeek 凭据是例外：它只能来自 `DEEPSEEK_API_KEY`，不能写入 JSON 或显式覆盖，且不会出现在配置摘要、启动输出或错误文本中。
+
+| 变量 | 默认 | 说明 |
+|---|---:|---|
+| `ENV_MODE` | `dev` | 本地开发或 `submit` 提交模拟；submit 模式强制离线约束 |
+| `LLM_BACKEND` | `none` | 现有业务路径的 `none` / `local` / `openai` 选择；`none` 保持离线 |
+| `RETRIEVAL_BACKEND` | `bm25` | `bm25` / `dense` / `hybrid` |
+| `TOP_K` | `10` | 推荐数量 K |
+| `APP_CONFIG_PATH` | `config/default.json` | 非机密 JSON 配置文件的位置 |
+| `DEEPSEEK_API_KEY` | 空 | DeepSeek 的唯一凭据来源；未设置时不会发起网络请求 |
+| `LLM_PROVIDER` | `deepseek` | DeepSeek 客户端提供者（也可设为 `none`） |
+| `LLM_MODEL` | `deepseek-chat` | DeepSeek 模型名 |
+| `LLM_BASE_URL` | `https://api.deepseek.com` | DeepSeek API 基地址 |
+| `LLM_HEALTH_CHECK_ENABLED` | `true` | 是否在启动时发送轻量可用性探测 |
+| `LLM_CONNECT_TIMEOUT_SECONDS` / `LLM_TIMEOUT_SECONDS` | `3` / `8` | 连接超时 / 请求超时（秒） |
+| `LLM_MAX_RETRIES` | `2` | 可重试探测的额外重试次数（启动探测最多 3 次请求） |
+| `LLM_RETRY_BASE_DELAY_SECONDS` / `LLM_RETRY_MAX_DELAY_SECONDS` | `0.5` / `1.5` | 重试退避范围（秒） |
+| `LLM_CIRCUIT_BREAKER_FAILURE_THRESHOLD` | `2` | 运行期失败后打开断路器的阈值 |
+| `EMBEDDING_MODEL` / `RERANKER_MODEL` | 见 `config/default.json` | 可选检索与重排模型 |
+| `CLARIFY_STRATEGY` / `OVERRIDE_ERASE` / `LLM_RERANK` | `other` / `0` / `1` | 对话和重排策略 |
+| `SAMPLE_LIMIT` / `SKIP_DATA_VERIFY` / `OUTPUT_PATH` | 空 / `0` / `results.json` | 冒烟范围、数据校验和结果路径 |
+
+每次 `run_local_eval.py` 启动都会在数据校验前打印经脱敏的 LLM 状态，包含 provider、model、state、attempts，以及可用时的错误类别：
+
+- `disabled`：没有密钥或提供者为 `none`；不会构造 SDK 或访问网络。
+- `available`：SDK 已准备就绪，且健康检查成功；若关闭健康检查，则不发送探测请求也可进入此状态。
+- `unavailable`：探测失败但评估不会因它抛出异常；输出仅显示分类（如 `timeout`），不显示凭据。
+
+当前版本的 DeepSeek 集成仅用于启动可用性探测和状态报告；**它尚未传入推荐、澄清问题或其他业务模块，因此不会改变推荐或提问行为。** 离线用法保持不变：不设置 `DEEPSEEK_API_KEY`，再以默认 `LLM_BACKEND=none` 运行即可，无网络请求。
 
 ## 4. 本地复现测试
 

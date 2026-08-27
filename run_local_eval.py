@@ -28,6 +28,22 @@ from config import constants
 from config.env_config import EnvConfig
 from agent.main_agent import Agent
 from evaluator.local_evaluator import catalog_index, evaluate, load_jsonl  # 官方评估器（只调用，不修改）
+from llm import create_llm_client
+from llm.base import LLMClient
+
+
+def initialize_llm(env: EnvConfig) -> LLMClient:
+    """Initialize the optional LLM and report its sanitized availability."""
+    client = create_llm_client(env.llm)
+    status = client.initialize()
+    details = (
+        f"provider={status.provider} model={status.model} "
+        f"state={status.state.value} attempts={status.attempts}"
+    )
+    if status.error_category is not None:
+        details += f" error={status.error_category.value}"
+    print(f"    LLM: {details}")
+    return client
 
 
 def main() -> int:
@@ -45,6 +61,8 @@ def main() -> int:
     if env.env_mode == "submit":
         print("    [submit] 提交模拟模式：强制执行离线约束检查（LLM_BACKEND=none/local）。")
         assert env.offline, "submit 模式禁止依赖外部付费 API（请设置 LLM_BACKEND=none 或 local）"
+
+    initialize_llm(env)
 
     # 数据集完整性校验（Pillar IV / 硬性约束 3）
     if not env.skip_data_verify:

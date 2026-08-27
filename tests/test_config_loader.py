@@ -95,6 +95,27 @@ class ConfigLoaderTest(unittest.TestCase):
         with self.assertRaisesRegex(ConfigError, "llm.circuit_breaker.failure_threshold"):
             load_config(environ={"LLM_CIRCUIT_BREAKER_FAILURE_THRESHOLD": "0"})
 
+    def test_rejects_non_finite_environment_numbers(self) -> None:
+        for value in ("nan", "inf", "-inf"):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(ConfigError, "llm.timeout_seconds"):
+                    load_config(environ={"LLM_TIMEOUT_SECONDS": value})
+
+    def test_rejects_non_finite_json_numbers(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = self.write_config(
+                Path(directory), {"llm": {"connect_timeout_seconds": float("nan")}}
+            )
+            with self.assertRaisesRegex(ConfigError, "llm.connect_timeout_seconds"):
+                load_config(path=path, environ={})
+
+    def test_rejects_non_finite_explicit_override_numbers(self) -> None:
+        with self.assertRaisesRegex(ConfigError, "llm.retry.base_delay_seconds"):
+            load_config(
+                environ={},
+                overrides={"llm": {"retry": {"base_delay_seconds": float("nan")}}},
+            )
+
     def test_models_are_immutable(self) -> None:
         config = load_config(environ={})
         with self.assertRaises(FrozenInstanceError):

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 from dataclasses import asdict
 from pathlib import Path
@@ -260,6 +261,8 @@ def _optional_int_value(value: Any, field: str) -> int | None:
 def _number_value(value: Any, field: str) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ConfigError(f"{field} must be a number")
+    if not math.isfinite(value):
+        raise ConfigError(f"{field} must be a finite number")
     return float(value)
 
 

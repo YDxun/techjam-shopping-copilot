@@ -1,8 +1,7 @@
 """Backward-compatible environment facade over the canonical configuration loader."""
 from __future__ import annotations
 
-import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -15,8 +14,6 @@ class EnvConfig:
     """Read-only compatibility facade for existing environment consumers."""
 
     _app_config: AppConfig
-    _openai_api_key: str = field(default="", repr=False)
-    _openai_base_url: str = field(default="", repr=False)
 
     @classmethod
     def from_env(
@@ -25,12 +22,7 @@ class EnvConfig:
         overrides: Mapping[str, Any] | None = None,
         environ: Mapping[str, str] | None = None,
     ) -> "EnvConfig":
-        source = os.environ if environ is None else environ
-        return cls(
-            _app_config=load_config(path=path, overrides=overrides, environ=source),
-            _openai_api_key=source.get("OPENAI_API_KEY", "").strip(),
-            _openai_base_url=source.get("OPENAI_BASE_URL", "").strip(),
-        )
+        return cls(_app_config=load_config(path=path, overrides=overrides, environ=environ))
 
     @property
     def app_config(self) -> AppConfig:
@@ -46,7 +38,7 @@ class EnvConfig:
 
     @property
     def llm_backend(self) -> str:
-        return self._app_config.llm_backend
+        return self.llm.provider
 
     @property
     def retrieval_backend(self) -> str:
@@ -58,15 +50,18 @@ class EnvConfig:
 
     @property
     def llm_model(self) -> str:
-        return self.llm.model
+        profile = self.llm.selected_profile
+        return profile.model if profile else ""
 
     @property
     def openai_api_key(self) -> str:
-        return self._openai_api_key
+        if self.llm.provider != "openai":
+            return ""
+        return self.llm.providers.openai.api_key.reveal()
 
     @property
     def openai_base_url(self) -> str:
-        return self._openai_base_url
+        return self.llm.providers.openai.base_url
 
     @property
     def embedding_model(self) -> str:
@@ -82,7 +77,7 @@ class EnvConfig:
 
     @property
     def llm_rerank(self) -> bool:
-        return self._app_config.llm_rerank
+        return self.llm.rerank_enabled
 
     @property
     def override_erase(self) -> bool:
@@ -102,7 +97,7 @@ class EnvConfig:
 
     @property
     def rerank_candidates(self) -> int:
-        return self._app_config.rerank_candidates
+        return self.llm.rerank_candidates
 
     @property
     def max_constraint_asks(self) -> int:
@@ -110,23 +105,18 @@ class EnvConfig:
 
     @property
     def offline(self) -> bool:
-        """Whether neither legacy nor DeepSeek configuration enables remote LLM use."""
-        legacy_offline = self.llm_backend in {"none", "local"}
-        deepseek_offline = self.llm.provider == "none" or not self.llm.api_key
-        return legacy_offline and deepseek_offline
+        profile = self.llm.selected_profile
+        return self.llm.provider == "none" or profile is None or not profile.api_key
 
     def __repr__(self) -> str:
         return (
             "EnvConfig("
-            f"env_mode={self.env_mode!r}, llm_backend={self.llm_backend!r}, "
-            f"retrieval_backend={self.retrieval_backend!r}, top_k={self.top_k!r}, "
-            f"llm_provider={self.llm.provider!r}, llm_configured={bool(self.llm.api_key)!r}, "
-            f"legacy_openai_configured={bool(self._openai_api_key)!r})"
+            f"provider={self.llm.provider!r}, model={self.llm_model!r}, "
+            f"configured={bool(self.llm.api_key)!r})"
         )
 
     def summary(self) -> str:
         return (
-            f"ENV_MODE={self.env_mode} LLM_BACKEND={self.llm_backend} "
-            f"RETRIEVAL_BACKEND={self.retrieval_backend} TOP_K={self.top_k} "
-            f"llm_configured={bool(self.llm.api_key)} offline={self.offline}"
+            f"provider={self.llm.provider} model={self.llm_model} "
+            f"configured={bool(self.llm.api_key)} offline={self.offline}"
         )

@@ -4,7 +4,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock
 
-from config.models import CircuitBreakerConfig, LLMConfig, RetryConfig
+from config.models import CircuitBreakerConfig, LLMConfig, ProviderConfig, ProviderConfigs, RetryConfig, SecretValue
 from llm.base import LLMErrorCategory, LLMState
 from llm.deepseek import DeepSeekClient, FailureDisposition, classify_openai_failure
 
@@ -27,8 +27,14 @@ class StatusError(Exception):
 
 class DeepSeekClientTest(unittest.TestCase):
     def make_config(self, api_key: str = "test-key", **changes) -> LLMConfig:
+        model = changes.pop("model", "deepseek-chat")
+        base_url = changes.pop("base_url", "https://api.deepseek.com")
         values = {
-            "api_key": api_key,
+            "provider": "deepseek",
+            "providers": ProviderConfigs(
+                deepseek=ProviderConfig(model, base_url, "max_tokens", True, SecretValue(api_key)),
+                openai=ProviderConfig("gpt-4o-mini", "https://api.openai.com/v1", "max_completion_tokens", True),
+            ),
             "retry": RetryConfig(max_retries=2, base_delay_seconds=0.0, max_delay_seconds=0.0),
             "circuit_breaker": CircuitBreakerConfig(failure_threshold=2),
         }

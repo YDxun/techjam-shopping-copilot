@@ -58,11 +58,13 @@ class DeepSeekClient:
 
     def _make_sdk(self) -> object:
         if self._sdk is None:
-            self._sdk = self._sdk_factory(api_key=self._config.api_key, base_url=self._config.base_url, timeout_seconds=self._config.timeout_seconds, connect_timeout_seconds=self._config.connect_timeout_seconds)
+            raw_key = self._config.api_key.reveal()
+            self._sdk = self._sdk_factory(api_key=raw_key, base_url=self._config.base_url, timeout_seconds=self._config.timeout_seconds, connect_timeout_seconds=self._config.connect_timeout_seconds)
         return self._sdk
 
     def _sanitize(self, error: Exception | str) -> str:
-        message = str(error).replace(self._config.api_key, "[redacted]") if self._config.api_key else str(error)
+        raw_key = self._config.api_key.reveal()
+        message = str(error).replace(raw_key, "[redacted]") if raw_key else str(error)
         message = re.sub(r"(?i)bearer\s+[^\s,;]+", "Bearer [redacted]", message)
         message = re.sub(r"(?i)(authorization\s*[:=]\s*)[^\s,;]+", r"\1[redacted]", message)
         return message[:self._MAX_ERROR_MESSAGE_LENGTH]

@@ -7,11 +7,11 @@
 
 | 指标 | 弱 BM25 基线 | 本项目（dev 公开集 200 会话，离线规则模式） |
 |---|---|---|
-| Hit Rate@10 | 0.125 | **0.995** |
-| MRR | 0.0680 | **0.5997** |
-| MTTC（平均转化轮次） | 9.81 | **1.74** |
-| Efficiency | 0.119 | 0.926 |
-| TechnicalScore | 0.1067 | **0.8626** |
+| Hit Rate@10 | 0.125 | **1.0** |
+| MRR | 0.0680 | **0.6192** |
+| MTTC（平均转化轮次） | 9.81 | **1.725** |
+| Efficiency | 0.119 | 0.9275 |
+| TechnicalScore | 0.1067 | **0.8713** |
 
 > 复现方式：`python run_local_eval.py`（默认 ENV_MODE=dev / LLM_PROVIDER=deepseek；未配置 selected key 时离线 / RETRIEVAL_BACKEND=bm25）。
 
@@ -270,3 +270,49 @@ python -m unittest discover tests -v
 - **复现**：`python run_local_eval.py` 一条命令复现 0.995 HR@10（离线、无网络依赖）。
 - **无密钥提交**：代码不含任何硬编码密钥，全部经环境变量注入。
 - **数据合规**：仅使用竞赛冻结工具包；数据集加载带 SHA256 校验；不下载上游原始数据。
+
+---
+
+## LLM 接入与自动化控制（DeepSeek 实测 A/B）
+
+LLM 全部通过**环境变量 + 能力探测 + 运行时控制器**启用，默认**全关（离线规则为主）**，
+不可用时自动回退规则，保证评分环境断网/CPU 也能完整跑完：
+
+- `LLM_PROVIDER=deepseek` + `DEEPSEEK_API_KEY`：客户端健康检查通过后 `state=available`；
+- `LLM_INTENT_ENABLE=1`：对话管线级联识别（规则先行，仅低置信/歧义/替换约束时咨询 LLM，失败回退规则）；
+- `LLM_RERANK=1`：Reranker 用统一客户端对 Top-12 候选做语义重排（失败回退规则排序）；
+- 澄清决策始终用规则策略（`ask_other_first`，"other" 一轮平均把候选池 4930→307、命中保持 0.99，数据验证最优）。
+
+### 同 10 会话实测（deepseek-chat，bm25）
+
+| 配置 | HR@10 | MRR | MTTC | TS | token(p/c) | 说明 |
+|---|---|---|---|---|---|---|
+| 纯规则（默认） | 1.0 | 0.6875 | 2.1 | 0.8843 | 0/0 | 离线、零成本 |
+| + LLM 意图 | 1.0 | 0.6875 | 2.1 | 0.8843 | 777/150 | 指标不变（规则已高置信，LLM 极少触发） |
+| + LLM 语义排序 | 1.0 | **0.5017** | 2.0 | 0.8305 | 50687/2242 | **显著掉 MRR**（与 bge 重排 A/B 一致） |
+
+结论：LLM 语义排序与确定性评估器的信息揭示机制不匹配，**默认关闭**（`LLM_RERANK=0`、
+`reranker_model_enabled=false`）；LLM 意图识别作为安全增强保留（默认关，可开）。
+
+### 披露（赛题要求）
+
+- 模型：DeepSeek `deepseek-chat`（可选 OpenAI 兼容端点）；本地 BLaIR + bge-reranker 纯离线。
+- 成本：默认 0；开启 LLM 后按 token 计费（上面 10 会话全开约 5.1 万 prompt token）。
+- 延迟：DeepSeek 单次 chat 约 0.6s（健康检查 ~3s）；全开 10 会话约 148s，纯规则约 60s。
+- 回退：任何 LLM 环节失败/超时/断网 → 自动回退规则，离线可用。
+- 密钥：仅环境变量注入，代码/仓库不含任何 key（`DEEPSEEK_API_KEY`/`OPENAI_API_KEY`）。
+
+## 对话理解管线（队友融合模块，agent/dialogue/）
+
+合入队友的对话理解子系统，与 BLaIR 检索/重排管线共存：
+
+- `agent/dialogue/models.py`：不可变 `DialogueState`（intent_version / 极性 / 强度 / 无偏好属性）
+- `agent/dialogue/recognizers/`：级联意图识别（规则先行 + LLM 严格 JSON + 回退）
+- `agent/dialogue/reducer.py`：原子状态归约（REPLACE/NEW_SEARCH 清空约束并升级 intent_version）
+- `agent/dialogue/question_policy.py` + `catalog_signals.py`：目录感知问题效用打分与停止策略
+- `agent/dialogue/product_history.py`：版本化商品展示/反馈追踪（hard_rejected / soft_demoted）
+- `agent/dialogue/pipeline.py`：`DialogueUnderstandingPipeline` 产出 `RecommendationContext`，
+  下游 `intent_router -> retriever(BLaIR) -> reranker(规则+bge/LLM)` 负责 Top10。
+
+决策配置见 `config/default.json` 的 `dialogue_understanding` 与 `decision` 段。
+

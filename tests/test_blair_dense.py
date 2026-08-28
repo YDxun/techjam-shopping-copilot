@@ -9,6 +9,7 @@
 说明：真实 BLaIR 模型加载（~40s CPU）放在慢测试中，默认跳过（不影响 CI 速度）；
 稠密通道端到端已在 scripts/encode_catalog_blair.py + retrieval_pipeline/test_pipeline.py 验证。
 """
+
 from __future__ import annotations
 
 import os
@@ -31,8 +32,13 @@ def test_config_blair_fields():
     assert env.blair_offline_embedding_path == "data/offline_blair_embeds.npy"
     assert env.blair_query_encoder_model == "hyp1231/blair-roberta-large"
     # 环境变量可覆盖
-    with patch.dict(os.environ, {"BLAIR_OFFLINE_EMBEDDING_PATH": "custom/x.npy",
-                                 "BLAIR_QUERY_ENCODER_MODEL": "hyp1231/blair-roberta-base"}):
+    with patch.dict(
+        os.environ,
+        {
+            "BLAIR_OFFLINE_EMBEDDING_PATH": "custom/x.npy",
+            "BLAIR_QUERY_ENCODER_MODEL": "hyp1231/blair-roberta-base",
+        },
+    ):
         env2 = EnvConfig.from_env()
         assert env2.blair_offline_embedding_path == "custom/x.npy"
         assert env2.blair_query_encoder_model == "hyp1231/blair-roberta-base"
@@ -99,7 +105,9 @@ def test_retriever_dense_backend_available(tmp_path, monkeypatch):
         assert retriever._dense_backend_available() is False
 
     # 编码器可导入 + npy 缺失 → False
-    retriever.env = EnvConfig.from_env(overrides={"blair_offline_embedding_path": str(tmp_path / "missing.npy")})
+    retriever.env = EnvConfig.from_env(
+        overrides={"blair_offline_embedding_path": str(tmp_path / "missing.npy")}
+    )
     with patch.object(HybridRetriever, "_spec_available", return_value=True):
         assert retriever._dense_backend_available() is False
 

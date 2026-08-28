@@ -1,27 +1,28 @@
-"""主 Agent 入口：串联全部模块，对外暴露官方要求的 Agent 调用接口。
+"""主 Agent 入口：融合版 —— 队友对话理解管线 + BLaIR 检索/重排能力。
 
-四大支柱对应关系：
-  Pillar I   intent_router + retriever(混合检索) + reranker(LLM/规则重排)
-  Pillar II  dialogue_state_machine(动态状态机/槽位) + clarifier(主动澄清)
-  Pillar III dynamic_context_program(运行时上下文蒸馏 + 自适应编排)
-  Pillar IV  推荐按 TOP_K 对齐 HitRate@K；排序目标提升 MRR；澄清策略优化 MTTC
+主流程：
+  DialogueUnderstandingPipeline（意图识别/状态归约/提问决策，级联规则+LLM）
+    -> RecommendationContext
+    -> IntentRouter（双轨）
+    -> HybridRetriever（BM25 + 硬约束AND + 品类 + BLaIR 稠密，环境自感知）
+    -> Reranker（规则融合 + 可选 LLM/bge 重排）
+    -> record_shown（版本化商品反馈）
 
 对外契约（官方接口）：
   reset(session_id, user_profile) / respond(session_id, user_message, turn, top_k)
 """
+
 from __future__ import annotations
 
 import logging
 from pathlib import Path
 
 from agent.base_agent import BaseAgent
-from agent.capability_probe import CapabilityProbe
-from agent.clarifier import Clarifier
-from agent.dialogue_state_machine import DialogueStateMachine
-from agent.dynamic_context_program import DynamicContextProgram
+from agent.capability_probe import CapabilityProbe, CapabilityProfile
+from agent.dialogue.pipeline import DialogueUnderstandingPipeline
 from agent.intent_router import IntentRouter
-from agent.retriever import HybridRetriever
 from agent.reranker import Reranker
+from agent.retriever import HybridRetriever
 from agent.runtime_controller import RuntimeController
 from config.env_config import EnvConfig
 from llm.base import DisabledLLMClient, LLMClient
@@ -30,28 +31,34 @@ from utils import data_verify
 logger = logging.getLogger(__name__)
 
 # 检索候选池规模：与 LLM 重排提交数 llm.rerank_candidates 解耦。
-# 队友分支将 rerank_candidates 语义改为 LLM 提交数（默认 12），若继续用它当候选池会把池子
+# 队友分支曾把 rerank_candidates 语义改为 LLM 提交数（默认 12），若继续用它当候选池会把池子
 # 缩到 30，导致高频约束下目标商品被挤出候选池（HR@10 0.995 -> 0.855）。
 RETRIEVAL_POOL_SIZE = 300
 
 
 class Agent(BaseAgent):
-    """TechJam2026 购物副驾 Agent（官方接口兼容，业务逻辑完全替换基线）。"""
+    """TechJam2026 购物副驾 Agent（官方接口兼容，融合对话管线 + BLaIR 检索）。"""
 
-    def __init__(self, catalog_path: str | Path = "data/catalog.jsonl",
-                 env: EnvConfig | None = None,
-                 llm_client: LLMClient | None = None) -> None:
+    def __init__(
+        self,
+        catalog_path: str | Path = "data/catalog.jsonl",
+        env: EnvConfig | None = None,
+        llm_client: LLMClient | None = None,
+        retriever: HybridRetriever | None = None,
+        reranker: Reranker | None = None,
+    ) -> None:
         self.env = env or EnvConfig.from_env()
         self.llm_client = llm_client if llm_client is not None else DisabledLLMClient()
 
-        # 环境自感知 + 自主决策（团队特色）：启动时探测能力，决定各环节执行方式
+        # 环境自感知 + 自主决策：启动时探测能力，决定各环节执行方式
         # 对哨兵/未实现完整协议的 client 健壮：探测失败 → 按 LLM 不可用处理（全部回退规则）
         try:
             self.profile = CapabilityProbe(self.env, self.llm_client).probe()
         except Exception:
-            from agent.capability_probe import CapabilityProfile
-            logger.warning("[agent] LLM probe failed on injected client %r; assume unavailable",
-                           type(self.llm_client).__name__)
+            logger.warning(
+                "[agent] LLM probe failed on injected client %r; assume unavailable",
+                type(self.llm_client).__name__,
+            )
             self.profile = CapabilityProfile(
                 llm_state="disabled",
                 notes=["injected client lacks LLM protocol; capability probe skipped"],
@@ -64,21 +71,27 @@ class Agent(BaseAgent):
         if not self.env.skip_data_verify:
             data_verify.verify_dataset(skip=False)
 
-        # 组件装配（Pillar I/II/III）
-        self.retriever = HybridRetriever(catalog_path=catalog_path, env=self.env,
-                                         backend=self.decisions.retrieval_backend)
-        self.reranker = Reranker(env=self.env, llm_client=self.llm_client)
-        self.state_machine = DialogueStateMachine(override_erase=self.env.override_erase)
+        # 组件装配：检索/重排使用已验证的 BLaIR 管线；对话/决策使用队友的对话理解管线
+        self.retriever = retriever or HybridRetriever(
+            catalog_path=catalog_path,
+            env=self.env,
+            backend=self.decisions.retrieval_backend,
+        )
+        self.reranker = reranker or Reranker(env=self.env, llm_client=self.llm_client)
+        self.dialogue = DialogueUnderstandingPipeline(
+            env=self.env,
+            llm_client=self.llm_client,
+            products=self.retriever.iter_products(),
+            # 自动化控制：LLM 意图识别仅在探测可用且 LLM_INTENT_ENABLE=1 时级联启用，
+            # 否则走纯规则识别（离线安全）。澄清决策始终用规则策略（"other-first" 数据验证最优）。
+            mode="cascaded" if self.decisions.use_llm_intent else "rule_only",
+        )
         self.router = IntentRouter(env=self.env)
-        self.clarifier = Clarifier(env=self.env)
-        self.dcp = DynamicContextProgram(env=self.env)
-        self.sessions: dict[str, object] = {}
 
     # ------------------------------------------------------------------
     def reset(self, session_id: str, user_profile: dict) -> None:
         """新会话开始：初始化独立会话状态（内存态），注入长期用户画像。"""
-        state = self.state_machine.new_state(session_id, user_profile)
-        self.sessions[session_id] = state
+        self.dialogue.reset(session_id, user_profile)
 
     # ------------------------------------------------------------------
     def respond(self, session_id: str, user_message: str, turn: int, top_k: int) -> dict:
@@ -95,63 +108,45 @@ class Agent(BaseAgent):
             }
 
     # ------------------------------------------------------------------
-    def _safe_usage(self) -> dict:
-        """上报累计 token 用量；对未实现 LLM 协议的哨兵 client 返回 0。"""
-        try:
-            u = self.llm_client.cumulative_usage
-            return {
-                "prompt_tokens": int(u.prompt_tokens),
-                "completion_tokens": int(u.completion_tokens),
-            }
-        except (AttributeError, TypeError):
-            return {"prompt_tokens": 0, "completion_tokens": 0}
-
-    # ------------------------------------------------------------------
     def _respond_impl(self, session_id: str, user_message: str, turn: int, top_k: int) -> dict:
-        state = self.sessions.get(session_id)
-        if state is None:
-            state = self.state_machine.new_state(session_id, {})
-            self.sessions[session_id] = state
+        turn_result = self.dialogue.process_turn(session_id, user_message, turn)
+        context = turn_result.recommendation_context
 
-        # 1) 上下文蒸馏（Pillar II/III）：消息 → 槽位/信号
-        self.state_machine.update(state, user_message, turn)
+        # 1) 对话管线产出推荐上下文；检索/排序链负责 Top10
+        route = self.router.route(context, mode=context.retrieval_mode)
 
-        # 2) 自适应编排（Pillar III）：状态 → 运行模式/路由权重/是否澄清
-        program = self.dcp.adapt(state, turn)
-
-        # 3) 意图路由（Pillar I）：双轨判定 + 检索 query 构建（可选 LLM，失败回退规则）
-        route = self.router.route(
-            state, mode=program.retrieval_mode,
-            llm_client=self.llm_client, use_llm=self.decisions.use_llm_intent,
-            user_message=user_message,
+        # 2) 多路由混合召回 → 候选池（Pillar I；BLaIR 稠密 + BM25 + 硬约束 AND + 品类）
+        candidates = self.retriever.search(
+            route, top_k=RETRIEVAL_POOL_SIZE, mode=context.retrieval_mode
         )
 
-        # 4) 多路由混合召回 → 候选池（Pillar I）
-        candidates = self.retriever.search(route, top_k=RETRIEVAL_POOL_SIZE,
-                                           mode=program.retrieval_mode)
+        # 3) 精排（Pillar I/IV）：规则 + 可选 LLM/bge，目标把目标商品推前
+        ranked = self.reranker.rerank(
+            self.retriever,
+            candidates,
+            context,
+            route,
+            top_k=top_k,
+            mode=context.retrieval_mode,
+            use_reranker_model=self.decisions.use_reranker_model,
+            use_llm_rerank=self.decisions.use_llm_rerank,
+        )
+        shown = ranked[:top_k]
+        self.dialogue.record_shown(session_id, shown, turn)
 
-        # 5) 精排（Pillar I/IV）：规则 + 可选 LLM，目标把目标商品推前
-        ranked = self.reranker.rerank(self.retriever, candidates, state, route,
-                                      top_k=top_k, mode=program.retrieval_mode,
-                                      use_reranker_model=self.decisions.use_reranker_model)
-
-        # 6) 澄清决策（Pillar II）：信息不足/候选过载时主动问，减少轮次（MTTC）
-        #    可选 LLM 澄清，失败自动回退规则
-        ask_attribute: str | None = None
-        if program.clarify_on:
-            pool_quality = (candidates[0].get("rrf", 0.0) if candidates else 0.0)
-            ask_attribute, message = self.clarifier.decide(
-                state, turn, pool_quality=pool_quality, asked_so_far=program.ask_count,
-                llm_client=self.llm_client, use_llm=self.decisions.use_llm_clarify)
-        else:
-            message = self.clarifier._wrap_up_message(state)
-
-        # 7) 长期画像吸收（Pillar III：跨会话稳健先验，内存态）
-        self.dcp.absorb_profile(state)
+        decision = turn_result.question_decision
+        message = self.dialogue.message_for(decision, turn_result.state)
 
         return {
             "message": message,
-            "ask_attribute": ask_attribute,
-            "recommendations": [{"parent_asin": a} for a in ranked[:top_k]],
-            "usage": self._safe_usage(),
+            "ask_attribute": decision.ask_attribute if decision.should_ask else None,
+            "recommendations": [{"parent_asin": asin} for asin in shown],
+            "usage": {
+                "prompt_tokens": (
+                    turn_result.prompt_tokens + self.reranker.last_usage["prompt_tokens"]
+                ),
+                "completion_tokens": (
+                    turn_result.completion_tokens + self.reranker.last_usage["completion_tokens"]
+                ),
+            },
         }

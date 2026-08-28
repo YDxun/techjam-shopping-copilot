@@ -6,6 +6,7 @@
 - 配置开启但环境不可用 → 自动降级（回退规则 / 回退 BM25），并记录原因；
 - retrieval_backend 支持 auto：稠密可用→hybrid，否则 bm25。
 """
+
 from __future__ import annotations
 
 import logging
@@ -21,12 +22,12 @@ logger = logging.getLogger(__name__)
 class RuntimeDecisions:
     """每轮/全局生效的执行方式决策。"""
 
-    retrieval_backend: str = "bm25"      # 生效的检索后端（auto 已解析）
-    use_dense: bool = False              # 是否启用稠密通道
-    use_llm_intent: bool = False         # 意图识别是否用 LLM
-    use_llm_clarify: bool = False        # 澄清决策是否用 LLM
-    use_llm_rerank: bool = False         # 重排是否用 LLM
-    use_reranker_model: bool = False     # 是否可用 bge 交叉编码重排（FlagEmbedding）
+    retrieval_backend: str = "bm25"  # 生效的检索后端（auto 已解析）
+    use_dense: bool = False  # 是否启用稠密通道
+    use_llm_intent: bool = False  # 意图识别是否用 LLM
+    use_llm_clarify: bool = False  # 澄清决策是否用 LLM
+    use_llm_rerank: bool = False  # 重排是否用 LLM
+    use_reranker_model: bool = False  # 是否可用 bge 交叉编码重排（FlagEmbedding）
     reasons: list[str] = field(default_factory=list)
 
     def summary(self) -> str:
@@ -54,7 +55,10 @@ class RuntimeController:
         if backend == "auto":
             d.retrieval_backend = "hybrid" if self.profile.dense_available else "bm25"
             d.use_dense = self.profile.dense_available
-            d.reasons.append(f"retrieval_backend=auto -> {d.retrieval_backend} (dense={'yes' if d.use_dense else 'no'})")
+            d.reasons.append(
+                "retrieval_backend=auto -> "
+                f"{d.retrieval_backend} (dense={'yes' if d.use_dense else 'no'})"
+            )
         elif backend in ("hybrid", "dense"):
             d.retrieval_backend = backend if self.profile.dense_available else "bm25"
             d.use_dense = self.profile.dense_available
@@ -69,7 +73,11 @@ class RuntimeController:
         d.use_llm_intent = self.env.llm_intent_enabled and llm_ok
         d.use_llm_clarify = self.env.llm_clarify_enabled and llm_ok
         d.use_llm_rerank = self.env.llm.rerank_enabled and llm_ok
-        if (self.env.llm_intent_enabled or self.env.llm_clarify_enabled or self.env.llm.rerank_enabled) and not llm_ok:
+        if (
+            self.env.llm_intent_enabled
+            or self.env.llm_clarify_enabled
+            or self.env.llm.rerank_enabled
+        ) and not llm_ok:
             d.reasons.append(f"LLM 已配置但不可用（state={self.profile.llm_state}）→ 全部回退规则")
 
         # ---- 交叉编码重排模型（bge-reranker-v2-m3）：配置开启 && 探测可用才启用 ----

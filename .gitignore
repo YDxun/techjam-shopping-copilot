@@ -21,3 +21,7 @@ tests/test_organizer_pipeline.py
 # Generated BLaIR offline embeddings (large; regenerate via scripts/encode_catalog_blair.py)
 data/offline_blair_embeds*.npy
 data/offline_blair_embeds_info.json
+program_documents/
+
+# 本地提交包/归档，不纳入版本库
+*.zip

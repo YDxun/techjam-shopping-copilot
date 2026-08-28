@@ -6,7 +6,7 @@
 此处仅做"再导出"（re-export），不改动官方评估器任何一行。
 新的完整实现位于 `agent/main_agent.py`；旧 BM25 基线保留在 git 历史中。
 
-注意：依赖模块（agent/capability_probe.py、runtime_controller.py、llm_intent.py 等）
+注意：依赖模块（agent/dialogue/、agent/capability_probe.py、agent/runtime_controller.py 等）
 必须随提交包一起提供，否则干净检出下本入口 import 会失败。
 """
 from __future__ import annotations

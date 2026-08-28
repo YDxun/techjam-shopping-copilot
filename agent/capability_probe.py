@@ -15,6 +15,7 @@
 设计定位（团队特色）：Agent 启动时做一次探测，runtime_controller 依据探测结果
 自主决定"LLM/模型能不能用、用不用"，全部可配置开关、默认关、失败回退规则。
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -37,19 +38,19 @@ def _spec_available(name: str) -> bool:
 class CapabilityProfile:
     """一次探测的完整结果。"""
 
-    device: str = "cpu"                        # cuda / cpu
-    llm_provider: str = "none"                 # 配置的 provider
-    llm_model: str = ""                        # 配置的模型名
-    llm_state: str = "disabled"                # available / disabled / unavailable
-    llm_error: str = ""                        # 失败原因（脱敏）
-    sdk_available: bool = False                # openai SDK 可导入
-    transformers_available: bool = False       # transformers 可导入（BLaIR 查询编码）
-    dense_encoder_available: bool = False      # transformers / sentence-transformers 任一可导入
-    blair_npy_ready: bool = False              # 离线商品向量 npy 存在（预先 BLaIR 编码产物）
-    dense_available: bool = False              # 稠密通道真正可用（编码器 + npy 都在）
-    reranker_available: bool = False           # FlagEmbedding 可导入 + 模型可获取
-    reranker_model_cached: bool = False        # bge-reranker-v2-m3 是否已本地缓存
-    network_available: bool = False            # 外网连通性（探测到）
+    device: str = "cpu"  # cuda / cpu
+    llm_provider: str = "none"  # 配置的 provider
+    llm_model: str = ""  # 配置的模型名
+    llm_state: str = "disabled"  # available / disabled / unavailable
+    llm_error: str = ""  # 失败原因（脱敏）
+    sdk_available: bool = False  # openai SDK 可导入
+    transformers_available: bool = False  # transformers 可导入（BLaIR 查询编码）
+    dense_encoder_available: bool = False  # transformers / sentence-transformers 任一可导入
+    blair_npy_ready: bool = False  # 离线商品向量 npy 存在（预先 BLaIR 编码产物）
+    dense_available: bool = False  # 稠密通道真正可用（编码器 + npy 都在）
+    reranker_available: bool = False  # FlagEmbedding 可导入 + 模型可获取
+    reranker_model_cached: bool = False  # bge-reranker-v2-m3 是否已本地缓存
+    network_available: bool = False  # 外网连通性（探测到）
     notes: list[str] = field(default_factory=list)
 
     @property
@@ -86,8 +87,9 @@ class CapabilityProbe:
         # SDK / 模型库可用性（导入级探测，模型实际加载仍由下游懒加载+回退）
         profile.sdk_available = _spec_available("openai")
         profile.transformers_available = _spec_available("transformers")
-        profile.dense_encoder_available = (profile.transformers_available
-                                           or _spec_available("sentence_transformers"))
+        profile.dense_encoder_available = profile.transformers_available or _spec_available(
+            "sentence_transformers"
+        )
         profile.blair_npy_ready = self._blair_npy_exists()
         # 稠密通道：编码器 + 离线商品向量 都就绪才算可用（BLaIR 稠密检索）
         profile.dense_available = profile.dense_encoder_available and profile.blair_npy_ready
@@ -118,6 +120,7 @@ class CapabilityProbe:
     def _detect_device() -> str:
         try:
             import torch
+
             return "cuda" if torch.cuda.is_available() else "cpu"
         except Exception:
             return "cpu"
@@ -125,6 +128,7 @@ class CapabilityProbe:
     def _blair_npy_exists(self) -> bool:
         """离线商品向量 npy 是否已生成（scripts/encode_catalog_blair.py 产物）。"""
         from pathlib import Path
+
         path = Path(self.env.blair_offline_embedding_path)
         emb = path if path.suffix == ".npy" else path.with_suffix(".npy")
         return emb.exists()
@@ -133,8 +137,10 @@ class CapabilityProbe:
     def _reranker_model_cached() -> bool:
         """bge-reranker-v2-m3 是否已下载到本地 HF 缓存（可离线加载）。"""
         import os
+
         try:
             from huggingface_hub import scan_cache_dir
+
             model_name = os.environ.get("RERANKER_MODEL_NAME", "BAAI/bge-reranker-v2-m3")
             repos = scan_cache_dir()
             for r in repos.repos:
@@ -148,6 +154,7 @@ class CapabilityProbe:
     def _network_probe() -> bool:
         try:
             import httpx
+
             r = httpx.get("https://api.deepseek.com", timeout=2.0, follow_redirects=True)
             return r.status_code < 500
         except Exception:
@@ -156,4 +163,10 @@ class CapabilityProbe:
 
 def _network_probe_enabled() -> bool:
     import os
-    return os.environ.get("CAPABILITY_NETWORK_PROBE", "0").strip().lower() in {"1", "true", "yes", "on"}
+
+    return os.environ.get("CAPABILITY_NETWORK_PROBE", "0").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }

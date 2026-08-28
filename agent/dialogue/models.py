@@ -130,6 +130,14 @@ class DialogueState:
 
 
 @dataclass(frozen=True)
+class RecognitionRequest:
+    user_message: str
+    turn: int
+    state: DialogueState
+    recently_shown_asins: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class ReduceResult:
     state: DialogueState
     applied: bool

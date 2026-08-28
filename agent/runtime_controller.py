@@ -26,16 +26,20 @@ class RuntimeDecisions:
     use_dense: bool = False  # 是否启用稠密通道
     use_llm_intent: bool = False  # 意图识别是否用 LLM
     use_llm_clarify: bool = False  # 澄清决策是否用 LLM
-    use_llm_rerank: bool = False  # 重排是否用 LLM
+    use_llm_rerank: bool = False  # 重排是否启用（qwen3-rerank text / chat LLM）
+    text_rerank_active: bool = False  # 是否走 qwen3-rerank 文本重排
     use_reranker_model: bool = False  # 是否可用 bge 交叉编码重排（FlagEmbedding）
     reasons: list[str] = field(default_factory=list)
 
     def summary(self) -> str:
+        rerank_label = (
+            "qwen3" if self.text_rerank_active else "llm" if self.use_llm_rerank else "rule"
+        )
         return (
             f"retrieval={self.retrieval_backend} "
             f"intent={'llm' if self.use_llm_intent else 'rule'} "
             f"clarify={'llm' if self.use_llm_clarify else 'rule'} "
-            f"rerank={'llm' if self.use_llm_rerank else 'rule'} "
+            f"rerank={rerank_label} "
             f"reranker_model={'yes' if self.use_reranker_model else 'no'}"
         )
 
@@ -72,13 +76,29 @@ class RuntimeController:
         llm_ok = self.profile.llm_available
         d.use_llm_intent = self.env.llm_intent_enabled and llm_ok
         d.use_llm_clarify = self.env.llm_clarify_enabled and llm_ok
-        d.use_llm_rerank = self.env.llm.rerank_enabled and llm_ok
+        # 重排后端决策：text=qwen3-rerank MaaS（替换原 chat JSON 打分）/ chat=旧 LLM /
+        # auto=text 可用优先，否则回退 chat；全部失败回退规则排序。
+        rr_backend = self.env.llm.rerank_backend
+        if self.env.llm.rerank_enabled:
+            if rr_backend == "text":
+                d.use_llm_rerank = self.profile.text_rerank_available
+                d.text_rerank_active = self.profile.text_rerank_available
+                if not self.profile.text_rerank_available:
+                    d.reasons.append(
+                        "LLM_RERANK=1 但 qwen3-rerank 不可用"
+                        f"（{self.profile.text_rerank_error or '未配置'}）→ 回退规则排序"
+                    )
+            elif rr_backend == "chat":
+                d.use_llm_rerank = llm_ok
+                d.text_rerank_active = False
+            else:  # auto
+                d.use_llm_rerank = self.profile.text_rerank_available or llm_ok
+                d.text_rerank_active = self.profile.text_rerank_available
         if (
             self.env.llm_intent_enabled
             or self.env.llm_clarify_enabled
-            or self.env.llm.rerank_enabled
         ) and not llm_ok:
-            d.reasons.append(f"LLM 已配置但不可用（state={self.profile.llm_state}）→ 全部回退规则")
+            d.reasons.append(f"LLM 已配置但不可用（state={self.profile.llm_state}）→ 回退规则")
 
         # ---- 交叉编码重排模型（bge-reranker-v2-m3）：配置开启 && 探测可用才启用 ----
         d.use_reranker_model = self.env.reranker_model_enabled and self.profile.reranker_available

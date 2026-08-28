@@ -163,6 +163,10 @@ def _environment_overrides(
                 )
 
     nested_fields: dict[str, tuple[tuple[str, ...], Callable[[str, str], Any]]] = {
+        "LLM_RERANK_BACKEND": (("llm", "rerank_backend"), _parse_text),
+        "QWEN_RERANK_MODEL": (("llm", "qwen_rerank_model"), _parse_text),
+        "DASHSCOPE_WORKSPACE_ID": (("llm", "dashscope_workspace_id"), _parse_text),
+        "QWEN_RERANK_BASE_URL": (("llm", "qwen_rerank_base_url"), _parse_text),
         "MAX_CONSTRAINT_ASKS": (("decision", "max_questions"), _parse_int),
         "SHOPPING_DIALOGUE__MODE": (("dialogue_understanding", "mode"), _parse_text),
         "SHOPPING_DIALOGUE__RULE_CONFIDENCE_THRESHOLD": (
@@ -334,6 +338,14 @@ def _build_and_validate(data: Mapping[str, Any], selected_key: SecretValue) -> A
         provider=provider,
         rerank_enabled=_bool_value(llm_data.get("rerank_enabled"), "llm.rerank_enabled"),
         rerank_candidates=_int_value(llm_data.get("rerank_candidates"), "llm.rerank_candidates"),
+        rerank_backend=_string_value(llm_data.get("rerank_backend"), "llm.rerank_backend"),
+        qwen_rerank_model=_string_value(llm_data.get("qwen_rerank_model"), "llm.qwen_rerank_model"),
+        dashscope_workspace_id=_string_value(
+            llm_data.get("dashscope_workspace_id"), "llm.dashscope_workspace_id"
+        ),
+        qwen_rerank_base_url=_string_value(
+            llm_data.get("qwen_rerank_base_url"), "llm.qwen_rerank_base_url"
+        ),
         health_check_enabled=_bool_value(
             llm_data.get("health_check_enabled"), "llm.health_check_enabled"
         ),
@@ -468,6 +480,7 @@ def _validate(config: AppConfig) -> None:
         {"clamp_0_1"},
     )
     _in(config.llm.provider, "llm.provider", {"none", "deepseek", "openai"})
+    _in(config.llm.rerank_backend, "llm.rerank_backend", {"text", "chat", "auto"})
     _positive(config.top_k, "top_k")
     _positive(
         config.dialogue_understanding.max_evidence_length,

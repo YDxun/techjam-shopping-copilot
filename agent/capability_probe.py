@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 
 from config.env_config import EnvConfig
 from llm.base import LLMClient
+from llm.rerank import RerankClient, RerankState
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +51,9 @@ class CapabilityProfile:
     dense_available: bool = False  # 稠密通道真正可用（编码器 + npy 都在）
     reranker_available: bool = False  # FlagEmbedding 可导入 + 模型可获取
     reranker_model_cached: bool = False  # bge-reranker-v2-m3 是否已本地缓存
+    rerank_backend: str = "text"  # 重排后端 text/chat/auto
+    text_rerank_available: bool = False  # qwen3-rerank MaaS 真实探测可用
+    text_rerank_error: str = ""  # 探测失败原因（脱敏）
     network_available: bool = False  # 外网连通性（探测到）
     notes: list[str] = field(default_factory=list)
 
@@ -63,6 +67,7 @@ class CapabilityProfile:
             f"llm={self.llm_provider}:{self.llm_state}",
             f"dense={'yes' if self.dense_available else 'no'}",
             f"reranker={'yes' if self.reranker_available else 'no'}",
+            f"text_rerank={'yes' if self.text_rerank_available else 'no'}",
             f"network={'yes' if self.network_available else 'no'}",
         ]
         if self.llm_error:
@@ -95,6 +100,23 @@ class CapabilityProbe:
         profile.dense_available = profile.dense_encoder_available and profile.blair_npy_ready
         profile.reranker_available = _spec_available("FlagEmbedding")
         profile.reranker_model_cached = self._reranker_model_cached()
+
+        # qwen3-rerank 文本重排（MaaS）：backend=text/auto 时做真实探测
+        # （key/base_url 缺失→disabled 不发网络；配置了但调用失败→unavailable）
+        profile.rerank_backend = self.env.llm.rerank_backend
+        if profile.rerank_backend in ("text", "auto"):
+            try:
+                rc = RerankClient(
+                    model=self.env.llm.qwen_rerank_model,
+                    workspace_id=self.env.llm.dashscope_workspace_id,
+                    base_url=self.env.llm.qwen_rerank_base_url,
+                )
+                st = rc.initialize()
+                profile.text_rerank_available = st.state == RerankState.AVAILABLE
+                profile.text_rerank_error = st.error_message
+            except Exception as exc:  # 探测本身异常不阻塞启动
+                profile.text_rerank_available = False
+                profile.text_rerank_error = str(exc)[:120]
 
         # LLM 健康检查（真实网络+鉴权探测；无 key 立即 disabled，不发请求）
         status = self.llm_client.initialize()

@@ -115,6 +115,12 @@ class LLMConfig:
     provider: str = "deepseek"
     rerank_enabled: bool = False
     rerank_candidates: int = 12
+    # 重排后端：text=阿里云 MaaS qwen3-rerank（默认，替换原 chat JSON 打分）/
+    #         chat=旧 LLM 语义重排 / auto=text 可用优先
+    rerank_backend: str = "text"
+    qwen_rerank_model: str = "qwen3-rerank"
+    dashscope_workspace_id: str = ""    # MaaS base_url 子域（https://{ws}.cn-beijing.maas.aliyuncs.com/...）
+    qwen_rerank_base_url: str = ""      # 完整 base_url 覆盖（优先于 workspace_id 拼接）
     health_check_enabled: bool = True
     connect_timeout_seconds: float = 3.0
     timeout_seconds: float = 8.0

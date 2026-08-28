@@ -20,6 +20,7 @@ from agent.intent_router import IntentRoute
 from agent.retriever import HybridRetriever
 from config.env_config import EnvConfig
 from llm.base import DisabledLLMClient, LLMClient, LLMState
+from llm.rerank import RerankClient
 from utils import field_mapping as fm_utils
 from utils import session_utils as su
 
@@ -42,6 +43,7 @@ class Reranker:
         self.llm_client = llm_client if llm_client is not None else DisabledLLMClient()
         self.last_usage: dict = {"prompt_tokens": 0, "completion_tokens": 0}
         self._bge = None  # 惰性加载的 bge-reranker 实例（None=未加载/加载失败）
+        self._rerank_client = None  # 惰性加载的 qwen3-rerank MaaS 客户端
 
     # ------------------------------------------------------------------
     def rerank(
@@ -73,16 +75,24 @@ class Reranker:
         scored.sort(key=lambda x: x[0], reverse=True)
         order = [asin for _, asin, _ in scored]
 
-        # 可选 LLM 语义重排（Pillar I 管道末端；由 runtime_controller 决定是否启用；失败自动回退）
-        if (
-            use_llm_rerank
-            and self.env.llm.rerank_enabled
-            and self.llm_client.status.state == LLMState.AVAILABLE
-            and len(order) >= 2
-        ):
-            llm_order = self._llm_rerank(order, retriever, state)
-            if llm_order:
-                order = llm_order
+        # 可选文本重排（Pillar I 管道末端；runtime_controller 决定是否启用；失败自动回退）
+        # 后端：text=qwen3-rerank MaaS（默认，替换原 chat JSON 打分）/ chat=旧 LLM /
+        #       auto=text 可用优先，text 失败回退 chat。
+        if use_llm_rerank and self.env.llm.rerank_enabled and len(order) >= 2:
+            backend = getattr(self.env.llm, "rerank_backend", "text")
+            if backend == "chat":
+                if self.llm_client.status.state == LLMState.AVAILABLE:
+                    llm_order = self._llm_rerank(order, retriever, state)
+                    if llm_order:
+                        order = llm_order
+            else:  # text / auto -> qwen3-rerank 文本重排
+                text_order = self._text_rerank(order, retriever, state, route)
+                if text_order:
+                    order = text_order
+                elif backend == "auto" and self.llm_client.status.state == LLMState.AVAILABLE:
+                    llm_order = self._llm_rerank(order, retriever, state)
+                    if llm_order:
+                        order = llm_order
         # 可选 bge-reranker-v2-m3 交叉编码重排（本地模型，环境自感知；失败自动回退）
         if use_reranker_model and len(order) >= 2:
             bge_order = self._bge_rerank(order, retriever, state, route)
@@ -273,6 +283,47 @@ class Reranker:
         else:
             parts.append(str(features))
         return " | ".join(p for p in parts if p)
+
+    # ------------------------------------------------------------------
+    # 可选 qwen3-rerank 文本重排（阿里云 MaaS /reranks；环境自感知，失败回退规则）
+    # ------------------------------------------------------------------
+    def _ensure_text_rerank(self):
+        """惰性创建 qwen3-rerank MaaS 客户端（key/base_url 缺失→disable，不发网络）。"""
+        if self._rerank_client is not None:
+            return self._rerank_client
+        try:
+            client = RerankClient(
+                model=self.env.llm.qwen_rerank_model,
+                workspace_id=self.env.llm.dashscope_workspace_id,
+                base_url=self.env.llm.qwen_rerank_base_url,
+            )
+            client.initialize()
+            self._rerank_client = client
+        except Exception as exc:
+            logger.warning("[reranker] qwen3-rerank 客户端初始化失败（%s）→ 回退规则排序", exc)
+            self._rerank_client = None
+        return self._rerank_client
+
+    def _text_rerank(
+        self, order: list[str], retriever: HybridRetriever, state, route
+    ) -> list[str]:
+        """用 qwen3-rerank 对 Top-rerank_candidates 按 query 相关性重排；异常回退原顺序。"""
+        client = self._ensure_text_rerank()
+        if client is None or not client.available:
+            return []
+        submitted = order[: self.env.llm.rerank_candidates]
+        query = self._bge_query_text(state, route)
+        docs: list[str] = []
+        for asin in submitted:
+            product = retriever.product(asin) or {}
+            docs.append(self._bge_product_text(product))
+        if not any(docs):
+            return []
+        results = client.rerank(query, docs, top_n=len(submitted))
+        if not results:
+            return []
+        ranked = [submitted[r.index] for r in results if 0 <= r.index < len(submitted)]
+        return ranked + [a for a in order if a not in ranked]
 
     # ------------------------------------------------------------------
     # 可选 LLM 语义重排（Pillar I：共享客户端；无网络/无 key 时自动回退）

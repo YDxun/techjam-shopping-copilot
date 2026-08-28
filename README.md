@@ -37,9 +37,10 @@
   `retrieval_pipeline` 通道1 已接入；reranker 经 A/B 证明保持全文本打分最优（纯字段/叠加会掉 MRR，
   详见"override 设计"一节）。
 - **重排序** `agent/reranker.py`：规则融合打分（约束覆盖度 0.5 / 品类 0.25 / RRF 0.15 / 热度 0.05 / 画像 0.05）
-  + 可选的统一 LLM 语义重排（`LLM_PROVIDER=deepseek/openai`）；+ 可选本地 **bge-reranker-v2-m3**
+  + 可选 **qwen3-rerank 文本重排**（`LLM_RERANK=1` + `LLM_RERANK_BACKEND=text`，阿里云 MaaS
+  `/reranks`，`DASHSCOPE_API_KEY` 注入；失败自动回退规则）；+ 可选本地 **bge-reranker-v2-m3**
   交叉编码精排（`RERANKER_MODEL_ENABLE=1` 且 FlagEmbedding 可用，失败自动回退规则排序）；
-  无 selected key、`LLM_PROVIDER=none` 或 `LLM_RERANK=0` 时纯规则排序，完全离线可跑。
+  默认 `LLM_RERANK=0` 纯规则排序，完全离线可跑。
 
 ### 支柱 II｜对话策略：多轮场景演进（对话理解管线 `agent/dialogue/`）
 - **识别层** `agent/dialogue/recognizers/`：级联意图识别（规则先行 + LLM 严格 JSON 兜底），
@@ -191,7 +192,8 @@ Agent 启动时执行一次**能力探测**（`agent/capability_probe.py`），�
 
 - **探测项**：设备（cuda/cpu）、LLM 可用性（真实健康检查，无 key 不发网络请求）、
   稠密检索（BLaIR 查询编码器 transformers/sentence-transformers 可导入 **且** 离线商品向量 npy 存在）、
-  交叉编码重排（FlagEmbedding 可导入 + bge-reranker-v2-m3 已缓存/可下载）、可选外网探测。
+  交叉编码重排（FlagEmbedding 可导入 + bge-reranker-v2-m3 已缓存/可下载）、
+  **文本重排 qwen3-rerank**（`DASHSCOPE_API_KEY` + 国际版端点真实 /reranks 探测）、可选外网探测。
 - **自主决策原则**：所有 LLM/重排能力开关**默认关**；配置开启 + 探测可用 → 启用；
   配置开启但环境不可用 → **自动回退规则**（意图识别/澄清/重排/稠密检索全部可回退）；
   `RETRIEVAL_BACKEND=auto` → 稠密可用用 hybrid，否则 bm25。
@@ -373,3 +375,26 @@ vocab 反向统计会混入商品词（material 的 "shoes"/"women"、style 的 
    （MRR 0.619→0.597/0.610），故仅保留 budget→price 数值分支（防未来 budget 提取）。
 
 **最终离线评估**：1.0 HR / 0.6335 MRR / 1.715 MTTC / 0.8757 TS（基线 0.995/0.619/1.74/0.8626，全提升）。
+
+
+---
+
+## qwen3-rerank 文本重排接入（替换 LLM 语义重排分支）
+
+`LLM_RERANK_BACKEND=text`（默认）时，重排分支走阿里云 MaaS **qwen3-rerank**（`/reranks`，
+国际版端点 `https://dashscope-intl.aliyuncs.com/compatible-api/v1`，无需 workspace ID；
+`DASHSCOPE_API_KEY` 环境变量注入，代码不含 key）。旧 chat JSON 打分保留为 `LLM_RERANK_BACKEND=chat`。
+自动化控制：capability_probe 真实探测可用性（`text_rerank=yes/no`）→ runtime_controller 决策
+（`rerank=qwen3/llm/rule`）→ 失败自动回退规则排序。
+
+### 真实 API 全量 200 会话 A/B
+| 配置 | HR@10 | MRR | MTTC | TS |
+|---|---|---|---|---|
+| 规则（默认） | 1.0 | **0.6335** | **1.715** | **0.8757** |
+| **qwen3-rerank 重排** | 1.0 | 0.5011 | 1.76 | 0.8351 |
+
+结论：作为**兜底最终重排器**，qwen3-rerank 与 bge（0.5163）、LLM chat（0.5017）三方一致的
+结论——纯语义重排与官方确定性评估器的信息揭示机制不匹配，会把目标商品从靠前位置挤下去
+（HR 不降但 MRR 掉）。因此**默认 `LLM_RERANK=0`**，由自动化控制按环境决定是否启用；
+若要启用：`LLM_RERANK=1`（可选 `LLM_RERANK_BACKEND=text|chat|auto`）+
+`DASHSCOPE_API_KEY` 注入。

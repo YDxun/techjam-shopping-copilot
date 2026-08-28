@@ -77,6 +77,10 @@
         "token_limit_parameter": "max_completion_tokens",
         "supports_temperature": true
       }
-    }
+    },
+    "rerank_backend": "text",
+    "qwen_rerank_model": "qwen3-rerank",
+    "dashscope_workspace_id": "",
+    "qwen_rerank_base_url": ""
   }
 }

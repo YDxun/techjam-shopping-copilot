@@ -8,13 +8,14 @@
   任何异常都回退规则排序，保证离线可用。
 - 目标：Pillar IV —— 把目标商品尽量推到 Top-K 靠前（提升 MRR / HitRate@K）。
 """
+
 from __future__ import annotations
 
 import json
 import logging
 import math
 
-from agent.dialogue_state_machine import DialogueState
+from agent.dialogue.models import RecommendationContext
 from agent.intent_router import IntentRoute
 from agent.retriever import HybridRetriever
 from config.env_config import EnvConfig
@@ -29,23 +30,30 @@ W_CATEGORY = 0.25
 W_RRF = 0.15
 W_POPULARITY = 0.05
 W_PROFILE = 0.05
-BGE_RERANK_CANDIDATES = 50   # bge 交叉编码重排候选规模（与检索管线 RERANK_CANDIDATES_NORMAL 一致）
+BGE_RERANK_CANDIDATES = 50  # bge 交叉编码重排候选规模（与检索管线 RERANK_CANDIDATES_NORMAL 一致）
 
 
 class Reranker:
     """候选池精排：约束覆盖 + 品类匹配 + 融合分 + 可选 LLM 语义重排。"""
 
-    def __init__(self, env: EnvConfig | None = None,
-                 llm_client: LLMClient | None = None) -> None:
+    def __init__(self, env: EnvConfig | None = None, llm_client: LLMClient | None = None) -> None:
         self.env = env or EnvConfig.from_env()
         self.llm_client = llm_client if llm_client is not None else DisabledLLMClient()
         self.last_usage: dict = {"prompt_tokens": 0, "completion_tokens": 0}
-        self._bge = None          # 惰性加载的 bge-reranker 实例（None=未加载/加载失败）
+        self._bge = None  # 惰性加载的 bge-reranker 实例（None=未加载/加载失败）
 
     # ------------------------------------------------------------------
-    def rerank(self, retriever: HybridRetriever, candidates: list[dict],
-               state: DialogueState, route: IntentRoute, top_k: int, mode: str,
-               use_reranker_model: bool = False) -> list[str]:
+    def rerank(
+        self,
+        retriever: HybridRetriever,
+        candidates: list[dict],
+        state: RecommendationContext,
+        route: IntentRoute,
+        top_k: int,
+        mode: str,
+        use_reranker_model: bool = False,
+        use_llm_rerank: bool = False,
+    ) -> list[str]:
         self.last_usage = {"prompt_tokens": 0, "completion_tokens": 0}
         if not candidates:
             return []
@@ -64,10 +72,13 @@ class Reranker:
         scored.sort(key=lambda x: x[0], reverse=True)
         order = [asin for _, asin, _ in scored]
 
-        # 可选 LLM 语义重排（Pillar I 管道末端；失败自动回退）
-        if (self.env.llm.rerank_enabled
-                and self.llm_client.status.state == LLMState.AVAILABLE
-                and len(order) >= 2):
+        # 可选 LLM 语义重排（Pillar I 管道末端；由 runtime_controller 决定是否启用；失败自动回退）
+        if (
+            use_llm_rerank
+            and self.env.llm.rerank_enabled
+            and self.llm_client.status.state == LLMState.AVAILABLE
+            and len(order) >= 2
+        ):
             llm_order = self._llm_rerank(order, retriever, state)
             if llm_order:
                 order = llm_order
@@ -76,11 +87,29 @@ class Reranker:
             bge_order = self._bge_rerank(order, retriever, state, route)
             if bge_order:
                 order = bge_order
+
+        # 状态机反馈闭环：已展示过（会话继续 => 非目标）、soft_demoted / hard_rejected
+        # 的商品确认不是目标，直接从本轮输出剔除，强制探索新候选（低轮次命中）。
+        # 注意：若目标是目标，会话早已在命中回合结束，因此排除这些 asin 是安全的。
+        excluded = set(getattr(state, "evaluation_excluded_asins", None) or ())
+        excluded.update(getattr(state, "soft_demoted_asins", None) or ())
+        excluded.update(getattr(state, "hard_rejected_asins", None) or ())
+        if excluded:
+            order = [asin for asin in order if asin not in excluded]
         return order[:top_k]
 
     # ------------------------------------------------------------------
-    def _rule_score(self, cand: dict, state: DialogueState, route: IntentRoute,
-                    product: dict, text: str, cat: str, max_rrf: float, mode: str) -> float:
+    def _rule_score(
+        self,
+        cand: dict,
+        state: RecommendationContext,
+        route: IntentRoute,
+        product: dict,
+        text: str,
+        cat: str,
+        max_rrf: float,
+        mode: str,
+    ) -> float:
         # 1) 约束覆盖度（核心强信号，Pillar I 硬约束过滤 + Pillar II 槽位）
         hard = state.hard
         soft = state.soft
@@ -110,8 +139,13 @@ class Reranker:
         # 5) 画像弱先验（Pillar III 长期画像，仅微小加成）
         profile = self._profile_match(state, text)
 
-        score = (W_COVERAGE * coverage + W_CATEGORY * cat_frac + W_RRF * rrf_norm
-                 + W_POPULARITY * popularity + W_PROFILE * profile)
+        score = (
+            W_COVERAGE * coverage
+            + W_CATEGORY * cat_frac
+            + W_RRF * rrf_norm
+            + W_POPULARITY * popularity
+            + W_PROFILE * profile
+        )
 
         # EXPLOIT 模式：只有"全部活跃约束全覆盖"的商品才给强加成（提升 MRR：把唯一必中项推前）。
         # 不再只看 hard 组——那会让成百上千个仅匹配高频词（如 water resistant）的商品同分。
@@ -148,8 +182,10 @@ class Reranker:
         return min(1.0, frac + title_bonus)
 
     @staticmethod
-    def _profile_match(state: DialogueState, text: str) -> float:
-        tags = [t for t in (state.user_profile or {}).get("preference_tags", []) if isinstance(t, str)]
+    def _profile_match(state: RecommendationContext, text: str) -> float:
+        tags = [
+            t for t in (state.user_profile or {}).get("preference_tags", []) if isinstance(t, str)
+        ]
         if not tags:
             return 0.0
         hits = sum(1 for t in tags if t.lower() in text)
@@ -163,19 +199,26 @@ class Reranker:
         if self._bge is not None:
             return self._bge
         try:
-            from FlagEmbedding import FlagReranker
             import torch
+            from FlagEmbedding import FlagReranker
+
             device = "cuda" if torch.cuda.is_available() else "cpu"
-            self._bge = FlagReranker(self.env.reranker_model,
-                                     use_fp16=(device == "cuda"), device=device)
+            self._bge = FlagReranker(
+                self.env.reranker_model, use_fp16=(device == "cuda"), device=device
+            )
             logger.info("[reranker] bge-reranker loaded: %s on %s", self.env.reranker_model, device)
         except Exception as exc:
             logger.warning("[reranker] bge-reranker 不可用（%s）→ 不使用模型重排", exc)
             self._bge = None
         return self._bge
 
-    def _bge_rerank(self, order: list[str], retriever: HybridRetriever,
-                    state: DialogueState, route: IntentRoute) -> list[str]:
+    def _bge_rerank(
+        self,
+        order: list[str],
+        retriever: HybridRetriever,
+        state: RecommendationContext,
+        route: IntentRoute,
+    ) -> list[str]:
         """用 bge-reranker-v2-m3 对 Top-BGE_RERANK_CANDIDATES 精排；异常回退原顺序。"""
         model = self._ensure_bge()
         if model is None:
@@ -192,14 +235,19 @@ class Reranker:
             scores = model.compute_score(pairs, normalize=True)
             if isinstance(scores, float):
                 scores = [scores]
-            ranked = [a for _, a in sorted(zip(scores, submitted), key=lambda x: x[0], reverse=True)]
+            ranked = [
+                a
+                for _, a in sorted(
+                    zip(scores, submitted, strict=False), key=lambda x: x[0], reverse=True
+                )
+            ]
             return ranked + [a for a in order if a not in ranked]
         except Exception as exc:  # OOM / 其它异常 → 降级
             logger.warning("[reranker] bge rerank failed, fallback to rule order: %s", exc)
             return []
 
     @staticmethod
-    def _bge_query_text(state: DialogueState, route: IntentRoute) -> str:
+    def _bge_query_text(state: RecommendationContext, route: IntentRoute) -> str:
         parts = [c.value for c in state.active]
         if route.query_terms:
             parts.append(" ".join(route.query_terms))
@@ -218,11 +266,13 @@ class Reranker:
     # ------------------------------------------------------------------
     # 可选 LLM 语义重排（Pillar I：共享客户端；无网络/无 key 时自动回退）
     # ------------------------------------------------------------------
-    def _llm_rerank(self, order: list[str], retriever: HybridRetriever,
-                    state: DialogueState) -> list[str]:
-        submitted = order[:self.env.llm.rerank_candidates]
-        compact_candidates = [self._compact_candidate(retriever.product(asin) or {}, asin)
-                              for asin in submitted]
+    def _llm_rerank(
+        self, order: list[str], retriever: HybridRetriever, state: RecommendationContext
+    ) -> list[str]:
+        submitted = order[: self.env.llm.rerank_candidates]
+        compact_candidates = [
+            self._compact_candidate(retriever.product(asin) or {}, asin) for asin in submitted
+        ]
         constraints = "; ".join(str(c.value) for c in state.active) or "no constraints yet"
         payload = json.dumps(
             {"constraints": constraints[:800], "candidates": compact_candidates},
@@ -235,7 +285,7 @@ class Reranker:
                         "role": "system",
                         "content": (
                             "Rank the submitted shopping candidates. Respond only with JSON: "
-                            "{\"ranked_parent_asins\": [\"...\"]}."
+                            '{"ranked_parent_asins": ["..."]}.'
                         ),
                     },
                     {"role": "user", "content": payload},
@@ -264,7 +314,7 @@ class Reranker:
                 valid.append(asin)
         if not valid:
             return []
-        return valid + [asin for asin in submitted if asin not in valid] + order[len(submitted):]
+        return valid + [asin for asin in submitted if asin not in valid] + order[len(submitted) :]
 
     @staticmethod
     def _compact_candidate(product: dict, asin: str) -> dict[str, str]:
@@ -289,7 +339,7 @@ class Reranker:
             newline = text.find("\n")
             if newline == -1:
                 return None
-            text = text[newline + 1:-3].strip()
+            text = text[newline + 1 : -3].strip()
         try:
             parsed = json.loads(text)
         except (TypeError, json.JSONDecodeError):

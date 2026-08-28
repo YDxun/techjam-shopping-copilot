@@ -9,6 +9,7 @@
   离线 npy 缺失 / 编码器不可用 / 任何异常 → 自动回退 BM25（环境自感知）。
 - 融合：Reciprocal Rank Fusion（RRF）+ 并集候选池，交由重排模块精排。
 """
+
 from __future__ import annotations
 
 import json
@@ -29,8 +30,9 @@ logger = logging.getLogger(__name__)
 class HybridRetriever:
     """混合检索器：索引构建一次，每轮多路由召回 + RRF 融合。"""
 
-    def __init__(self, catalog_path: str | Path, env: EnvConfig | None = None,
-                 backend: str | None = None) -> None:
+    def __init__(
+        self, catalog_path: str | Path, env: EnvConfig | None = None, backend: str | None = None
+    ) -> None:
         self.catalog_path = Path(catalog_path)
         self.env = env or EnvConfig.from_env()
         # backend 优先取显式传入（runtime_controller 已把 auto 解析为 hybrid/bm25）
@@ -38,12 +40,12 @@ class HybridRetriever:
         if self.backend == "auto":
             self.backend = "hybrid" if self._dense_backend_available() else "bm25"
         elif self.backend in ("dense", "hybrid") and not self._dense_backend_available():
-            self.backend = "bm25"   # 环境自适应：BLaIR 稠密不可用自动回退 BM25
+            self.backend = "bm25"  # 环境自适应：BLaIR 稠密不可用自动回退 BM25
         self._conn = sqlite3.connect(":memory:")
         self._products: dict[str, dict] = {}
         self._text_lower: dict[str, str] = {}
         self._cat_lower: dict[str, str] = {}
-        self._dense = None          # 惰性加载的稠密模型
+        self._dense = None  # 惰性加载的稠密模型
         self._dense_matrix = None
         self._build_index()
 
@@ -69,7 +71,9 @@ class HybridRetriever:
                 description = self._text(p.get("description"))
                 batch.append((asin, title, features, details, categories, store, description))
                 self._products[asin] = p
-                self._text_lower[asin] = " ".join([title, features, details, categories, store, description]).lower()
+                self._text_lower[asin] = " ".join(
+                    [title, features, details, categories, store, description]
+                ).lower()
                 self._cat_lower[asin] = categories.lower()
                 if len(batch) >= 1000:
                     cur.executemany("INSERT INTO products VALUES (?,?,?,?,?,?,?)", batch)
@@ -77,13 +81,15 @@ class HybridRetriever:
         if batch:
             cur.executemany("INSERT INTO products VALUES (?,?,?,?,?,?,?)", batch)
         self._conn.commit()
-        logger.info("[retriever] indexed %d products (backend=%s)", len(self._products), self.backend)
+        logger.info(
+            "[retriever] indexed %d products (backend=%s)", len(self._products), self.backend
+        )
 
     @staticmethod
     def _spec_available(name: str) -> bool:
         import importlib.util
-        return importlib.util.find_spec(name) is not None
 
+        return importlib.util.find_spec(name) is not None
 
     def _dense_backend_available(self) -> bool:
         """环境自感知：BLaIR 稠密通道是否真正可用（编码器可导入 + 离线 npy 存在）。
@@ -92,8 +98,9 @@ class HybridRetriever:
         文件存在 → 稠密通道可用；否则回退 BM25。不做模型实际加载（避免启动开销，
         实际加载失败仍由 _ensure_dense 兜底回退）。
         """
-        enc_ok = (self._spec_available("transformers")
-                  or self._spec_available("sentence_transformers"))
+        enc_ok = self._spec_available("transformers") or self._spec_available(
+            "sentence_transformers"
+        )
         if not enc_ok:
             return False
         path = Path(self.env.blair_offline_embedding_path)
@@ -116,7 +123,7 @@ class HybridRetriever:
         pool: dict[str, dict] = {}
         self._route_bm25(route, pool, top_k=top_k * 2)
         self._route_category(route, pool, top_k=top_k)
-        self._route_constraints(route, pool, top_k=top_k)     # 硬约束 AND（保命中）
+        self._route_constraints(route, pool, top_k=top_k)  # 硬约束 AND（保命中）
         if self.backend in ("dense", "hybrid"):
             self._route_dense(route, pool, top_k=top_k)
 
@@ -171,7 +178,9 @@ class HybridRetriever:
                 asin = str(asin)
                 # 与品类域交叉过滤（缩小 + 提升命中精度）
                 if route.category_tokens:
-                    frac = sum(1 for t in route.category_tokens if t in self._cat_lower.get(asin, ""))
+                    frac = sum(
+                        1 for t in route.category_tokens if t in self._cat_lower.get(asin, "")
+                    )
                     if frac / len(route.category_tokens) <= 0.5:
                         continue
                 self._accumulate(pool, asin, 1.0 / (10.0 + rank) + 0.1, "constraint")
@@ -215,10 +224,13 @@ class HybridRetriever:
             if qv is None:
                 return
             import numpy as np  # 局部导入，避免核心路径依赖
+
             sims = store.matrix @ qv
             order = np.argsort(-sims)[:top_k]
             for rank, idx in enumerate(order, start=1):
-                self._accumulate(pool, store.asins[int(idx)], float(sims[idx]) / (60.0 + rank), "dense")
+                self._accumulate(
+                    pool, store.asins[int(idx)], float(sims[idx]) / (60.0 + rank), "dense"
+                )
         except Exception as exc:  # 稠密路由任何异常都不影响主流程（环境自感知回退）
             logger.warning("[retriever] dense route failed, fallback to bm25: %s", exc)
 
@@ -241,8 +253,11 @@ class HybridRetriever:
             self._dense = (None, None)
         else:
             self._dense = (encoder, store)
-            logger.info("[retriever] dense route ready: %s (%d dims)",
-                        self.env.blair_query_encoder_model, store.dim)
+            logger.info(
+                "[retriever] dense route ready: %s (%d dims)",
+                self.env.blair_query_encoder_model,
+                store.dim,
+            )
         return self._dense
 
     @staticmethod
@@ -254,9 +269,12 @@ class HybridRetriever:
     def product(self, asin: str) -> dict | None:
         return self._products.get(asin)
 
+    def iter_products(self) -> tuple[dict, ...]:
+        """Expose a read-only snapshot for dialogue question statistics."""
+        return tuple(self._products.values())
+
     def text_lower(self, asin: str) -> str:
         return self._text_lower.get(asin, "")
 
     def close(self) -> None:
         self._conn.close()
-

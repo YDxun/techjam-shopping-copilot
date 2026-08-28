@@ -1,4 +1,4 @@
-﻿"""本地开发/提交模拟 评估启动脚本（调用官方评估器，不修改它）。
+"""本地开发/提交模拟 评估启动脚本（调用官方评估器，不修改它）。
 
 用法：
     python run_local_eval.py                        # ENV_MODE=dev 默认
@@ -10,6 +10,7 @@
 load_jsonl / catalog_index / evaluate 函数，不改一行评估器源码。
 输出：results.json（每会话 + 总体 + 场景指标）。
 """
+
 from __future__ import annotations
 
 import argparse
@@ -24,12 +25,16 @@ ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from config import constants
-from config.env_config import EnvConfig
-from agent.main_agent import Agent
-from evaluator.local_evaluator import catalog_index, evaluate, load_jsonl  # 官方评估器（只调用，不修改）
-from llm import create_llm_client
-from llm.base import LLMClient
+from agent.main_agent import Agent  # noqa: E402
+from config import constants  # noqa: E402
+from config.env_config import EnvConfig  # noqa: E402
+from evaluator.local_evaluator import (  # noqa: E402
+    catalog_index,
+    evaluate,
+    load_jsonl,
+)  # 官方评估器（只调用，不修改）
+from llm import create_llm_client  # noqa: E402
+from llm.base import LLMClient  # noqa: E402
 
 
 def initialize_llm(env: EnvConfig) -> LLMClient:
@@ -56,17 +61,24 @@ def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     env = EnvConfig.from_env()
     output = args.output or env.output_path
-    print(f"\n=== TechJam2026 购物副驾 Agent 本地评估 ===")
+    print("\n=== TechJam2026 购物副驾 Agent 本地评估 ===")
     print(f"    {env.summary()}")
     if env.env_mode == "submit":
-        print("    [submit] 提交模拟模式：强制执行离线约束检查（优先设置 LLM_PROVIDER=none；兼容 LLM_BACKEND=none/local）。")
-        assert env.offline, "submit 模式禁止依赖外部付费 API（请优先设置 LLM_PROVIDER=none；兼容 LLM_BACKEND=none 或 local）"
+        print(
+            "    [submit] 提交模拟模式：强制执行离线约束检查\n"
+            "    （优先设置 LLM_PROVIDER=none；兼容 LLM_BACKEND=none/local）。"
+        )
+        assert env.offline, (
+            "submit 模式禁止依赖外部付费 API（请优先设置 LLM_PROVIDER=none；\n"
+            "兼容 LLM_BACKEND=none 或 local）"
+        )
 
     llm_client = initialize_llm(env)
 
     # 数据集完整性校验（Pillar IV / 硬性约束 3）
     if not env.skip_data_verify:
         from utils import data_verify
+
         data_verify.verify_dataset(skip=False)
 
     # 官方评估器数据加载
@@ -76,8 +88,9 @@ def main() -> int:
         samples = samples[: env.sample_limit]
         print(f"    [dev] SAMPLE_LIMIT={env.sample_limit}（冒烟测试子集）")
     catalog_ids, categories, products = catalog_index(args.catalog)
-    print(f"    数据加载完成：{len(samples)} 会话 / {len(catalog_ids)} 商品 "
-          f"({time.time() - t0:.1f}s)")
+    print(
+        f"    数据加载完成：{len(samples)} 会话 / {len(catalog_ids)} 商品 ({time.time() - t0:.1f}s)"
+    )
 
     # 实例化业务 Agent（Pillar I~IV）
     agent = Agent(catalog_path=args.catalog, env=env, llm_client=llm_client)

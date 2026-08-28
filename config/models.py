@@ -37,6 +37,56 @@ class CircuitBreakerConfig:
 
 
 @dataclass(frozen=True)
+class DialogueUnderstandingConfig:
+    mode: str = "cascaded"
+    rule_confidence_threshold: float = 0.75
+    max_evidence_length: int = 180
+
+
+@dataclass(frozen=True)
+class AskUtilityWeights:
+    information_gain: float = 0.30
+    constraint_gap: float = 0.25
+    answer_probability: float = 0.15
+    ambiguity_reduction: float = 0.20
+    repeat_penalty: float = 0.40
+    no_preference_penalty: float = 0.60
+    turn_cost: float = 0.15
+
+
+@dataclass(frozen=True)
+class AskUtilityConfig:
+    weights: AskUtilityWeights = field(default_factory=AskUtilityWeights)
+    normalization: str = "clamp_0_1"
+    minimum_ask_utility: float = 0.20
+
+
+@dataclass(frozen=True)
+class StopUtilityWeights:
+    constraint_completeness: float = 0.35
+    intent_confidence: float = 0.25
+    asked_count: float = 0.15
+    turn_pressure: float = 0.25
+    unresolved_ambiguity: float = 0.30
+
+
+@dataclass(frozen=True)
+class StopUtilityConfig:
+    weights: StopUtilityWeights = field(default_factory=StopUtilityWeights)
+    minimum_stop_utility: float = 0.55
+
+
+@dataclass(frozen=True)
+class DecisionConfig:
+    max_questions: int = 3
+    # 数据验证结论：先问 other 平均每轮把候选从 4930 缩到 307、命中保持 0.99
+    # （见 data/analysis/report.md）
+    ask_other_first: bool = True
+    ask_utility: AskUtilityConfig = field(default_factory=AskUtilityConfig)
+    stop_utility: StopUtilityConfig = field(default_factory=StopUtilityConfig)
+
+
+@dataclass(frozen=True)
 class ProviderConfig:
     model: str
     base_url: str
@@ -53,9 +103,7 @@ class ProviderConfigs:
 
 def _default_provider_configs() -> ProviderConfigs:
     return ProviderConfigs(
-        deepseek=ProviderConfig(
-            "deepseek-chat", "https://api.deepseek.com", "max_tokens", True
-        ),
+        deepseek=ProviderConfig("deepseek-chat", "https://api.deepseek.com", "max_tokens", True),
         openai=ProviderConfig(
             "gpt-4o-mini", "https://api.openai.com/v1", "max_completion_tokens", True
         ),
@@ -127,4 +175,10 @@ class AppConfig:
     llm_clarify_enabled: bool = False
     # bge-reranker-v2-m3 交叉编码重排（默认关，环境自感知开启时可用才启用）
     reranker_model_enabled: bool = False
+
+    dialogue_understanding: DialogueUnderstandingConfig = field(
+        default_factory=DialogueUnderstandingConfig
+    )
+    decision: DecisionConfig = field(default_factory=DecisionConfig)
+
     llm: LLMConfig = field(default_factory=LLMConfig)

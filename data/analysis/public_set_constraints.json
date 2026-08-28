@@ -1,0 +1,125 @@
+{
+  "boundary": {
+    "n": 20,
+    "hard_pos_class": {
+      "0": {
+        "material": 8,
+        "feature": 2
+      },
+      "1": {
+        "feature": 3,
+        "material": 5,
+        "color": 2
+      }
+    },
+    "soft_pos_class": {
+      "0": {
+        "feature": 7,
+        "material": 2,
+        "use_case": 1
+      },
+      "1": {
+        "feature": 8,
+        "material": 2
+      }
+    }
+  },
+  "browsing": {
+    "n": 160,
+    "hard_pos_class": {
+      "0": {
+        "material": 60,
+        "feature": 18,
+        "style": 2
+      },
+      "1": {
+        "material": 38,
+        "feature": 25,
+        "color": 16,
+        "size": 1
+      }
+    },
+    "soft_pos_class": {
+      "0": {
+        "feature": 65,
+        "style": 3,
+        "material": 10,
+        "color": 1,
+        "size": 1
+      },
+      "1": {
+        "feature": 61,
+        "color": 5,
+        "use_case": 1,
+        "material": 9,
+        "size": 1,
+        "style": 3
+      }
+    }
+  },
+  "buying": {
+    "n": 160,
+    "hard_pos_class": {
+      "0": {
+        "feature": 12,
+        "material": 66,
+        "style": 2
+      },
+      "1": {
+        "feature": 12,
+        "material": 46,
+        "color": 21,
+        "style": 1
+      }
+    },
+    "soft_pos_class": {
+      "0": {
+        "feature": 62,
+        "material": 10,
+        "style": 3,
+        "size": 1,
+        "color": 4
+      },
+      "1": {
+        "feature": 67,
+        "use_case": 1,
+        "material": 7,
+        "style": 1,
+        "color": 2,
+        "size": 2
+      }
+    }
+  },
+  "intent_override": {
+    "n": 60,
+    "hard_pos_class": {
+      "0": {
+        "material": 19,
+        "feature": 10,
+        "use_case": 1
+      },
+      "1": {
+        "material": 16,
+        "feature": 8,
+        "color": 5,
+        "size": 1
+      }
+    },
+    "soft_pos_class": {
+      "0": {
+        "feature": 22,
+        "material": 3,
+        "style": 1,
+        "color": 3,
+        "size": 1
+      },
+      "1": {
+        "feature": 22,
+        "style": 3,
+        "material": 1,
+        "size": 3,
+        "color": 1
+      }
+    }
+  }
+}

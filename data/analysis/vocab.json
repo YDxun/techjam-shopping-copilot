@@ -1,0 +1,7715 @@
+{
+  "meta": {
+    "version": "1.0.0",
+    "built_by": "scripts/build_index.py",
+    "method": "种子词表 + 目录 title/features 反推计数 + 公开集约束校准（data_1.md 三步法）",
+    "date": "2026-08-28"
+  },
+  "dictionaries": {
+    "material": {
+      "cotton": {
+        "canonical": "cotton",
+        "synonyms": [
+          "cotton",
+          "100% cotton",
+          "cotton blend",
+          "soft cotton",
+          "combed cotton",
+          "organic cotton",
+          "pure cotton",
+          "pima cotton",
+          "cotton spandex"
+        ],
+        "synonym_counts": [
+          {
+            "term": "cotton",
+            "product_count": 9414
+          },
+          {
+            "term": "100% cotton",
+            "product_count": 3698
+          },
+          {
+            "term": "cotton blend",
+            "product_count": 668
+          },
+          {
+            "term": "soft cotton",
+            "product_count": 251
+          },
+          {
+            "term": "combed cotton",
+            "product_count": 140
+          },
+          {
+            "term": "organic cotton",
+            "product_count": 99
+          },
+          {
+            "term": "pure cotton",
+            "product_count": 65
+          },
+          {
+            "term": "pima cotton",
+            "product_count": 57
+          },
+          {
+            "term": "cotton spandex",
+            "product_count": 24
+          }
+        ],
+        "product_count": 9414,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "polyester": {
+        "canonical": "polyester",
+        "synonyms": [
+          "polyester",
+          "100% polyester",
+          "poly",
+          "polyester blend",
+          "poly spandex",
+          "micro polyester"
+        ],
+        "synonym_counts": [
+          {
+            "term": "polyester",
+            "product_count": 10339
+          },
+          {
+            "term": "100% polyester",
+            "product_count": 2998
+          },
+          {
+            "term": "poly",
+            "product_count": 440
+          },
+          {
+            "term": "polyester blend",
+            "product_count": 160
+          },
+          {
+            "term": "poly spandex",
+            "product_count": 5
+          },
+          {
+            "term": "micro polyester",
+            "product_count": 2
+          }
+        ],
+        "product_count": 10339,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "nylon": {
+        "canonical": "nylon",
+        "synonyms": [
+          "nylon",
+          "100% nylon",
+          "polyamide",
+          "nylon blend"
+        ],
+        "synonym_counts": [
+          {
+            "term": "nylon",
+            "product_count": 2408
+          },
+          {
+            "term": "100% nylon",
+            "product_count": 251
+          },
+          {
+            "term": "polyamide",
+            "product_count": 248
+          },
+          {
+            "term": "nylon blend",
+            "product_count": 14
+          }
+        ],
+        "product_count": 2408,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "leather": {
+        "canonical": "leather",
+        "synonyms": [
+          "leather",
+          "faux leather",
+          "genuine leather",
+          "pu leather",
+          "vegan leather",
+          "leatherette",
+          "leather-like",
+          "bonded leather"
+        ],
+        "synonym_counts": [
+          {
+            "term": "leather",
+            "product_count": 6882
+          },
+          {
+            "term": "faux leather",
+            "product_count": 478
+          },
+          {
+            "term": "genuine leather",
+            "product_count": 473
+          },
+          {
+            "term": "pu leather",
+            "product_count": 413
+          },
+          {
+            "term": "vegan leather",
+            "product_count": 134
+          },
+          {
+            "term": "leatherette",
+            "product_count": 45
+          },
+          {
+            "term": "leather-like",
+            "product_count": 6
+          },
+          {
+            "term": "bonded leather",
+            "product_count": 4
+          }
+        ],
+        "product_count": 6882,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "wool": {
+        "canonical": "wool",
+        "synonyms": [
+          "wool",
+          "merino wool",
+          "wool blend",
+          "100% wool",
+          "wool knit",
+          "lambswool"
+        ],
+        "synonym_counts": [
+          {
+            "term": "wool",
+            "product_count": 644
+          },
+          {
+            "term": "merino wool",
+            "product_count": 125
+          },
+          {
+            "term": "wool blend",
+            "product_count": 83
+          },
+          {
+            "term": "100% wool",
+            "product_count": 82
+          },
+          {
+            "term": "wool knit",
+            "product_count": 13
+          },
+          {
+            "term": "lambswool",
+            "product_count": 9
+          }
+        ],
+        "product_count": 644,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "spandex": {
+        "canonical": "spandex",
+        "synonyms": [
+          "spandex",
+          "stretch",
+          "elastane",
+          "lycra",
+          "4-way stretch",
+          "spandex blend"
+        ],
+        "synonym_counts": [
+          {
+            "term": "spandex",
+            "product_count": 5412
+          },
+          {
+            "term": "stretch",
+            "product_count": 2825
+          },
+          {
+            "term": "elastane",
+            "product_count": 945
+          },
+          {
+            "term": "lycra",
+            "product_count": 237
+          },
+          {
+            "term": "4-way stretch",
+            "product_count": 231
+          },
+          {
+            "term": "spandex blend",
+            "product_count": 78
+          }
+        ],
+        "product_count": 5412,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "silk": {
+        "canonical": "silk",
+        "synonyms": [
+          "silk",
+          "100% silk",
+          "mulberry silk",
+          "silk blend"
+        ],
+        "synonym_counts": [
+          {
+            "term": "silk",
+            "product_count": 425
+          },
+          {
+            "term": "100% silk",
+            "product_count": 43
+          },
+          {
+            "term": "mulberry silk",
+            "product_count": 16
+          },
+          {
+            "term": "silk blend",
+            "product_count": 8
+          }
+        ],
+        "product_count": 425,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "rayon": {
+        "canonical": "rayon",
+        "synonyms": [
+          "rayon",
+          "viscose",
+          "modal",
+          "bamboo"
+        ],
+        "synonym_counts": [
+          {
+            "term": "rayon",
+            "product_count": 1227
+          },
+          {
+            "term": "viscose",
+            "product_count": 480
+          },
+          {
+            "term": "modal",
+            "product_count": 206
+          },
+          {
+            "term": "bamboo",
+            "product_count": 106
+          }
+        ],
+        "product_count": 1227,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "linen": {
+        "canonical": "linen",
+        "synonyms": [
+          "linen",
+          "100% linen",
+          "linen blend"
+        ],
+        "synonym_counts": [
+          {
+            "term": "linen",
+            "product_count": 333
+          },
+          {
+            "term": "100% linen",
+            "product_count": 18
+          },
+          {
+            "term": "linen blend",
+            "product_count": 11
+          }
+        ],
+        "product_count": 333,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "denim": {
+        "canonical": "denim",
+        "synonyms": [
+          "jeans",
+          "denim",
+          "jean",
+          "denim blend"
+        ],
+        "synonym_counts": [
+          {
+            "term": "jeans",
+            "product_count": 2509
+          },
+          {
+            "term": "denim",
+            "product_count": 929
+          },
+          {
+            "term": "jean",
+            "product_count": 432
+          },
+          {
+            "term": "denim blend",
+            "product_count": 2
+          }
+        ],
+        "product_count": 2509,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "fleece": {
+        "canonical": "fleece",
+        "synonyms": [
+          "fleece",
+          "fleece lined",
+          "sherpa",
+          "polar fleece",
+          "sherpa fleece"
+        ],
+        "synonym_counts": [
+          {
+            "term": "fleece",
+            "product_count": 1265
+          },
+          {
+            "term": "fleece lined",
+            "product_count": 222
+          },
+          {
+            "term": "sherpa",
+            "product_count": 220
+          },
+          {
+            "term": "polar fleece",
+            "product_count": 52
+          },
+          {
+            "term": "sherpa fleece",
+            "product_count": 50
+          }
+        ],
+        "product_count": 1265,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "velvet": {
+        "canonical": "velvet",
+        "synonyms": [
+          "velvet",
+          "velour"
+        ],
+        "synonym_counts": [
+          {
+            "term": "velvet",
+            "product_count": 581
+          },
+          {
+            "term": "velour",
+            "product_count": 77
+          }
+        ],
+        "product_count": 581,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "chiffon": {
+        "canonical": "chiffon",
+        "synonyms": [
+          "chiffon",
+          "georgette"
+        ],
+        "synonym_counts": [
+          {
+            "term": "chiffon",
+            "product_count": 537
+          },
+          {
+            "term": "georgette",
+            "product_count": 21
+          }
+        ],
+        "product_count": 537,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "mesh": {
+        "canonical": "mesh",
+        "synonyms": [
+          "mesh",
+          "mesh fabric",
+          "netting"
+        ],
+        "synonym_counts": [
+          {
+            "term": "mesh",
+            "product_count": 2466
+          },
+          {
+            "term": "mesh fabric",
+            "product_count": 113
+          },
+          {
+            "term": "netting",
+            "product_count": 14
+          }
+        ],
+        "product_count": 2466,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "satin": {
+        "canonical": "satin",
+        "synonyms": [
+          "satin",
+          "charmeuse"
+        ],
+        "synonym_counts": [
+          {
+            "term": "satin",
+            "product_count": 570
+          },
+          {
+            "term": "charmeuse",
+            "product_count": 8
+          }
+        ],
+        "product_count": 570,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "cashmere": {
+        "canonical": "cashmere",
+        "synonyms": [
+          "cashmere",
+          "cashmere blend"
+        ],
+        "synonym_counts": [
+          {
+            "term": "cashmere",
+            "product_count": 143
+          },
+          {
+            "term": "cashmere blend",
+            "product_count": 4
+          }
+        ],
+        "product_count": 143,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "suede": {
+        "canonical": "suede",
+        "synonyms": [
+          "suede",
+          "microsuede"
+        ],
+        "synonym_counts": [
+          {
+            "term": "suede",
+            "product_count": 1249
+          },
+          {
+            "term": "microsuede",
+            "product_count": 26
+          }
+        ],
+        "product_count": 1249,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "acrylic": {
+        "canonical": "acrylic",
+        "synonyms": [
+          "acrylic",
+          "acrylic blend"
+        ],
+        "synonym_counts": [
+          {
+            "term": "acrylic",
+            "product_count": 746
+          },
+          {
+            "term": "acrylic blend",
+            "product_count": 10
+          }
+        ],
+        "product_count": 746,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "rubber": {
+        "canonical": "rubber",
+        "synonyms": [
+          "rubber",
+          "rubber sole",
+          "synthetic sole",
+          "eva",
+          "tpr",
+          "tpu"
+        ],
+        "synonym_counts": [
+          {
+            "term": "rubber",
+            "product_count": 6616
+          },
+          {
+            "term": "rubber sole",
+            "product_count": 5886
+          },
+          {
+            "term": "synthetic sole",
+            "product_count": 1405
+          },
+          {
+            "term": "eva",
+            "product_count": 907
+          },
+          {
+            "term": "tpr",
+            "product_count": 154
+          },
+          {
+            "term": "tpu",
+            "product_count": 139
+          }
+        ],
+        "product_count": 6616,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "polyurethane": {
+        "canonical": "polyurethane",
+        "synonyms": [
+          "pu",
+          "polyurethane",
+          "pu leather"
+        ],
+        "synonym_counts": [
+          {
+            "term": "pu",
+            "product_count": 921
+          },
+          {
+            "term": "polyurethane",
+            "product_count": 491
+          },
+          {
+            "term": "pu leather",
+            "product_count": 413
+          }
+        ],
+        "product_count": 921,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "down": {
+        "canonical": "down",
+        "synonyms": [
+          "down",
+          "duck down",
+          "goose down",
+          "down alternative"
+        ],
+        "synonym_counts": [
+          {
+            "term": "down",
+            "product_count": 2138
+          },
+          {
+            "term": "duck down",
+            "product_count": 27
+          },
+          {
+            "term": "goose down",
+            "product_count": 9
+          },
+          {
+            "term": "down alternative",
+            "product_count": 9
+          }
+        ],
+        "product_count": 2138,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "fur": {
+        "canonical": "fur",
+        "synonyms": [
+          "fur",
+          "faux fur",
+          "shearling"
+        ],
+        "synonym_counts": [
+          {
+            "term": "fur",
+            "product_count": 741
+          },
+          {
+            "term": "faux fur",
+            "product_count": 388
+          },
+          {
+            "term": "shearling",
+            "product_count": 75
+          }
+        ],
+        "product_count": 741,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "lace": {
+        "canonical": "lace",
+        "synonyms": [
+          "lace",
+          "lace trim"
+        ],
+        "synonym_counts": [
+          {
+            "term": "lace",
+            "product_count": 2414
+          },
+          {
+            "term": "lace trim",
+            "product_count": 121
+          }
+        ],
+        "product_count": 2414,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "corduroy": {
+        "canonical": "corduroy",
+        "synonyms": [
+          "cord",
+          "corduroy"
+        ],
+        "synonym_counts": [
+          {
+            "term": "cord",
+            "product_count": 274
+          },
+          {
+            "term": "corduroy",
+            "product_count": 67
+          }
+        ],
+        "product_count": 274,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "twill": {
+        "canonical": "twill",
+        "synonyms": [
+          "twill",
+          "cotton twill"
+        ],
+        "synonym_counts": [
+          {
+            "term": "twill",
+            "product_count": 284
+          },
+          {
+            "term": "cotton twill",
+            "product_count": 62
+          }
+        ],
+        "product_count": 284,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "jersey": {
+        "canonical": "jersey",
+        "synonyms": [
+          "jersey",
+          "jersey knit"
+        ],
+        "synonym_counts": [
+          {
+            "term": "jersey",
+            "product_count": 721
+          },
+          {
+            "term": "jersey knit",
+            "product_count": 69
+          }
+        ],
+        "product_count": 721,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "textile": {
+        "canonical": "textile",
+        "synonyms": [
+          "textile",
+          "100% textile"
+        ],
+        "synonym_counts": [
+          {
+            "term": "textile",
+            "product_count": 1023
+          },
+          {
+            "term": "100% textile",
+            "product_count": 349
+          }
+        ],
+        "product_count": 1023,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "fabric": {
+        "canonical": "fabric",
+        "synonyms": [
+          "fabric",
+          "soft fabric"
+        ],
+        "synonym_counts": [
+          {
+            "term": "fabric",
+            "product_count": 7271
+          },
+          {
+            "term": "soft fabric",
+            "product_count": 573
+          }
+        ],
+        "product_count": 7271,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "colors": {
+        "canonical": "colors",
+        "synonyms": [
+          "colors"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "colors",
+            "count": 3
+          }
+        ],
+        "public_set_count": 3,
+        "public_set_examples": [
+          "Quality soft cottonblend camisole, 95% cotton, 5% spandex, Neon Colors 57% cotto",
+          "Solid colors: 100% Cotton; Heather Grey: 90% Cotton, 10% Polyester; All Other He",
+          "Solid colors: 80% Cotton, 20% Polyester; Heather Grey: 78% Cotton, 22% Poly; Dar"
+        ]
+      },
+      "quality": {
+        "canonical": "quality",
+        "synonyms": [
+          "quality"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "quality",
+            "count": 3
+          }
+        ],
+        "public_set_count": 3,
+        "public_set_examples": [
+          "Quality soft cottonblend camisole, 95% cotton, 5% spandex, Neon Colors 57% cotto",
+          "Material: 95%Cotton & 5%Polyester - Made of Superior Quality Modal Fiber, Ultra ",
+          "Watch Band Material: Made of good quality crazy-horse leather, they are durable "
+        ]
+      },
+      "convenient": {
+        "canonical": "convenient",
+        "synonyms": [
+          "convenient"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "convenient",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "Soft Washed PU Leather with Convenient side Pockets",
+          "Convenience: Quick-dry water shoes, ultra light weight smooth stretchy fabrics a"
+        ]
+      },
+      "stretchy": {
+        "canonical": "stretchy",
+        "synonyms": [
+          "stretchy"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "stretchy",
+            "count": 6
+          }
+        ],
+        "public_set_count": 6,
+        "public_set_examples": [
+          "Stretchy fabric: 95% modal, 5% spandex",
+          "Stretchy fabric: 95% gossypium, 5% spandex",
+          "Thigh high socks: 20% Stretchy Yarn, 80% cotton"
+        ]
+      },
+      "heathers": {
+        "canonical": "heathers",
+        "synonyms": [
+          "heathers"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "heathers",
+            "count": 4
+          }
+        ],
+        "public_set_count": 4,
+        "public_set_examples": [
+          "Solids: 100% Cotton; heathers: 75% cotton, 25% polyester",
+          "Solid colors: 100% Cotton; Heather Grey: 90% Cotton, 10% Polyester; All Other He",
+          "Solids: 100% Cotton; Heathers: 60% Cotton, 40% Polyester"
+        ]
+      },
+      "solids": {
+        "canonical": "solids",
+        "synonyms": [
+          "solids"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "solids",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "Solids: 100% Cotton; heathers: 75% cotton, 25% polyester",
+          "Solids: 100% Cotton; Heathers: 60% Cotton, 40% Polyester"
+        ]
+      },
+      "lining": {
+        "canonical": "lining",
+        "synonyms": [
+          "lining"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "lining",
+            "count": 9
+          }
+        ],
+        "public_set_count": 9,
+        "public_set_examples": [
+          "Leather lining",
+          "Polyester lining",
+          "Leather lining"
+        ]
+      },
+      "weight": {
+        "canonical": "weight",
+        "synonyms": [
+          "weight"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "weight",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "Material: 95%Cotton & 5%Polyester - Made of Superior Quality Modal Fiber, Ultra ",
+          "Convenience: Quick-dry water shoes, ultra light weight smooth stretchy fabrics a"
+        ]
+      },
+      "5%polyester": {
+        "canonical": "5%polyester",
+        "synonyms": [
+          "5%polyester"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "5%polyester",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "Material: 95%Cotton & 5%Polyester - Made of Superior Quality Modal Fiber, Ultra ",
+          "Fabric: 70%Cotton, 28.5%Polyester, 1.5%Spandex"
+        ]
+      },
+      "keep": {
+        "canonical": "keep",
+        "synonyms": [
+          "keep"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "keep",
+            "count": 4
+          }
+        ],
+        "public_set_count": 4,
+        "public_set_examples": [
+          "Material: 95%Cotton & 5%Polyester - Made of Superior Quality Modal Fiber, Ultra ",
+          "Fabric: 100% Cotton, Soft, Comfy, Breathable and keep you cool",
+          "【100% chlorine-resistant durable】KGKE mens swimming jammer swimsuit have 4-Level"
+        ]
+      },
+      "cool": {
+        "canonical": "cool",
+        "synonyms": [
+          "cool"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "cool",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "Material: 95%Cotton & 5%Polyester - Made of Superior Quality Modal Fiber, Ultra ",
+          "Fabric: 100% Cotton, Soft, Comfy, Breathable and keep you cool"
+        ]
+      },
+      "material": {
+        "canonical": "material",
+        "synonyms": [
+          "material"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "material",
+            "count": 6
+          }
+        ],
+        "public_set_count": 6,
+        "public_set_examples": [
+          "Material: 95%Cotton & 5%Polyester - Made of Superior Quality Modal Fiber, Ultra ",
+          "👟BEST MATERIAL.These mens shoes casual slip on has premium microfiber leather up",
+          "Super Soft and Cozy: These fuzzy slipper socks are made of Polyester 95%, Spande"
+        ]
+      },
+      "comfortable": {
+        "canonical": "comfortable",
+        "synonyms": [
+          "comfortable"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "comfortable",
+            "count": 5
+          }
+        ],
+        "public_set_count": 5,
+        "public_set_examples": [
+          "Material: 95%Cotton & 5%Polyester - Made of Superior Quality Modal Fiber, Ultra ",
+          "Leather Loafers Women:can be bend and curled in 360°,soft and comfortable",
+          "◆ Soft & Breathable: Being knitted by cotton and stretchy yarn, the mid thigh hi"
+        ]
+      },
+      "dry": {
+        "canonical": "dry",
+        "synonyms": [
+          "dry"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "dry",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "Material: 95%Cotton & 5%Polyester - Made of Superior Quality Modal Fiber, Ultra ",
+          "Convenience: Quick-dry water shoes, ultra light weight smooth stretchy fabrics a"
+        ]
+      },
+      "smooth": {
+        "canonical": "smooth",
+        "synonyms": [
+          "smooth"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "smooth",
+            "count": 3
+          }
+        ],
+        "public_set_count": 3,
+        "public_set_examples": [
+          "Material: 95%Cotton & 5%Polyester - Made of Superior Quality Modal Fiber, Ultra ",
+          "Comfortable feeling: Super lightweight and flexible just like socks,breathable a",
+          "Convenience: Quick-dry water shoes, ultra light weight smooth stretchy fabrics a"
+        ]
+      },
+      "light": {
+        "canonical": "light",
+        "synonyms": [
+          "light"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "light",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "Material: 95%Cotton & 5%Polyester - Made of Superior Quality Modal Fiber, Ultra ",
+          "Convenience: Quick-dry water shoes, ultra light weight smooth stretchy fabrics a"
+        ]
+      },
+      "ultra": {
+        "canonical": "ultra",
+        "synonyms": [
+          "ultra"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "ultra",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "Material: 95%Cotton & 5%Polyester - Made of Superior Quality Modal Fiber, Ultra ",
+          "Convenience: Quick-dry water shoes, ultra light weight smooth stretchy fabrics a"
+        ]
+      },
+      "solid": {
+        "canonical": "solid",
+        "synonyms": [
+          "solid"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "solid",
+            "count": 3
+          }
+        ],
+        "public_set_count": 3,
+        "public_set_examples": [
+          "Solid colors: 100% Cotton; Heather Grey: 90% Cotton, 10% Polyester; All Other He",
+          "Solid colors: 80% Cotton, 20% Polyester; Heather Grey: 78% Cotton, 22% Poly; Dar",
+          "Solid: 100% Cotton; Heathers: 75% Cotton, 25% Polyester"
+        ]
+      },
+      "other": {
+        "canonical": "other",
+        "synonyms": [
+          "other"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "other",
+            "count": 3
+          }
+        ],
+        "public_set_count": 3,
+        "public_set_examples": [
+          "Solid colors: 100% Cotton; Heather Grey: 90% Cotton, 10% Polyester; All Other He",
+          "SWAP IN SECONDS: Quick release spring bars allow you to swap bands in seconds to",
+          "57% Cotton, 26% Polyester, 10% Other Fibers, 7% Elastane"
+        ]
+      },
+      "heather": {
+        "canonical": "heather",
+        "synonyms": [
+          "heather"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "heather",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "Solid colors: 100% Cotton; Heather Grey: 90% Cotton, 10% Polyester; All Other He",
+          "Solid colors: 80% Cotton, 20% Polyester; Heather Grey: 78% Cotton, 22% Poly; Dar"
+        ]
+      },
+      "grey": {
+        "canonical": "grey",
+        "synonyms": [
+          "grey"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "grey",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "Solid colors: 100% Cotton; Heather Grey: 90% Cotton, 10% Polyester; All Other He",
+          "Solid colors: 80% Cotton, 20% Polyester; Heather Grey: 78% Cotton, 22% Poly; Dar"
+        ]
+      },
+      "comfy": {
+        "canonical": "comfy",
+        "synonyms": [
+          "comfy"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "comfy",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "Fabric: 100% Cotton, Soft, Comfy, Breathable and keep you cool",
+          "Super Soft and Cozy: These fuzzy slipper socks are made of Polyester 95%, Spande"
+        ]
+      },
+      "breathable": {
+        "canonical": "breathable",
+        "synonyms": [
+          "breathable"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "breathable",
+            "count": 4
+          }
+        ],
+        "public_set_count": 4,
+        "public_set_examples": [
+          "Fabric: 100% Cotton, Soft, Comfy, Breathable and keep you cool",
+          "Material: Womens winter warm socks made of 35% wool, 29% cotton, 36% polyester. ",
+          "◆ Soft & Breathable: Being knitted by cotton and stretchy yarn, the mid thigh hi"
+        ]
+      },
+      "loafers": {
+        "canonical": "loafers",
+        "synonyms": [
+          "loafers"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "loafers",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "Cowhide Leather,Rubber Sole,Hand-Sewn Loafers for Women",
+          "Leather Loafers Women:can be bend and curled in 360°,soft and comfortable"
+        ]
+      },
+      "women": {
+        "canonical": "women",
+        "synonyms": [
+          "women"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "women",
+            "count": 4
+          }
+        ],
+        "public_set_count": 4,
+        "public_set_examples": [
+          "Cowhide Leather,Rubber Sole,Hand-Sewn Loafers for Women",
+          "Leather Loafers Women:can be bend and curled in 360°,soft and comfortable",
+          "◆ Soft & Breathable: Being knitted by cotton and stretchy yarn, the mid thigh hi"
+        ]
+      },
+      "durable": {
+        "canonical": "durable",
+        "synonyms": [
+          "durable"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "durable",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "【100% chlorine-resistant durable】KGKE mens swimming jammer swimsuit have 4-Level",
+          "Watch Band Material: Made of good quality crazy-horse leather, they are durable "
+        ]
+      },
+      "fabrics": {
+        "canonical": "fabrics",
+        "synonyms": [
+          "fabrics"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "fabrics",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "【100% chlorine-resistant durable】KGKE mens swimming jammer swimsuit have 4-Level",
+          "Convenience: Quick-dry water shoes, ultra light weight smooth stretchy fabrics a"
+        ]
+      },
+      "mens": {
+        "canonical": "mens",
+        "synonyms": [
+          "mens"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "mens",
+            "count": 3
+          }
+        ],
+        "public_set_count": 3,
+        "public_set_examples": [
+          "【100% chlorine-resistant durable】KGKE mens swimming jammer swimsuit have 4-Level",
+          "👟BEST MATERIAL.These mens shoes casual slip on has premium microfiber leather up",
+          "❤ 【Material】：Our mens dress socks are are expertly fabricated with the perfect f"
+        ]
+      },
+      "slip": {
+        "canonical": "slip",
+        "synonyms": [
+          "slip"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "slip",
+            "count": 3
+          }
+        ],
+        "public_set_count": 3,
+        "public_set_examples": [
+          "👟BEST MATERIAL.These mens shoes casual slip on has premium microfiber leather up",
+          "Convenience: Quick-dry water shoes, ultra light weight smooth stretchy fabrics a",
+          "Leather slip-on featuring dual gore panels at entry and padded collar"
+        ]
+      },
+      "shoes": {
+        "canonical": "shoes",
+        "synonyms": [
+          "shoes"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "shoes",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "👟BEST MATERIAL.These mens shoes casual slip on has premium microfiber leather up",
+          "Convenience: Quick-dry water shoes, ultra light weight smooth stretchy fabrics a"
+        ]
+      },
+      "5%spandex": {
+        "canonical": "5%spandex",
+        "synonyms": [
+          "5%spandex"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "5%spandex",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "Fabric: 70%Cotton, 28.5%Polyester, 1.5%Spandex",
+          "50%Rayon+45%Polyester+5%Spandex"
+        ]
+      },
+      "waist": {
+        "canonical": "waist",
+        "synonyms": [
+          "waist"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "waist",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "Body: 95% Polyester, 5% Spandex; Waist: 90% Polyester, 10% Spandex; Liner: 90% P",
+          "STRETCHY COVERED WAISTBAND: Soft stretchy DOUBLE-LAYER fabric covered waistband "
+        ]
+      },
+      "design": {
+        "canonical": "design",
+        "synonyms": [
+          "design"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "design",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "Genuine Leather,New Design for Exact Fit,Width 1 3/8\"",
+          "Convenience: Quick-dry water shoes, ultra light weight smooth stretchy fabrics a"
+        ]
+      },
+      "super": {
+        "canonical": "super",
+        "synonyms": [
+          "super"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "super",
+            "count": 3
+          }
+        ],
+        "public_set_count": 3,
+        "public_set_examples": [
+          "Super Soft and Cozy: These fuzzy slipper socks are made of Polyester 95%, Spande",
+          "Material: Womens winter warm socks made of 35% wool, 29% cotton, 36% polyester. ",
+          "Comfortable feeling: Super lightweight and flexible just like socks,breathable a"
+        ]
+      },
+      "socks": {
+        "canonical": "socks",
+        "synonyms": [
+          "socks"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "socks",
+            "count": 6
+          }
+        ],
+        "public_set_count": 6,
+        "public_set_examples": [
+          "Super Soft and Cozy: These fuzzy slipper socks are made of Polyester 95%, Spande",
+          "❤ 【Material】：Our mens dress socks are are expertly fabricated with the perfect f",
+          "Material: Womens winter warm socks made of 35% wool, 29% cotton, 36% polyester. "
+        ]
+      },
+      "thigh": {
+        "canonical": "thigh",
+        "synonyms": [
+          "thigh"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "thigh",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "Thigh high socks: 20% Stretchy Yarn, 80% cotton",
+          "◆ Soft & Breathable: Being knitted by cotton and stretchy yarn, the mid thigh hi"
+        ]
+      },
+      "yarn": {
+        "canonical": "yarn",
+        "synonyms": [
+          "yarn"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "yarn",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "Thigh high socks: 20% Stretchy Yarn, 80% cotton",
+          "◆ Soft & Breathable: Being knitted by cotton and stretchy yarn, the mid thigh hi"
+        ]
+      },
+      "lightweight": {
+        "canonical": "lightweight",
+        "synonyms": [
+          "lightweight"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "lightweight",
+            "count": 3
+          }
+        ],
+        "public_set_count": 3,
+        "public_set_examples": [
+          "◆ Soft & Breathable: Being knitted by cotton and stretchy yarn, the mid thigh hi",
+          "Comfortable feeling: Super lightweight and flexible just like socks,breathable a",
+          "Convenience: Quick-dry water shoes, ultra light weight smooth stretchy fabrics a"
+        ]
+      },
+      "spring": {
+        "canonical": "spring",
+        "synonyms": [
+          "spring"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "spring",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "Fabric: 35%Rayon,60% Polyester and 5% Spandex,very soft and comfortable for spri",
+          "SWAP IN SECONDS: Quick release spring bars allow you to swap bands in seconds to"
+        ]
+      },
+      "featuring": {
+        "canonical": "featuring",
+        "synonyms": [
+          "featuring"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "featuring",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "Gold-tone watch in stainless steel featuring black two-step dial with date windo",
+          "Leather slip-on featuring dual gore panels at entry and padded collar"
+        ]
+      },
+      "band": {
+        "canonical": "band",
+        "synonyms": [
+          "band"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "band",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "Gold-tone watch in stainless steel featuring black two-step dial with date windo",
+          "Watch Band Material: Made of good quality crazy-horse leather, they are durable "
+        ]
+      },
+      "watch": {
+        "canonical": "watch",
+        "synonyms": [
+          "watch"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "watch",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "Gold-tone watch in stainless steel featuring black two-step dial with date windo",
+          "Watch Band Material: Made of good quality crazy-horse leather, they are durable "
+        ]
+      },
+      "quick": {
+        "canonical": "quick",
+        "synonyms": [
+          "quick"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "quick",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "SWAP IN SECONDS: Quick release spring bars allow you to swap bands in seconds to",
+          "Convenience: Quick-dry water shoes, ultra light weight smooth stretchy fabrics a"
+        ]
+      },
+      "take": {
+        "canonical": "take",
+        "synonyms": [
+          "take"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "take",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "Watch Band Material: Made of good quality crazy-horse leather, they are durable ",
+          "Convenience: Quick-dry water shoes, ultra light weight smooth stretchy fabrics a"
+        ]
+      }
+    },
+    "color": {
+      "black": {
+        "canonical": "black",
+        "synonyms": [
+          "black",
+          "black white",
+          "jet black"
+        ],
+        "synonym_counts": [
+          {
+            "term": "black",
+            "product_count": 6802
+          },
+          {
+            "term": "black white",
+            "product_count": 90
+          },
+          {
+            "term": "jet black",
+            "product_count": 9
+          }
+        ],
+        "product_count": 6802,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "white": {
+        "canonical": "white",
+        "synonyms": [
+          "white",
+          "off-white",
+          "pure white"
+        ],
+        "synonym_counts": [
+          {
+            "term": "white",
+            "product_count": 3319
+          },
+          {
+            "term": "off-white",
+            "product_count": 14
+          },
+          {
+            "term": "pure white",
+            "product_count": 10
+          }
+        ],
+        "product_count": 3319,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "navy": {
+        "canonical": "navy",
+        "synonyms": [
+          "navy",
+          "navy blue",
+          "dark navy"
+        ],
+        "synonym_counts": [
+          {
+            "term": "navy",
+            "product_count": 961
+          },
+          {
+            "term": "navy blue",
+            "product_count": 265
+          },
+          {
+            "term": "dark navy",
+            "product_count": 17
+          }
+        ],
+        "product_count": 961,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "grey": {
+        "canonical": "grey",
+        "synonyms": [
+          "grey",
+          "heather grey",
+          "gray",
+          "charcoal",
+          "dark grey",
+          "light grey"
+        ],
+        "synonym_counts": [
+          {
+            "term": "grey",
+            "product_count": 1741
+          },
+          {
+            "term": "heather grey",
+            "product_count": 599
+          },
+          {
+            "term": "gray",
+            "product_count": 571
+          },
+          {
+            "term": "charcoal",
+            "product_count": 162
+          },
+          {
+            "term": "dark grey",
+            "product_count": 132
+          },
+          {
+            "term": "light grey",
+            "product_count": 67
+          }
+        ],
+        "product_count": 1741,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "blue": {
+        "canonical": "blue",
+        "synonyms": [
+          "blue",
+          "light blue",
+          "dark blue",
+          "royal blue",
+          "sky blue",
+          "baby blue",
+          "denim blue"
+        ],
+        "synonym_counts": [
+          {
+            "term": "blue",
+            "product_count": 2670
+          },
+          {
+            "term": "light blue",
+            "product_count": 161
+          },
+          {
+            "term": "dark blue",
+            "product_count": 100
+          },
+          {
+            "term": "royal blue",
+            "product_count": 99
+          },
+          {
+            "term": "sky blue",
+            "product_count": 43
+          },
+          {
+            "term": "baby blue",
+            "product_count": 14
+          },
+          {
+            "term": "denim blue",
+            "product_count": 9
+          }
+        ],
+        "product_count": 2670,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "red": {
+        "canonical": "red",
+        "synonyms": [
+          "red",
+          "crimson",
+          "scarlet",
+          "dark red",
+          "bright red"
+        ],
+        "synonym_counts": [
+          {
+            "term": "red",
+            "product_count": 1916
+          },
+          {
+            "term": "crimson",
+            "product_count": 26
+          },
+          {
+            "term": "scarlet",
+            "product_count": 23
+          },
+          {
+            "term": "dark red",
+            "product_count": 20
+          },
+          {
+            "term": "bright red",
+            "product_count": 9
+          }
+        ],
+        "product_count": 1916,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "pink": {
+        "canonical": "pink",
+        "synonyms": [
+          "pink",
+          "rose",
+          "hot pink",
+          "blush",
+          "baby pink",
+          "dusty rose",
+          "salmon"
+        ],
+        "synonym_counts": [
+          {
+            "term": "pink",
+            "product_count": 1432
+          },
+          {
+            "term": "rose",
+            "product_count": 696
+          },
+          {
+            "term": "hot pink",
+            "product_count": 68
+          },
+          {
+            "term": "blush",
+            "product_count": 39
+          },
+          {
+            "term": "baby pink",
+            "product_count": 8
+          },
+          {
+            "term": "dusty rose",
+            "product_count": 5
+          },
+          {
+            "term": "salmon",
+            "product_count": 4
+          }
+        ],
+        "product_count": 1432,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "green": {
+        "canonical": "green",
+        "synonyms": [
+          "green",
+          "olive",
+          "emerald",
+          "mint",
+          "lime",
+          "kelly green",
+          "military green",
+          "forest green",
+          "hunter green"
+        ],
+        "synonym_counts": [
+          {
+            "term": "green",
+            "product_count": 1376
+          },
+          {
+            "term": "olive",
+            "product_count": 102
+          },
+          {
+            "term": "emerald",
+            "product_count": 69
+          },
+          {
+            "term": "mint",
+            "product_count": 68
+          },
+          {
+            "term": "lime",
+            "product_count": 42
+          },
+          {
+            "term": "kelly green",
+            "product_count": 18
+          },
+          {
+            "term": "military green",
+            "product_count": 16
+          },
+          {
+            "term": "forest green",
+            "product_count": 12
+          },
+          {
+            "term": "hunter green",
+            "product_count": 7
+          }
+        ],
+        "product_count": 1376,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "brown": {
+        "canonical": "brown",
+        "synonyms": [
+          "brown",
+          "khaki",
+          "tan",
+          "camel",
+          "taupe",
+          "chocolate",
+          "caramel"
+        ],
+        "synonym_counts": [
+          {
+            "term": "brown",
+            "product_count": 954
+          },
+          {
+            "term": "khaki",
+            "product_count": 243
+          },
+          {
+            "term": "tan",
+            "product_count": 207
+          },
+          {
+            "term": "camel",
+            "product_count": 90
+          },
+          {
+            "term": "taupe",
+            "product_count": 69
+          },
+          {
+            "term": "chocolate",
+            "product_count": 41
+          },
+          {
+            "term": "caramel",
+            "product_count": 11
+          }
+        ],
+        "product_count": 954,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "beige": {
+        "canonical": "beige",
+        "synonyms": [
+          "beige",
+          "sand",
+          "cream",
+          "ivory",
+          "ecru"
+        ],
+        "synonym_counts": [
+          {
+            "term": "beige",
+            "product_count": 268
+          },
+          {
+            "term": "sand",
+            "product_count": 103
+          },
+          {
+            "term": "cream",
+            "product_count": 98
+          },
+          {
+            "term": "ivory",
+            "product_count": 91
+          },
+          {
+            "term": "ecru",
+            "product_count": 6
+          }
+        ],
+        "product_count": 268,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "purple": {
+        "canonical": "purple",
+        "synonyms": [
+          "purple",
+          "lavender",
+          "violet",
+          "plum",
+          "lilac",
+          "grape"
+        ],
+        "synonym_counts": [
+          {
+            "term": "purple",
+            "product_count": 648
+          },
+          {
+            "term": "lavender",
+            "product_count": 49
+          },
+          {
+            "term": "violet",
+            "product_count": 49
+          },
+          {
+            "term": "plum",
+            "product_count": 29
+          },
+          {
+            "term": "lilac",
+            "product_count": 26
+          },
+          {
+            "term": "grape",
+            "product_count": 14
+          }
+        ],
+        "product_count": 648,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "yellow": {
+        "canonical": "yellow",
+        "synonyms": [
+          "yellow",
+          "golden",
+          "sunflower",
+          "mustard",
+          "lemon"
+        ],
+        "synonym_counts": [
+          {
+            "term": "yellow",
+            "product_count": 1001
+          },
+          {
+            "term": "golden",
+            "product_count": 171
+          },
+          {
+            "term": "sunflower",
+            "product_count": 112
+          },
+          {
+            "term": "mustard",
+            "product_count": 36
+          },
+          {
+            "term": "lemon",
+            "product_count": 26
+          }
+        ],
+        "product_count": 1001,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "orange": {
+        "canonical": "orange",
+        "synonyms": [
+          "orange",
+          "coral",
+          "peach",
+          "apricot",
+          "burnt orange",
+          "tangerine"
+        ],
+        "synonym_counts": [
+          {
+            "term": "orange",
+            "product_count": 421
+          },
+          {
+            "term": "coral",
+            "product_count": 130
+          },
+          {
+            "term": "peach",
+            "product_count": 83
+          },
+          {
+            "term": "apricot",
+            "product_count": 30
+          },
+          {
+            "term": "burnt orange",
+            "product_count": 6
+          },
+          {
+            "term": "tangerine",
+            "product_count": 4
+          }
+        ],
+        "product_count": 421,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "teal": {
+        "canonical": "teal",
+        "synonyms": [
+          "aqua",
+          "turquoise",
+          "teal",
+          "cyan"
+        ],
+        "synonym_counts": [
+          {
+            "term": "aqua",
+            "product_count": 212
+          },
+          {
+            "term": "turquoise",
+            "product_count": 185
+          },
+          {
+            "term": "teal",
+            "product_count": 91
+          },
+          {
+            "term": "cyan",
+            "product_count": 11
+          }
+        ],
+        "product_count": 212,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "burgundy": {
+        "canonical": "burgundy",
+        "synonyms": [
+          "wine",
+          "burgundy",
+          "maroon",
+          "bordeaux"
+        ],
+        "synonym_counts": [
+          {
+            "term": "wine",
+            "product_count": 239
+          },
+          {
+            "term": "burgundy",
+            "product_count": 163
+          },
+          {
+            "term": "maroon",
+            "product_count": 62
+          },
+          {
+            "term": "bordeaux",
+            "product_count": 9
+          }
+        ],
+        "product_count": 239,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "gold": {
+        "canonical": "gold",
+        "synonyms": [
+          "gold",
+          "golden",
+          "metallic gold"
+        ],
+        "synonym_counts": [
+          {
+            "term": "gold",
+            "product_count": 2444
+          },
+          {
+            "term": "golden",
+            "product_count": 171
+          },
+          {
+            "term": "metallic gold",
+            "product_count": 10
+          }
+        ],
+        "product_count": 2444,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "silver": {
+        "canonical": "silver",
+        "synonyms": [
+          "silver",
+          "gunmetal",
+          "metallic silver"
+        ],
+        "synonym_counts": [
+          {
+            "term": "silver",
+            "product_count": 2938
+          },
+          {
+            "term": "gunmetal",
+            "product_count": 40
+          },
+          {
+            "term": "metallic silver",
+            "product_count": 22
+          }
+        ],
+        "product_count": 2938,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "multicolor": {
+        "canonical": "multicolor",
+        "synonyms": [
+          "multi",
+          "colorful",
+          "color block",
+          "rainbow",
+          "multicolor"
+        ],
+        "synonym_counts": [
+          {
+            "term": "multi",
+            "product_count": 1219
+          },
+          {
+            "term": "colorful",
+            "product_count": 623
+          },
+          {
+            "term": "color block",
+            "product_count": 382
+          },
+          {
+            "term": "rainbow",
+            "product_count": 282
+          },
+          {
+            "term": "multicolor",
+            "product_count": 129
+          }
+        ],
+        "product_count": 1219,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "pattern": {
+        "canonical": "pattern",
+        "synonyms": [
+          "printed",
+          "floral",
+          "pattern",
+          "striped",
+          "plaid",
+          "leopard",
+          "tie dye",
+          "camo",
+          "polka dot",
+          "camouflage",
+          "checked",
+          "checkered"
+        ],
+        "synonym_counts": [
+          {
+            "term": "printed",
+            "product_count": 2192
+          },
+          {
+            "term": "floral",
+            "product_count": 1657
+          },
+          {
+            "term": "pattern",
+            "product_count": 1340
+          },
+          {
+            "term": "striped",
+            "product_count": 641
+          },
+          {
+            "term": "plaid",
+            "product_count": 611
+          },
+          {
+            "term": "leopard",
+            "product_count": 484
+          },
+          {
+            "term": "tie dye",
+            "product_count": 373
+          },
+          {
+            "term": "camo",
+            "product_count": 250
+          },
+          {
+            "term": "polka dot",
+            "product_count": 206
+          },
+          {
+            "term": "camouflage",
+            "product_count": 147
+          }
+        ],
+        "product_count": 2192,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "heathered": {
+        "canonical": "heathered",
+        "synonyms": [
+          "heather",
+          "heathered"
+        ],
+        "synonym_counts": [
+          {
+            "term": "heather",
+            "product_count": 880
+          },
+          {
+            "term": "heathered",
+            "product_count": 58
+          }
+        ],
+        "product_count": 880,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "eva": {
+        "canonical": "eva",
+        "synonyms": [
+          "eva"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "eva",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "Textile Upper. Textile Covered EVA Footbed. Rubber Outsole",
+          "Terrycloth-covered EVA midsole absorbs shock, helping reduce stress on feet, ank"
+        ]
+      },
+      "covered": {
+        "canonical": "covered",
+        "synonyms": [
+          "covered"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "covered",
+            "count": 3
+          }
+        ],
+        "public_set_count": 3,
+        "public_set_examples": [
+          "Textile Upper. Textile Covered EVA Footbed. Rubber Outsole",
+          "TOASTY WARM - Covered in plush sherpa fleece from inside to outside, this slippe",
+          "Terrycloth-covered EVA midsole absorbs shock, helping reduce stress on feet, ank"
+        ]
+      },
+      "fashion": {
+        "canonical": "fashion",
+        "synonyms": [
+          "fashion"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "fashion",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "FASHIONABLE EARRINGS BULK: Each pair of the earrings is carefully selected from ",
+          "You will get 3 pairs fashion gem double flare screw-fit tunnels in same size, in"
+        ]
+      },
+      "nice": {
+        "canonical": "nice",
+        "synonyms": [
+          "nice"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "nice",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "Summer vibe accessories: blue and orange colors of the wave strand bracelet set ",
+          "Material: Stainless Steel With Rhinestones, Look Nice, Light Weight, Smooth Poli"
+        ]
+      },
+      "colors": {
+        "canonical": "colors",
+        "synonyms": [
+          "colors"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "colors",
+            "count": 4
+          }
+        ],
+        "public_set_count": 4,
+        "public_set_examples": [
+          "Summer vibe accessories: blue and orange colors of the wave strand bracelet set ",
+          "Classic color: package include 5 pieces lace bralettes for women in 3 classic co",
+          "Standard US Size: S(US 4-6), M(US 8-10), L(US 12-14), XL(US 16-18), XXL(US 20-22"
+        ]
+      },
+      "different": {
+        "canonical": "different",
+        "synonyms": [
+          "different"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "different",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "Summer vibe accessories: blue and orange colors of the wave strand bracelet set ",
+          "Classic color: package include 5 pieces lace bralettes for women in 3 classic co"
+        ]
+      },
+      "bracelet": {
+        "canonical": "bracelet",
+        "synonyms": [
+          "bracelet"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "bracelet",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "Summer vibe accessories: blue and orange colors of the wave strand bracelet set ",
+          "Size & High Quality -The heart Bracelets are adjustable, don’t worried about siz"
+        ]
+      },
+      "classic": {
+        "canonical": "classic",
+        "synonyms": [
+          "classic"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "classic",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "Classic mardi gras scarf: designed with gold, purple, green color, the scarf mea",
+          "Classic color: package include 5 pieces lace bralettes for women in 3 classic co"
+        ]
+      },
+      "mardi": {
+        "canonical": "mardi",
+        "synonyms": [
+          "mardi"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "mardi",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "Classic mardi gras scarf: designed with gold, purple, green color, the scarf mea",
+          "Pattern: the end of the mardi gras shawl is tassel, stripe pattern is shimmering"
+        ]
+      },
+      "tassel": {
+        "canonical": "tassel",
+        "synonyms": [
+          "tassel"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "tassel",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "Classic mardi gras scarf: designed with gold, purple, green color, the scarf mea",
+          "Pattern: the end of the mardi gras shawl is tassel, stripe pattern is shimmering"
+        ]
+      },
+      "gras": {
+        "canonical": "gras",
+        "synonyms": [
+          "gras"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "gras",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "Classic mardi gras scarf: designed with gold, purple, green color, the scarf mea",
+          "Pattern: the end of the mardi gras shawl is tassel, stripe pattern is shimmering"
+        ]
+      },
+      "feet": {
+        "canonical": "feet",
+        "synonyms": [
+          "feet"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "feet",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "TOASTY WARM - Covered in plush sherpa fleece from inside to outside, this slippe",
+          "Terrycloth-covered EVA midsole absorbs shock, helping reduce stress on feet, ank"
+        ]
+      },
+      "design": {
+        "canonical": "design",
+        "synonyms": [
+          "design"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "design",
+            "count": 3
+          }
+        ],
+        "public_set_count": 3,
+        "public_set_examples": [
+          "Great go-to shoes with multicolor choice and steady design suitable for all age",
+          "Unique Design: Inspire from Royal Knight, high polished bright chain links, with",
+          "【Concise Style】Diamond pattern and raised design, pure color, casual style are q"
+        ]
+      },
+      "suitable": {
+        "canonical": "suitable",
+        "synonyms": [
+          "suitable"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "suitable",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "Great go-to shoes with multicolor choice and steady design suitable for all age",
+          "【Concise Style】Diamond pattern and raised design, pure color, casual style are q"
+        ]
+      },
+      "midsole": {
+        "canonical": "midsole",
+        "synonyms": [
+          "midsole"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "midsole",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "Terrycloth-covered EVA midsole absorbs shock, helping reduce stress on feet, ank",
+          "AmpliFoam Midsole: Engineered to maintain durability at softer densities, provid"
+        ]
+      },
+      "available": {
+        "canonical": "available",
+        "synonyms": [
+          "available"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "available",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "Classic color: package include 5 pieces lace bralettes for women in 3 classic co",
+          "Standard US Size: S(US 4-6), M(US 8-10), L(US 12-14), XL(US 16-18), XXL(US 20-22"
+        ]
+      },
+      "match": {
+        "canonical": "match",
+        "synonyms": [
+          "match"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "match",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "Classic color: package include 5 pieces lace bralettes for women in 3 classic co",
+          "Unique Design: Inspire from Royal Knight, high polished bright chain links, with"
+        ]
+      },
+      "women": {
+        "canonical": "women",
+        "synonyms": [
+          "women"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "women",
+            "count": 3
+          }
+        ],
+        "public_set_count": 3,
+        "public_set_examples": [
+          "Classic color: package include 5 pieces lace bralettes for women in 3 classic co",
+          "PREMIUM QUALITY: Take your outfit to the next level with our 100% acrylic 6 pane",
+          "Standard US Size: S(US 4-6), M(US 8-10), L(US 12-14), XL(US 16-18), XXL(US 20-22"
+        ]
+      },
+      "comfort": {
+        "canonical": "comfort",
+        "synonyms": [
+          "comfort"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "comfort",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "PREMIUM QUALITY: Take your outfit to the next level with our 100% acrylic 6 pane",
+          "AmpliFoam Midsole: Engineered to maintain durability at softer densities, provid"
+        ]
+      },
+      "quality": {
+        "canonical": "quality",
+        "synonyms": [
+          "quality"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "quality",
+            "count": 3
+          }
+        ],
+        "public_set_count": 3,
+        "public_set_examples": [
+          "PREMIUM QUALITY: Take your outfit to the next level with our 100% acrylic 6 pane",
+          "Unique Design: Inspire from Royal Knight, high polished bright chain links, with",
+          "Size & High Quality -The heart Bracelets are adjustable, don’t worried about siz"
+        ]
+      },
+      "stainless": {
+        "canonical": "stainless",
+        "synonyms": [
+          "stainless"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "stainless",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "Material: Stainless Steel With Rhinestones, Look Nice, Light Weight, Smooth Poli",
+          "Size & High Quality -The heart Bracelets are adjustable, don’t worried about siz"
+        ]
+      },
+      "steel": {
+        "canonical": "steel",
+        "synonyms": [
+          "steel"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "steel",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "Material: Stainless Steel With Rhinestones, Look Nice, Light Weight, Smooth Poli",
+          "Size & High Quality -The heart Bracelets are adjustable, don’t worried about siz"
+        ]
+      },
+      "casual": {
+        "canonical": "casual",
+        "synonyms": [
+          "casual"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "casual",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "Standard US Size: S(US 4-6), M(US 8-10), L(US 12-14), XL(US 16-18), XXL(US 20-22",
+          "【Concise Style】Diamond pattern and raised design, pure color, casual style are q"
+        ]
+      },
+      "strong": {
+        "canonical": "strong",
+        "synonyms": [
+          "strong"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "strong",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "Unique Design: Inspire from Royal Knight, high polished bright chain links, with",
+          "Size & High Quality -The heart Bracelets are adjustable, don’t worried about siz"
+        ]
+      },
+      "registered": {
+        "canonical": "registered",
+        "synonyms": [
+          "registered"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "registered",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "CreepyParty is an amazon registered brand, more creepy and funny masks, please v",
+          "Ortholite Sockliner: Moisture management (Ortholite is a registered trademark of"
+        ]
+      }
+    },
+    "size": {
+      "xs": {
+        "canonical": "xs",
+        "synonyms": [
+          "xs",
+          "x-small",
+          "extra small"
+        ],
+        "synonym_counts": [
+          {
+            "term": "xs",
+            "product_count": 423
+          },
+          {
+            "term": "x-small",
+            "product_count": 114
+          },
+          {
+            "term": "extra small",
+            "product_count": 10
+          }
+        ],
+        "product_count": 423,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "s": {
+        "canonical": "s",
+        "synonyms": [
+          "s",
+          "small"
+        ],
+        "synonym_counts": [
+          {
+            "term": "s",
+            "product_count": 28194
+          },
+          {
+            "term": "small",
+            "product_count": 2942
+          }
+        ],
+        "product_count": 28194,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "m": {
+        "canonical": "m",
+        "synonyms": [
+          "m",
+          "medium",
+          "regular"
+        ],
+        "synonym_counts": [
+          {
+            "term": "m",
+            "product_count": 3733
+          },
+          {
+            "term": "medium",
+            "product_count": 1967
+          },
+          {
+            "term": "regular",
+            "product_count": 1053
+          }
+        ],
+        "product_count": 3733,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "l": {
+        "canonical": "l",
+        "synonyms": [
+          "large",
+          "l"
+        ],
+        "synonym_counts": [
+          {
+            "term": "large",
+            "product_count": 3168
+          },
+          {
+            "term": "l",
+            "product_count": 2479
+          }
+        ],
+        "product_count": 3168,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "xl": {
+        "canonical": "xl",
+        "synonyms": [
+          "xl",
+          "x-large",
+          "extra large"
+        ],
+        "synonym_counts": [
+          {
+            "term": "xl",
+            "product_count": 1769
+          },
+          {
+            "term": "x-large",
+            "product_count": 1142
+          },
+          {
+            "term": "extra large",
+            "product_count": 64
+          }
+        ],
+        "product_count": 1769,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "xxl": {
+        "canonical": "xxl",
+        "synonyms": [
+          "xxl",
+          "2xl",
+          "2x"
+        ],
+        "synonym_counts": [
+          {
+            "term": "xxl",
+            "product_count": 728
+          },
+          {
+            "term": "2xl",
+            "product_count": 488
+          },
+          {
+            "term": "2x",
+            "product_count": 234
+          }
+        ],
+        "product_count": 728,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "3xl": {
+        "canonical": "3xl",
+        "synonyms": [
+          "3xl",
+          "3x"
+        ],
+        "synonym_counts": [
+          {
+            "term": "3xl",
+            "product_count": 430
+          },
+          {
+            "term": "3x",
+            "product_count": 307
+          }
+        ],
+        "product_count": 430,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "4xl": {
+        "canonical": "4xl",
+        "synonyms": [
+          "4xl",
+          "4x"
+        ],
+        "synonym_counts": [
+          {
+            "term": "4xl",
+            "product_count": 187
+          },
+          {
+            "term": "4x",
+            "product_count": 132
+          }
+        ],
+        "product_count": 187,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "plus": {
+        "canonical": "plus",
+        "synonyms": [
+          "plus",
+          "plus size",
+          "big and tall",
+          "extended sizes"
+        ],
+        "synonym_counts": [
+          {
+            "term": "plus",
+            "product_count": 2173
+          },
+          {
+            "term": "plus size",
+            "product_count": 1626
+          },
+          {
+            "term": "big and tall",
+            "product_count": 131
+          },
+          {
+            "term": "extended sizes",
+            "product_count": 18
+          }
+        ],
+        "product_count": 2173,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "petite": {
+        "canonical": "petite",
+        "synonyms": [
+          "short",
+          "petite"
+        ],
+        "synonym_counts": [
+          {
+            "term": "short",
+            "product_count": 4223
+          },
+          {
+            "term": "petite",
+            "product_count": 251
+          }
+        ],
+        "product_count": 4223,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "tall": {
+        "canonical": "tall",
+        "synonyms": [
+          "long",
+          "tall"
+        ],
+        "synonym_counts": [
+          {
+            "term": "long",
+            "product_count": 7879
+          },
+          {
+            "term": "tall",
+            "product_count": 623
+          }
+        ],
+        "product_count": 7879,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "one_size": {
+        "canonical": "one_size",
+        "synonyms": [
+          "adjustable",
+          "one size",
+          "free size",
+          "os"
+        ],
+        "synonym_counts": [
+          {
+            "term": "adjustable",
+            "product_count": 3542
+          },
+          {
+            "term": "one size",
+            "product_count": 1716
+          },
+          {
+            "term": "free size",
+            "product_count": 65
+          },
+          {
+            "term": "os",
+            "product_count": 39
+          }
+        ],
+        "product_count": 3542,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "wide": {
+        "canonical": "wide",
+        "synonyms": [
+          "wide",
+          "wide width",
+          "extra wide"
+        ],
+        "synonym_counts": [
+          {
+            "term": "wide",
+            "product_count": 2344
+          },
+          {
+            "term": "wide width",
+            "product_count": 118
+          },
+          {
+            "term": "extra wide",
+            "product_count": 36
+          }
+        ],
+        "product_count": 2344,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "narrow": {
+        "canonical": "narrow",
+        "synonyms": [
+          "narrow"
+        ],
+        "synonym_counts": [
+          {
+            "term": "narrow",
+            "product_count": 113
+          }
+        ],
+        "product_count": 113,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "regular_fit": {
+        "canonical": "regular_fit",
+        "synonyms": [
+          "true to size",
+          "regular fit",
+          "standard fit"
+        ],
+        "synonym_counts": [
+          {
+            "term": "true to size",
+            "product_count": 495
+          },
+          {
+            "term": "regular fit",
+            "product_count": 404
+          },
+          {
+            "term": "standard fit",
+            "product_count": 73
+          }
+        ],
+        "product_count": 495,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "slim_fit": {
+        "canonical": "slim_fit",
+        "synonyms": [
+          "slim fit",
+          "skinny",
+          "fitted"
+        ],
+        "synonym_counts": [
+          {
+            "term": "slim fit",
+            "product_count": 953
+          },
+          {
+            "term": "skinny",
+            "product_count": 829
+          },
+          {
+            "term": "fitted",
+            "product_count": 671
+          }
+        ],
+        "product_count": 953,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "relaxed_fit": {
+        "canonical": "relaxed_fit",
+        "synonyms": [
+          "loose fit",
+          "relaxed fit",
+          "oversized",
+          "baggy"
+        ],
+        "synonym_counts": [
+          {
+            "term": "loose fit",
+            "product_count": 1258
+          },
+          {
+            "term": "relaxed fit",
+            "product_count": 573
+          },
+          {
+            "term": "oversized",
+            "product_count": 571
+          },
+          {
+            "term": "baggy",
+            "product_count": 207
+          }
+        ],
+        "product_count": 1258,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "numeric": {
+        "canonical": "numeric",
+        "synonyms": [
+          "2",
+          "4",
+          "8",
+          "10",
+          "6",
+          "0",
+          "12",
+          "30",
+          "18",
+          "50",
+          "20",
+          "14",
+          "24",
+          "16",
+          "40",
+          "22",
+          "28",
+          "32",
+          "36",
+          "38",
+          "34",
+          "26",
+          "42",
+          "44",
+          "48",
+          "46",
+          "52"
+        ],
+        "synonym_counts": [
+          {
+            "term": "2",
+            "product_count": 7408
+          },
+          {
+            "term": "4",
+            "product_count": 5547
+          },
+          {
+            "term": "8",
+            "product_count": 4290
+          },
+          {
+            "term": "10",
+            "product_count": 4246
+          },
+          {
+            "term": "6",
+            "product_count": 4182
+          },
+          {
+            "term": "0",
+            "product_count": 3039
+          },
+          {
+            "term": "12",
+            "product_count": 2618
+          },
+          {
+            "term": "30",
+            "product_count": 2153
+          },
+          {
+            "term": "18",
+            "product_count": 1827
+          },
+          {
+            "term": "50",
+            "product_count": 1793
+          }
+        ],
+        "product_count": 7408,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "shoe_size": {
+        "canonical": "shoe_size",
+        "synonyms": [
+          "5",
+          "8",
+          "10",
+          "6",
+          "7",
+          "9",
+          "12",
+          "11",
+          "13",
+          "7.5",
+          "8.5",
+          "6.5",
+          "5.5",
+          "9.5",
+          "10.5",
+          "11.5"
+        ],
+        "synonym_counts": [
+          {
+            "term": "5",
+            "product_count": 9364
+          },
+          {
+            "term": "8",
+            "product_count": 4290
+          },
+          {
+            "term": "10",
+            "product_count": 4246
+          },
+          {
+            "term": "6",
+            "product_count": 4182
+          },
+          {
+            "term": "7",
+            "product_count": 3285
+          },
+          {
+            "term": "9",
+            "product_count": 2697
+          },
+          {
+            "term": "12",
+            "product_count": 2618
+          },
+          {
+            "term": "11",
+            "product_count": 1531
+          },
+          {
+            "term": "13",
+            "product_count": 1047
+          },
+          {
+            "term": "7.5",
+            "product_count": 742
+          }
+        ],
+        "product_count": 9364,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "waist_inseam": {
+        "canonical": "waist_inseam",
+        "synonyms": [
+          "waist",
+          "inseam",
+          "waist 32",
+          "inseam 30"
+        ],
+        "synonym_counts": [
+          {
+            "term": "waist",
+            "product_count": 3669
+          },
+          {
+            "term": "inseam",
+            "product_count": 547
+          },
+          {
+            "term": "waist 32",
+            "product_count": 28
+          },
+          {
+            "term": "inseam 30",
+            "product_count": 3
+          }
+        ],
+        "product_count": 3669,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "nose": {
+        "canonical": "nose",
+        "synonyms": [
+          "nose"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "nose",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "Sold by piece! 14g nose hoop ring size: 14 gauge (ring thickness: 1.6mm), inner ",
+          "Nose Rings Studs Size: 20 gauge (0.8mm), Pin Length: 7mm (9/32\"), Round Cubic Zi"
+        ]
+      },
+      "gauge": {
+        "canonical": "gauge",
+        "synonyms": [
+          "gauge"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "gauge",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "Sold by piece! 14g nose hoop ring size: 14 gauge (ring thickness: 1.6mm), inner ",
+          "Nose Rings Studs Size: 20 gauge (0.8mm), Pin Length: 7mm (9/32\"), Round Cubic Zi"
+        ]
+      },
+      "weight": {
+        "canonical": "weight",
+        "synonyms": [
+          "weight"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "weight",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "【COMFORTABLE TO WEAR】—Acrylic Leopard dangle earring give a summer-ready feel to",
+          "Bracelet Size: Length-8.34 inch, width-0.4 inch, weight: 54g. smooth chain, ligh"
+        ]
+      },
+      "feel": {
+        "canonical": "feel",
+        "synonyms": [
+          "feel"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "feel",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "【COMFORTABLE TO WEAR】—Acrylic Leopard dangle earring give a summer-ready feel to",
+          "Nose Rings Studs Size: 20 gauge (0.8mm), Pin Length: 7mm (9/32\"), Round Cubic Zi"
+        ]
+      },
+      "comfortable": {
+        "canonical": "comfortable",
+        "synonyms": [
+          "comfortable"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "comfortable",
+            "count": 3
+          }
+        ],
+        "public_set_count": 3,
+        "public_set_examples": [
+          "【COMFORTABLE TO WEAR】—Acrylic Leopard dangle earring give a summer-ready feel to",
+          "Nose Rings Studs Size: 20 gauge (0.8mm), Pin Length: 7mm (9/32\"), Round Cubic Zi",
+          "Bracelet Size: Length-8.34 inch, width-0.4 inch, weight: 54g. smooth chain, ligh"
+        ]
+      },
+      "length": {
+        "canonical": "length",
+        "synonyms": [
+          "length"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "length",
+            "count": 4
+          }
+        ],
+        "public_set_count": 4,
+        "public_set_examples": [
+          "【COMFORTABLE TO WEAR】—Acrylic Leopard dangle earring give a summer-ready feel to",
+          "Size: <1>Big handbag:26*15*18cm/10.2\"*7\"*5.9\"(Length*Width*Height), handle heigh",
+          "Nose Rings Studs Size: 20 gauge (0.8mm), Pin Length: 7mm (9/32\"), Round Cubic Zi"
+        ]
+      },
+      "back": {
+        "canonical": "back",
+        "synonyms": [
+          "back"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "back",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "【COMFORTABLE TO WEAR】—Acrylic Leopard dangle earring give a summer-ready feel to",
+          "HOOK & LOOP CLOSURE: Our hats for women and men feature a strap closure in the b"
+        ]
+      },
+      "lightweight": {
+        "canonical": "lightweight",
+        "synonyms": [
+          "lightweight"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "lightweight",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "【COMFORTABLE TO WEAR】—Acrylic Leopard dangle earring give a summer-ready feel to",
+          "Bracelet Size: Length-8.34 inch, width-0.4 inch, weight: 54g. smooth chain, ligh"
+        ]
+      },
+      "strap": {
+        "canonical": "strap",
+        "synonyms": [
+          "strap"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "strap",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "HOOK & LOOP CLOSURE: Our hats for women and men feature a strap closure in the b",
+          "Available Size (Band Width): 14mm, 16mm, 18mm, 19mm, 20mm, 21mm, 22mm, 23mm, 24m"
+        ]
+      },
+      "perfect": {
+        "canonical": "perfect",
+        "synonyms": [
+          "perfect"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "perfect",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "HOOK & LOOP CLOSURE: Our hats for women and men feature a strap closure in the b",
+          "Bracelet Size: Length-8.34 inch, width-0.4 inch, weight: 54g. smooth chain, ligh"
+        ]
+      },
+      "easy": {
+        "canonical": "easy",
+        "synonyms": [
+          "easy"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "easy",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "Nose Rings Studs Size: 20 gauge (0.8mm), Pin Length: 7mm (9/32\"), Round Cubic Zi",
+          "Easy to use: Size your watch band yourself with this small, simple tool effectiv"
+        ]
+      },
+      "band": {
+        "canonical": "band",
+        "synonyms": [
+          "band"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "band",
+            "count": 4
+          }
+        ],
+        "public_set_count": 4,
+        "public_set_examples": [
+          "Available Size (Band Width): 14mm, 16mm, 18mm, 19mm, 20mm, 21mm, 22mm, 23mm, 24m",
+          "Easy to use: Size your watch band yourself with this small, simple tool effectiv",
+          "Fit for different sizes,Fit bands up to 30mm wide ,6 replacement pins and an adj"
+        ]
+      },
+      "watch": {
+        "canonical": "watch",
+        "synonyms": [
+          "watch"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "watch",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "Easy to use: Size your watch band yourself with this small, simple tool effectiv",
+          "VALUE KIT FOR MONEY SAVING - This watch band link remover is great for removing "
+        ]
+      },
+      "30mm": {
+        "canonical": "30mm",
+        "synonyms": [
+          "30mm"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "30mm",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "Fit for different sizes,Fit bands up to 30mm wide ,6 replacement pins and an adj",
+          "VALUE KIT FOR MONEY SAVING - This watch band link remover is great for removing "
+        ]
+      }
+    },
+    "style": {
+      "casual": {
+        "canonical": "casual",
+        "synonyms": [
+          "casual",
+          "everyday",
+          "weekend",
+          "laid-back"
+        ],
+        "synonym_counts": [
+          {
+            "term": "casual",
+            "product_count": 7486
+          },
+          {
+            "term": "everyday",
+            "product_count": 1879
+          },
+          {
+            "term": "weekend",
+            "product_count": 362
+          },
+          {
+            "term": "laid-back",
+            "product_count": 33
+          }
+        ],
+        "product_count": 7486,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "formal": {
+        "canonical": "formal",
+        "synonyms": [
+          "office",
+          "business",
+          "formal",
+          "professional",
+          "dressy",
+          "workwear"
+        ],
+        "synonym_counts": [
+          {
+            "term": "office",
+            "product_count": 1577
+          },
+          {
+            "term": "business",
+            "product_count": 1063
+          },
+          {
+            "term": "formal",
+            "product_count": 1026
+          },
+          {
+            "term": "professional",
+            "product_count": 486
+          },
+          {
+            "term": "dressy",
+            "product_count": 362
+          },
+          {
+            "term": "workwear",
+            "product_count": 64
+          }
+        ],
+        "product_count": 1577,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "athletic": {
+        "canonical": "athletic",
+        "synonyms": [
+          "workout",
+          "athletic",
+          "performance",
+          "sport",
+          "active",
+          "sporty"
+        ],
+        "synonym_counts": [
+          {
+            "term": "workout",
+            "product_count": 1572
+          },
+          {
+            "term": "athletic",
+            "product_count": 1495
+          },
+          {
+            "term": "performance",
+            "product_count": 1365
+          },
+          {
+            "term": "sport",
+            "product_count": 1333
+          },
+          {
+            "term": "active",
+            "product_count": 692
+          },
+          {
+            "term": "sporty",
+            "product_count": 257
+          }
+        ],
+        "product_count": 1572,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "vintage": {
+        "canonical": "vintage",
+        "synonyms": [
+          "vintage",
+          "retro",
+          "old school",
+          "throwback"
+        ],
+        "synonym_counts": [
+          {
+            "term": "vintage",
+            "product_count": 1622
+          },
+          {
+            "term": "retro",
+            "product_count": 775
+          },
+          {
+            "term": "old school",
+            "product_count": 18
+          },
+          {
+            "term": "throwback",
+            "product_count": 12
+          }
+        ],
+        "product_count": 1622,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "bohemian": {
+        "canonical": "bohemian",
+        "synonyms": [
+          "boho",
+          "bohemian",
+          "hippie"
+        ],
+        "synonym_counts": [
+          {
+            "term": "boho",
+            "product_count": 583
+          },
+          {
+            "term": "bohemian",
+            "product_count": 334
+          },
+          {
+            "term": "hippie",
+            "product_count": 102
+          }
+        ],
+        "product_count": 583,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "minimalist": {
+        "canonical": "minimalist",
+        "synonyms": [
+          "clean",
+          "simple",
+          "minimalist",
+          "minimal"
+        ],
+        "synonym_counts": [
+          {
+            "term": "clean",
+            "product_count": 2080
+          },
+          {
+            "term": "simple",
+            "product_count": 1628
+          },
+          {
+            "term": "minimalist",
+            "product_count": 221
+          },
+          {
+            "term": "minimal",
+            "product_count": 101
+          }
+        ],
+        "product_count": 2080,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "classic": {
+        "canonical": "classic",
+        "synonyms": [
+          "classic",
+          "basic",
+          "traditional",
+          "timeless"
+        ],
+        "synonym_counts": [
+          {
+            "term": "classic",
+            "product_count": 4101
+          },
+          {
+            "term": "basic",
+            "product_count": 1107
+          },
+          {
+            "term": "traditional",
+            "product_count": 421
+          },
+          {
+            "term": "timeless",
+            "product_count": 382
+          }
+        ],
+        "product_count": 4101,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "trendy": {
+        "canonical": "trendy",
+        "synonyms": [
+          "fashion",
+          "stylish",
+          "trendy",
+          "modern",
+          "contemporary",
+          "current"
+        ],
+        "synonym_counts": [
+          {
+            "term": "fashion",
+            "product_count": 5006
+          },
+          {
+            "term": "stylish",
+            "product_count": 2769
+          },
+          {
+            "term": "trendy",
+            "product_count": 1055
+          },
+          {
+            "term": "modern",
+            "product_count": 751
+          },
+          {
+            "term": "contemporary",
+            "product_count": 118
+          },
+          {
+            "term": "current",
+            "product_count": 85
+          }
+        ],
+        "product_count": 5006,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "edgy": {
+        "canonical": "edgy",
+        "synonyms": [
+          "rock",
+          "punk",
+          "gothic",
+          "edgy",
+          "grunge"
+        ],
+        "synonym_counts": [
+          {
+            "term": "rock",
+            "product_count": 281
+          },
+          {
+            "term": "punk",
+            "product_count": 189
+          },
+          {
+            "term": "gothic",
+            "product_count": 186
+          },
+          {
+            "term": "edgy",
+            "product_count": 48
+          },
+          {
+            "term": "grunge",
+            "product_count": 13
+          }
+        ],
+        "product_count": 281,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "preppy": {
+        "canonical": "preppy",
+        "synonyms": [
+          "preppy",
+          "collegiate",
+          "ivy league"
+        ],
+        "synonym_counts": [
+          {
+            "term": "preppy",
+            "product_count": 33
+          },
+          {
+            "term": "collegiate",
+            "product_count": 20
+          },
+          {
+            "term": "ivy league",
+            "product_count": 1
+          }
+        ],
+        "product_count": 33,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "streetwear": {
+        "canonical": "streetwear",
+        "synonyms": [
+          "streetwear",
+          "urban",
+          "street style"
+        ],
+        "synonym_counts": [
+          {
+            "term": "streetwear",
+            "product_count": 141
+          },
+          {
+            "term": "urban",
+            "product_count": 105
+          },
+          {
+            "term": "street style",
+            "product_count": 52
+          }
+        ],
+        "product_count": 141,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "elegant": {
+        "canonical": "elegant",
+        "synonyms": [
+          "elegant",
+          "chic",
+          "luxury",
+          "fancy",
+          "sophisticated",
+          "high-end"
+        ],
+        "synonym_counts": [
+          {
+            "term": "elegant",
+            "product_count": 2174
+          },
+          {
+            "term": "chic",
+            "product_count": 1000
+          },
+          {
+            "term": "luxury",
+            "product_count": 405
+          },
+          {
+            "term": "fancy",
+            "product_count": 268
+          },
+          {
+            "term": "sophisticated",
+            "product_count": 152
+          },
+          {
+            "term": "high-end",
+            "product_count": 104
+          }
+        ],
+        "product_count": 2174,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "romantic": {
+        "canonical": "romantic",
+        "synonyms": [
+          "soft",
+          "feminine",
+          "romantic",
+          "girly"
+        ],
+        "synonym_counts": [
+          {
+            "term": "soft",
+            "product_count": 9250
+          },
+          {
+            "term": "feminine",
+            "product_count": 451
+          },
+          {
+            "term": "romantic",
+            "product_count": 127
+          },
+          {
+            "term": "girly",
+            "product_count": 24
+          }
+        ],
+        "product_count": 9250,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "western": {
+        "canonical": "western",
+        "synonyms": [
+          "western",
+          "country",
+          "cowboy"
+        ],
+        "synonym_counts": [
+          {
+            "term": "western",
+            "product_count": 330
+          },
+          {
+            "term": "country",
+            "product_count": 184
+          },
+          {
+            "term": "cowboy",
+            "product_count": 149
+          }
+        ],
+        "product_count": 330,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "nautical": {
+        "canonical": "nautical",
+        "synonyms": [
+          "marine",
+          "nautical",
+          "sailor"
+        ],
+        "synonym_counts": [
+          {
+            "term": "marine",
+            "product_count": 55
+          },
+          {
+            "term": "nautical",
+            "product_count": 41
+          },
+          {
+            "term": "sailor",
+            "product_count": 36
+          }
+        ],
+        "product_count": 55,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "military": {
+        "canonical": "military",
+        "synonyms": [
+          "military",
+          "camo",
+          "tactical"
+        ],
+        "synonym_counts": [
+          {
+            "term": "military",
+            "product_count": 365
+          },
+          {
+            "term": "camo",
+            "product_count": 250
+          },
+          {
+            "term": "tactical",
+            "product_count": 162
+          }
+        ],
+        "product_count": 365,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "unisex": {
+        "canonical": "unisex",
+        "synonyms": [
+          "unisex",
+          "everyone",
+          "gender neutral"
+        ],
+        "synonym_counts": [
+          {
+            "term": "unisex",
+            "product_count": 1566
+          },
+          {
+            "term": "everyone",
+            "product_count": 372
+          },
+          {
+            "term": "gender neutral",
+            "product_count": 8
+          }
+        ],
+        "product_count": 1566,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "handmade": {
+        "canonical": "handmade",
+        "synonyms": [
+          "handmade",
+          "custom",
+          "personalized",
+          "handcrafted",
+          "customized",
+          "artisan"
+        ],
+        "synonym_counts": [
+          {
+            "term": "handmade",
+            "product_count": 763
+          },
+          {
+            "term": "custom",
+            "product_count": 658
+          },
+          {
+            "term": "personalized",
+            "product_count": 397
+          },
+          {
+            "term": "handcrafted",
+            "product_count": 297
+          },
+          {
+            "term": "customized",
+            "product_count": 193
+          },
+          {
+            "term": "artisan",
+            "product_count": 62
+          }
+        ],
+        "product_count": 763,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "strap": {
+        "canonical": "strap",
+        "synonyms": [
+          "strap"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "strap",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "Long torso camisole for extra coverage with spagetti adjustable strap for perfec",
+          "Mule-style slipper, adjustable strap with hook-and-loop closure, silvertone butt"
+        ]
+      },
+      "perfect": {
+        "canonical": "perfect",
+        "synonyms": [
+          "perfect"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "perfect",
+            "count": 3
+          }
+        ],
+        "public_set_count": 3,
+        "public_set_examples": [
+          "Long torso camisole for extra coverage with spagetti adjustable strap for perfec",
+          "BOHOSTYLE: Your womens off shoulder jumpsuit has an exaggerated loose fit with b",
+          "IUGA is a lifestyle brand that combines Style, Comfort and Performance. The High"
+        ]
+      },
+      "adjustable": {
+        "canonical": "adjustable",
+        "synonyms": [
+          "adjustable"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "adjustable",
+            "count": 4
+          }
+        ],
+        "public_set_count": 4,
+        "public_set_examples": [
+          "Long torso camisole for extra coverage with spagetti adjustable strap for perfec",
+          "YOUR NEW FAVORITE SLIPPERS: Slip into divine comfort with Gemma, a plush mule-st",
+          "FEATURES: Infinity style cleats are constructed from durable synthetic materials"
+        ]
+      },
+      "hook": {
+        "canonical": "hook",
+        "synonyms": [
+          "hook"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "hook",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "YOUR NEW FAVORITE SLIPPERS: Slip into divine comfort with Gemma, a plush mule-st",
+          "Mule-style slipper, adjustable strap with hook-and-loop closure, silvertone butt"
+        ]
+      },
+      "closure": {
+        "canonical": "closure",
+        "synonyms": [
+          "closure"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "closure",
+            "count": 3
+          }
+        ],
+        "public_set_count": 3,
+        "public_set_examples": [
+          "YOUR NEW FAVORITE SLIPPERS: Slip into divine comfort with Gemma, a plush mule-st",
+          "Mule-style slipper, adjustable strap with hook-and-loop closure, silvertone butt",
+          "Cute ruffle sleeve tops for spring summer and fall, pull on and down closure"
+        ]
+      },
+      "comfort": {
+        "canonical": "comfort",
+        "synonyms": [
+          "comfort"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "comfort",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "YOUR NEW FAVORITE SLIPPERS: Slip into divine comfort with Gemma, a plush mule-st",
+          "IUGA is a lifestyle brand that combines Style, Comfort and Performance. The High"
+        ]
+      },
+      "slipper": {
+        "canonical": "slipper",
+        "synonyms": [
+          "slipper"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "slipper",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "YOUR NEW FAVORITE SLIPPERS: Slip into divine comfort with Gemma, a plush mule-st",
+          "Mule-style slipper, adjustable strap with hook-and-loop closure, silvertone butt"
+        ]
+      },
+      "mule": {
+        "canonical": "mule",
+        "synonyms": [
+          "mule"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "mule",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "YOUR NEW FAVORITE SLIPPERS: Slip into divine comfort with Gemma, a plush mule-st",
+          "Mule-style slipper, adjustable strap with hook-and-loop closure, silvertone butt"
+        ]
+      },
+      "loop": {
+        "canonical": "loop",
+        "synonyms": [
+          "loop"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "loop",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "YOUR NEW FAVORITE SLIPPERS: Slip into divine comfort with Gemma, a plush mule-st",
+          "Mule-style slipper, adjustable strap with hook-and-loop closure, silvertone butt"
+        ]
+      },
+      "department": {
+        "canonical": "department",
+        "synonyms": [
+          "department"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "department",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "Department: Womens",
+          "Department: womens"
+        ]
+      },
+      "womens": {
+        "canonical": "womens",
+        "synonyms": [
+          "womens"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "womens",
+            "count": 3
+          }
+        ],
+        "public_set_count": 3,
+        "public_set_examples": [
+          "Department: Womens",
+          "BOHOSTYLE: Your womens off shoulder jumpsuit has an exaggerated loose fit with b",
+          "Department: womens"
+        ]
+      },
+      "styles": {
+        "canonical": "styles",
+        "synonyms": [
+          "styles"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "styles",
+            "count": 3
+          }
+        ],
+        "public_set_count": 3,
+        "public_set_examples": [
+          "DAILY JEWELRY SET: 47 Pairs earrings in 1 collection Box, Various trendy styles,",
+          "21 Styles: the package contains 21 pieces beach bracelet anklets in different st",
+          "✦18K GOLD VERMEIL✦ A premium offering of our best selling styles, our vermeil je"
+        ]
+      },
+      "daily": {
+        "canonical": "daily",
+        "synonyms": [
+          "daily"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "daily",
+            "count": 3
+          }
+        ],
+        "public_set_count": 3,
+        "public_set_examples": [
+          "DAILY JEWELRY SET: 47 Pairs earrings in 1 collection Box, Various trendy styles,",
+          "【MATCH TO MOST OCCASIONS】—Minimalist Acrylic Hoop Earrings works well with your ",
+          "Take a natural step forward with a clean look, for sure go with your daily t-shi"
+        ]
+      },
+      "various": {
+        "canonical": "various",
+        "synonyms": [
+          "various"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "various",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "DAILY JEWELRY SET: 47 Pairs earrings in 1 collection Box, Various trendy styles,",
+          "21 Styles: the package contains 21 pieces beach bracelet anklets in different st"
+        ]
+      },
+      "many": {
+        "canonical": "many",
+        "synonyms": [
+          "many"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "many",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "DAILY JEWELRY SET: 47 Pairs earrings in 1 collection Box, Various trendy styles,",
+          "【MATCH TO MOST OCCASIONS】—Minimalist Acrylic Hoop Earrings works well with your "
+        ]
+      },
+      "hoop": {
+        "canonical": "hoop",
+        "synonyms": [
+          "hoop"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "hoop",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "DAILY JEWELRY SET: 47 Pairs earrings in 1 collection Box, Various trendy styles,",
+          "【MATCH TO MOST OCCASIONS】—Minimalist Acrylic Hoop Earrings works well with your "
+        ]
+      },
+      "jewelry": {
+        "canonical": "jewelry",
+        "synonyms": [
+          "jewelry"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "jewelry",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "DAILY JEWELRY SET: 47 Pairs earrings in 1 collection Box, Various trendy styles,",
+          "✦18K GOLD VERMEIL✦ A premium offering of our best selling styles, our vermeil je"
+        ]
+      },
+      "earrings": {
+        "canonical": "earrings",
+        "synonyms": [
+          "earrings"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "earrings",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "DAILY JEWELRY SET: 47 Pairs earrings in 1 collection Box, Various trendy styles,",
+          "【MATCH TO MOST OCCASIONS】—Minimalist Acrylic Hoop Earrings works well with your "
+        ]
+      },
+      "gold": {
+        "canonical": "gold",
+        "synonyms": [
+          "gold"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "gold",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "Gold-tone 18mm stainless steel expansion band fits up to 8-inch wrist circumfere",
+          "✦18K GOLD VERMEIL✦ A premium offering of our best selling styles, our vermeil je"
+        ]
+      },
+      "water": {
+        "canonical": "water",
+        "synonyms": [
+          "water"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "water",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "FEATURES: Infinity style cleats are constructed from durable synthetic materials",
+          "Waterproof and fadeless: these boho style pull cord anklets are made of a combin"
+        ]
+      },
+      "foot": {
+        "canonical": "foot",
+        "synonyms": [
+          "foot"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "foot",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "FEATURES: Infinity style cleats are constructed from durable synthetic materials",
+          "【Ergonomic Design】:About 30° forward tilt head protection design,so that the sol"
+        ]
+      },
+      "outfit": {
+        "canonical": "outfit",
+        "synonyms": [
+          "outfit"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "outfit",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "【MATCH TO MOST OCCASIONS】—Minimalist Acrylic Hoop Earrings works well with your ",
+          "Take a natural step forward with a clean look, for sure go with your daily t-shi"
+        ]
+      },
+      "anklets": {
+        "canonical": "anklets",
+        "synonyms": [
+          "anklets"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "anklets",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "21 Styles: the package contains 21 pieces beach bracelet anklets in different st",
+          "Waterproof and fadeless: these boho style pull cord anklets are made of a combin"
+        ]
+      },
+      "enough": {
+        "canonical": "enough",
+        "synonyms": [
+          "enough"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "enough",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "21 Styles: the package contains 21 pieces beach bracelet anklets in different st",
+          "Roomy enough to fit any adult.You can see through the nostrils or the mouth"
+        ]
+      },
+      "pull": {
+        "canonical": "pull",
+        "synonyms": [
+          "pull"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "pull",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "Waterproof and fadeless: these boho style pull cord anklets are made of a combin",
+          "Cute ruffle sleeve tops for spring summer and fall, pull on and down closure"
+        ]
+      },
+      "forward": {
+        "canonical": "forward",
+        "synonyms": [
+          "forward"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "forward",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "【Ergonomic Design】:About 30° forward tilt head protection design,so that the sol",
+          "Take a natural step forward with a clean look, for sure go with your daily t-shi"
+        ]
+      }
+    },
+    "use_case": {
+      "athletic_use": {
+        "canonical": "athletic_use",
+        "synonyms": [
+          "sports",
+          "workout",
+          "athletic",
+          "sport",
+          "gym",
+          "exercise",
+          "training"
+        ],
+        "synonym_counts": [
+          {
+            "term": "sports",
+            "product_count": 2261
+          },
+          {
+            "term": "workout",
+            "product_count": 1572
+          },
+          {
+            "term": "athletic",
+            "product_count": 1495
+          },
+          {
+            "term": "sport",
+            "product_count": 1333
+          },
+          {
+            "term": "gym",
+            "product_count": 1220
+          },
+          {
+            "term": "exercise",
+            "product_count": 760
+          },
+          {
+            "term": "training",
+            "product_count": 575
+          }
+        ],
+        "product_count": 2261,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "running": {
+        "canonical": "running",
+        "synonyms": [
+          "running",
+          "jogging",
+          "joggers",
+          "trail running",
+          "marathon"
+        ],
+        "synonym_counts": [
+          {
+            "term": "running",
+            "product_count": 2703
+          },
+          {
+            "term": "jogging",
+            "product_count": 623
+          },
+          {
+            "term": "joggers",
+            "product_count": 220
+          },
+          {
+            "term": "trail running",
+            "product_count": 112
+          },
+          {
+            "term": "marathon",
+            "product_count": 25
+          }
+        ],
+        "product_count": 2703,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "hiking": {
+        "canonical": "hiking",
+        "synonyms": [
+          "hiking",
+          "trail",
+          "trekking",
+          "backpacking"
+        ],
+        "synonym_counts": [
+          {
+            "term": "hiking",
+            "product_count": 1401
+          },
+          {
+            "term": "trail",
+            "product_count": 255
+          },
+          {
+            "term": "trekking",
+            "product_count": 97
+          },
+          {
+            "term": "backpacking",
+            "product_count": 65
+          }
+        ],
+        "product_count": 1401,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "outdoor": {
+        "canonical": "outdoor",
+        "synonyms": [
+          "outdoor",
+          "camping",
+          "fishing",
+          "climbing",
+          "hunting"
+        ],
+        "synonym_counts": [
+          {
+            "term": "outdoor",
+            "product_count": 2904
+          },
+          {
+            "term": "camping",
+            "product_count": 571
+          },
+          {
+            "term": "fishing",
+            "product_count": 503
+          },
+          {
+            "term": "climbing",
+            "product_count": 357
+          },
+          {
+            "term": "hunting",
+            "product_count": 197
+          }
+        ],
+        "product_count": 2904,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "travel": {
+        "canonical": "travel",
+        "synonyms": [
+          "travel",
+          "vacation",
+          "luggage",
+          "trip"
+        ],
+        "synonym_counts": [
+          {
+            "term": "travel",
+            "product_count": 1898
+          },
+          {
+            "term": "vacation",
+            "product_count": 1711
+          },
+          {
+            "term": "luggage",
+            "product_count": 298
+          },
+          {
+            "term": "trip",
+            "product_count": 243
+          }
+        ],
+        "product_count": 1898,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "work": {
+        "canonical": "work",
+        "synonyms": [
+          "work",
+          "office",
+          "business",
+          "professional",
+          "uniform"
+        ],
+        "synonym_counts": [
+          {
+            "term": "work",
+            "product_count": 3263
+          },
+          {
+            "term": "office",
+            "product_count": 1577
+          },
+          {
+            "term": "business",
+            "product_count": 1063
+          },
+          {
+            "term": "professional",
+            "product_count": 486
+          },
+          {
+            "term": "uniform",
+            "product_count": 217
+          }
+        ],
+        "product_count": 3263,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "party": {
+        "canonical": "party",
+        "synonyms": [
+          "party",
+          "evening",
+          "cocktail",
+          "night out",
+          "clubbing"
+        ],
+        "synonym_counts": [
+          {
+            "term": "party",
+            "product_count": 4886
+          },
+          {
+            "term": "evening",
+            "product_count": 988
+          },
+          {
+            "term": "cocktail",
+            "product_count": 946
+          },
+          {
+            "term": "night out",
+            "product_count": 406
+          },
+          {
+            "term": "clubbing",
+            "product_count": 52
+          }
+        ],
+        "product_count": 4886,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "wedding": {
+        "canonical": "wedding",
+        "synonyms": [
+          "wedding",
+          "bridal",
+          "bridesmaid",
+          "groom"
+        ],
+        "synonym_counts": [
+          {
+            "term": "wedding",
+            "product_count": 2392
+          },
+          {
+            "term": "bridal",
+            "product_count": 358
+          },
+          {
+            "term": "bridesmaid",
+            "product_count": 275
+          },
+          {
+            "term": "groom",
+            "product_count": 35
+          }
+        ],
+        "product_count": 2392,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "everyday": {
+        "canonical": "everyday",
+        "synonyms": [
+          "daily",
+          "everyday",
+          "casual wear",
+          "street"
+        ],
+        "synonym_counts": [
+          {
+            "term": "daily",
+            "product_count": 4347
+          },
+          {
+            "term": "everyday",
+            "product_count": 1879
+          },
+          {
+            "term": "casual wear",
+            "product_count": 726
+          },
+          {
+            "term": "street",
+            "product_count": 703
+          }
+        ],
+        "product_count": 4347,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "lounge": {
+        "canonical": "lounge",
+        "synonyms": [
+          "lounge",
+          "loungewear",
+          "relaxing",
+          "homewear"
+        ],
+        "synonym_counts": [
+          {
+            "term": "lounge",
+            "product_count": 647
+          },
+          {
+            "term": "loungewear",
+            "product_count": 339
+          },
+          {
+            "term": "relaxing",
+            "product_count": 207
+          },
+          {
+            "term": "homewear",
+            "product_count": 57
+          }
+        ],
+        "product_count": 647,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "sleep": {
+        "canonical": "sleep",
+        "synonyms": [
+          "sleepwear",
+          "pajamas",
+          "sleep",
+          "nightgown",
+          "nightwear"
+        ],
+        "synonym_counts": [
+          {
+            "term": "sleepwear",
+            "product_count": 572
+          },
+          {
+            "term": "pajamas",
+            "product_count": 517
+          },
+          {
+            "term": "sleep",
+            "product_count": 482
+          },
+          {
+            "term": "nightgown",
+            "product_count": 198
+          },
+          {
+            "term": "nightwear",
+            "product_count": 195
+          }
+        ],
+        "product_count": 572,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "swim": {
+        "canonical": "swim",
+        "synonyms": [
+          "beach",
+          "swimming",
+          "swimsuit",
+          "pool",
+          "swim"
+        ],
+        "synonym_counts": [
+          {
+            "term": "beach",
+            "product_count": 2842
+          },
+          {
+            "term": "swimming",
+            "product_count": 778
+          },
+          {
+            "term": "swimsuit",
+            "product_count": 741
+          },
+          {
+            "term": "pool",
+            "product_count": 609
+          },
+          {
+            "term": "swim",
+            "product_count": 603
+          }
+        ],
+        "product_count": 2842,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "winter": {
+        "canonical": "winter",
+        "synonyms": [
+          "winter",
+          "warm",
+          "snow",
+          "cold weather",
+          "insulated"
+        ],
+        "synonym_counts": [
+          {
+            "term": "winter",
+            "product_count": 2671
+          },
+          {
+            "term": "warm",
+            "product_count": 2502
+          },
+          {
+            "term": "snow",
+            "product_count": 576
+          },
+          {
+            "term": "cold weather",
+            "product_count": 348
+          },
+          {
+            "term": "insulated",
+            "product_count": 214
+          }
+        ],
+        "product_count": 2671,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "rain": {
+        "canonical": "rain",
+        "synonyms": [
+          "waterproof",
+          "water resistant",
+          "rain",
+          "raincoat"
+        ],
+        "synonym_counts": [
+          {
+            "term": "waterproof",
+            "product_count": 1415
+          },
+          {
+            "term": "water resistant",
+            "product_count": 761
+          },
+          {
+            "term": "rain",
+            "product_count": 578
+          },
+          {
+            "term": "raincoat",
+            "product_count": 65
+          }
+        ],
+        "product_count": 1415,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "gift": {
+        "canonical": "gift",
+        "synonyms": [
+          "gift",
+          "christmas",
+          "holiday",
+          "valentine",
+          "present"
+        ],
+        "synonym_counts": [
+          {
+            "term": "gift",
+            "product_count": 6078
+          },
+          {
+            "term": "christmas",
+            "product_count": 3176
+          },
+          {
+            "term": "holiday",
+            "product_count": 1692
+          },
+          {
+            "term": "valentine",
+            "product_count": 1476
+          },
+          {
+            "term": "present",
+            "product_count": 556
+          }
+        ],
+        "product_count": 6078,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "yoga": {
+        "canonical": "yoga",
+        "synonyms": [
+          "yoga",
+          "pilates",
+          "meditation"
+        ],
+        "synonym_counts": [
+          {
+            "term": "yoga",
+            "product_count": 1553
+          },
+          {
+            "term": "pilates",
+            "product_count": 172
+          },
+          {
+            "term": "meditation",
+            "product_count": 43
+          }
+        ],
+        "product_count": 1553,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "dance": {
+        "canonical": "dance",
+        "synonyms": [
+          "dance",
+          "ballet",
+          "dancer"
+        ],
+        "synonym_counts": [
+          {
+            "term": "dance",
+            "product_count": 545
+          },
+          {
+            "term": "ballet",
+            "product_count": 403
+          },
+          {
+            "term": "dancer",
+            "product_count": 24
+          }
+        ],
+        "product_count": 545,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "workout_gym": {
+        "canonical": "workout_gym",
+        "synonyms": [
+          "gym",
+          "fitness",
+          "bodybuilding",
+          "crossfit"
+        ],
+        "synonym_counts": [
+          {
+            "term": "gym",
+            "product_count": 1220
+          },
+          {
+            "term": "fitness",
+            "product_count": 744
+          },
+          {
+            "term": "bodybuilding",
+            "product_count": 80
+          },
+          {
+            "term": "crossfit",
+            "product_count": 20
+          }
+        ],
+        "product_count": 1220,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "boots": {
+        "canonical": "boots",
+        "synonyms": [
+          "boots"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "boots",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "Warm And Comfortable Women’s Winter Boots: These Women Winter Boots Featuring Th",
+          "100% waterproof women's boots are suitable for any season and any outdoor activi"
+        ]
+      },
+      "women": {
+        "canonical": "women",
+        "synonyms": [
+          "women"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "women",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "Warm And Comfortable Women’s Winter Boots: These Women Winter Boots Featuring Th",
+          "100% waterproof women's boots are suitable for any season and any outdoor activi"
+        ]
+      },
+      "suitable": {
+        "canonical": "suitable",
+        "synonyms": [
+          "suitable"
+        ],
+        "product_count": 0,
+        "sources": [
+          "public_set"
+        ],
+        "synonym_counts": [
+          {
+            "term": "suitable",
+            "count": 2
+          }
+        ],
+        "public_set_count": 2,
+        "public_set_examples": [
+          "A Lightweight Sneaker, Which Is Suitable For Running, Sports, Hiking, Walking, T",
+          "100% waterproof women's boots are suitable for any season and any outdoor activi"
+        ]
+      }
+    },
+    "category_product_type": {
+      "t_shirt": {
+        "canonical": "t_shirt",
+        "synonyms": [
+          "t-shirt",
+          "tee",
+          "tees",
+          "t shirts",
+          "graphic tee",
+          "pocket tee"
+        ],
+        "synonym_counts": [
+          {
+            "term": "t-shirt",
+            "product_count": 3320
+          },
+          {
+            "term": "tee",
+            "product_count": 1820
+          },
+          {
+            "term": "tees",
+            "product_count": 729
+          },
+          {
+            "term": "t shirts",
+            "product_count": 699
+          },
+          {
+            "term": "graphic tee",
+            "product_count": 409
+          },
+          {
+            "term": "pocket tee",
+            "product_count": 9
+          }
+        ],
+        "product_count": 3320,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "polo": {
+        "canonical": "polo",
+        "synonyms": [
+          "polo",
+          "polo shirt",
+          "golf shirt"
+        ],
+        "synonym_counts": [
+          {
+            "term": "polo",
+            "product_count": 436
+          },
+          {
+            "term": "polo shirt",
+            "product_count": 173
+          },
+          {
+            "term": "golf shirt",
+            "product_count": 41
+          }
+        ],
+        "product_count": 436,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "shirt": {
+        "canonical": "shirt",
+        "synonyms": [
+          "shirt",
+          "button down",
+          "dress shirt",
+          "button up",
+          "oxford shirt"
+        ],
+        "synonym_counts": [
+          {
+            "term": "shirt",
+            "product_count": 5909
+          },
+          {
+            "term": "button down",
+            "product_count": 682
+          },
+          {
+            "term": "dress shirt",
+            "product_count": 234
+          },
+          {
+            "term": "button up",
+            "product_count": 207
+          },
+          {
+            "term": "oxford shirt",
+            "product_count": 18
+          }
+        ],
+        "product_count": 5909,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "blouse": {
+        "canonical": "blouse",
+        "synonyms": [
+          "top",
+          "blouse",
+          "tunic",
+          "shell"
+        ],
+        "synonym_counts": [
+          {
+            "term": "top",
+            "product_count": 5841
+          },
+          {
+            "term": "blouse",
+            "product_count": 1303
+          },
+          {
+            "term": "tunic",
+            "product_count": 1224
+          },
+          {
+            "term": "shell",
+            "product_count": 542
+          }
+        ],
+        "product_count": 5841,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "dress": {
+        "canonical": "dress",
+        "synonyms": [
+          "dress",
+          "maxi dress",
+          "gown",
+          "midi dress",
+          "mini dress",
+          "sundress",
+          "cocktail dress"
+        ],
+        "synonym_counts": [
+          {
+            "term": "dress",
+            "product_count": 5390
+          },
+          {
+            "term": "maxi dress",
+            "product_count": 419
+          },
+          {
+            "term": "gown",
+            "product_count": 288
+          },
+          {
+            "term": "midi dress",
+            "product_count": 266
+          },
+          {
+            "term": "mini dress",
+            "product_count": 259
+          },
+          {
+            "term": "sundress",
+            "product_count": 176
+          },
+          {
+            "term": "cocktail dress",
+            "product_count": 163
+          }
+        ],
+        "product_count": 5390,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "skirt": {
+        "canonical": "skirt",
+        "synonyms": [
+          "skirt",
+          "maxi skirt",
+          "mini skirt",
+          "midi skirt",
+          "pleated skirt",
+          "a-line skirt"
+        ],
+        "synonym_counts": [
+          {
+            "term": "skirt",
+            "product_count": 1171
+          },
+          {
+            "term": "maxi skirt",
+            "product_count": 98
+          },
+          {
+            "term": "mini skirt",
+            "product_count": 80
+          },
+          {
+            "term": "midi skirt",
+            "product_count": 80
+          },
+          {
+            "term": "pleated skirt",
+            "product_count": 35
+          },
+          {
+            "term": "a-line skirt",
+            "product_count": 26
+          }
+        ],
+        "product_count": 1171,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "pants": {
+        "canonical": "pants",
+        "synonyms": [
+          "pants",
+          "trousers",
+          "slacks",
+          "dress pants",
+          "cargo pants",
+          "chinos",
+          "khakis"
+        ],
+        "synonym_counts": [
+          {
+            "term": "pants",
+            "product_count": 3014
+          },
+          {
+            "term": "trousers",
+            "product_count": 345
+          },
+          {
+            "term": "slacks",
+            "product_count": 107
+          },
+          {
+            "term": "dress pants",
+            "product_count": 83
+          },
+          {
+            "term": "cargo pants",
+            "product_count": 78
+          },
+          {
+            "term": "chinos",
+            "product_count": 37
+          },
+          {
+            "term": "khakis",
+            "product_count": 21
+          }
+        ],
+        "product_count": 3014,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "jeans": {
+        "canonical": "jeans",
+        "synonyms": [
+          "jeans",
+          "denim",
+          "skinny jeans",
+          "jeggings",
+          "bootcut jeans",
+          "straight leg jeans"
+        ],
+        "synonym_counts": [
+          {
+            "term": "jeans",
+            "product_count": 2509
+          },
+          {
+            "term": "denim",
+            "product_count": 929
+          },
+          {
+            "term": "skinny jeans",
+            "product_count": 318
+          },
+          {
+            "term": "jeggings",
+            "product_count": 64
+          },
+          {
+            "term": "bootcut jeans",
+            "product_count": 29
+          },
+          {
+            "term": "straight leg jeans",
+            "product_count": 10
+          }
+        ],
+        "product_count": 2509,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "shorts": {
+        "canonical": "shorts",
+        "synonyms": [
+          "shorts",
+          "running shorts",
+          "cargo shorts",
+          "bermuda shorts"
+        ],
+        "synonym_counts": [
+          {
+            "term": "shorts",
+            "product_count": 2311
+          },
+          {
+            "term": "running shorts",
+            "product_count": 78
+          },
+          {
+            "term": "cargo shorts",
+            "product_count": 69
+          },
+          {
+            "term": "bermuda shorts",
+            "product_count": 21
+          }
+        ],
+        "product_count": 2311,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "jacket": {
+        "canonical": "jacket",
+        "synonyms": [
+          "jacket",
+          "blazer",
+          "windbreaker",
+          "leather jacket",
+          "denim jacket",
+          "bomber jacket"
+        ],
+        "synonym_counts": [
+          {
+            "term": "jacket",
+            "product_count": 2000
+          },
+          {
+            "term": "blazer",
+            "product_count": 259
+          },
+          {
+            "term": "windbreaker",
+            "product_count": 127
+          },
+          {
+            "term": "leather jacket",
+            "product_count": 92
+          },
+          {
+            "term": "denim jacket",
+            "product_count": 71
+          },
+          {
+            "term": "bomber jacket",
+            "product_count": 68
+          }
+        ],
+        "product_count": 2000,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "coat": {
+        "canonical": "coat",
+        "synonyms": [
+          "coat",
+          "puffer",
+          "parka",
+          "trench coat",
+          "overcoat",
+          "down coat",
+          "peacoat"
+        ],
+        "synonym_counts": [
+          {
+            "term": "coat",
+            "product_count": 1002
+          },
+          {
+            "term": "puffer",
+            "product_count": 165
+          },
+          {
+            "term": "parka",
+            "product_count": 113
+          },
+          {
+            "term": "trench coat",
+            "product_count": 84
+          },
+          {
+            "term": "overcoat",
+            "product_count": 57
+          },
+          {
+            "term": "down coat",
+            "product_count": 26
+          },
+          {
+            "term": "peacoat",
+            "product_count": 21
+          }
+        ],
+        "product_count": 1002,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "hoodie": {
+        "canonical": "hoodie",
+        "synonyms": [
+          "sweatshirt",
+          "hoodie",
+          "crewneck",
+          "hooded sweatshirt"
+        ],
+        "synonym_counts": [
+          {
+            "term": "sweatshirt",
+            "product_count": 968
+          },
+          {
+            "term": "hoodie",
+            "product_count": 947
+          },
+          {
+            "term": "crewneck",
+            "product_count": 542
+          },
+          {
+            "term": "hooded sweatshirt",
+            "product_count": 212
+          }
+        ],
+        "product_count": 968,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "sweater": {
+        "canonical": "sweater",
+        "synonyms": [
+          "pullover",
+          "sweater",
+          "cardigan",
+          "jumper",
+          "knitwear",
+          "crewneck sweater"
+        ],
+        "synonym_counts": [
+          {
+            "term": "pullover",
+            "product_count": 1325
+          },
+          {
+            "term": "sweater",
+            "product_count": 1143
+          },
+          {
+            "term": "cardigan",
+            "product_count": 714
+          },
+          {
+            "term": "jumper",
+            "product_count": 172
+          },
+          {
+            "term": "knitwear",
+            "product_count": 58
+          },
+          {
+            "term": "crewneck sweater",
+            "product_count": 19
+          }
+        ],
+        "product_count": 1325,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "vest": {
+        "canonical": "vest",
+        "synonyms": [
+          "vest",
+          "waistcoat",
+          "puffer vest",
+          "down vest"
+        ],
+        "synonym_counts": [
+          {
+            "term": "vest",
+            "product_count": 520
+          },
+          {
+            "term": "waistcoat",
+            "product_count": 45
+          },
+          {
+            "term": "puffer vest",
+            "product_count": 20
+          },
+          {
+            "term": "down vest",
+            "product_count": 16
+          }
+        ],
+        "product_count": 520,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "tank_top": {
+        "canonical": "tank_top",
+        "synonyms": [
+          "tank",
+          "tank top",
+          "cami",
+          "camisole",
+          "sleeveless top",
+          "muscle tee"
+        ],
+        "synonym_counts": [
+          {
+            "term": "tank",
+            "product_count": 1440
+          },
+          {
+            "term": "tank top",
+            "product_count": 1097
+          },
+          {
+            "term": "cami",
+            "product_count": 348
+          },
+          {
+            "term": "camisole",
+            "product_count": 210
+          },
+          {
+            "term": "sleeveless top",
+            "product_count": 75
+          },
+          {
+            "term": "muscle tee",
+            "product_count": 21
+          }
+        ],
+        "product_count": 1440,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "bodysuit": {
+        "canonical": "bodysuit",
+        "synonyms": [
+          "bodysuit",
+          "leotard",
+          "unitard"
+        ],
+        "synonym_counts": [
+          {
+            "term": "bodysuit",
+            "product_count": 280
+          },
+          {
+            "term": "leotard",
+            "product_count": 66
+          },
+          {
+            "term": "unitard",
+            "product_count": 18
+          }
+        ],
+        "product_count": 280,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "leggings": {
+        "canonical": "leggings",
+        "synonyms": [
+          "leggings",
+          "yoga pants",
+          "compression pants"
+        ],
+        "synonym_counts": [
+          {
+            "term": "leggings",
+            "product_count": 1879
+          },
+          {
+            "term": "yoga pants",
+            "product_count": 329
+          },
+          {
+            "term": "compression pants",
+            "product_count": 21
+          }
+        ],
+        "product_count": 1879,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "sweatpants": {
+        "canonical": "sweatpants",
+        "synonyms": [
+          "sweatpants",
+          "joggers",
+          "track pants",
+          "jogging pants"
+        ],
+        "synonym_counts": [
+          {
+            "term": "sweatpants",
+            "product_count": 345
+          },
+          {
+            "term": "joggers",
+            "product_count": 220
+          },
+          {
+            "term": "track pants",
+            "product_count": 35
+          },
+          {
+            "term": "jogging pants",
+            "product_count": 24
+          }
+        ],
+        "product_count": 345,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "swimsuit": {
+        "canonical": "swimsuit",
+        "synonyms": [
+          "swimsuit",
+          "bikini",
+          "bathing suit",
+          "one piece swimsuit",
+          "swim trunks"
+        ],
+        "synonym_counts": [
+          {
+            "term": "swimsuit",
+            "product_count": 741
+          },
+          {
+            "term": "bikini",
+            "product_count": 565
+          },
+          {
+            "term": "bathing suit",
+            "product_count": 531
+          },
+          {
+            "term": "one piece swimsuit",
+            "product_count": 173
+          },
+          {
+            "term": "swim trunks",
+            "product_count": 85
+          }
+        ],
+        "product_count": 741,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "underwear": {
+        "canonical": "underwear",
+        "synonyms": [
+          "underwear",
+          "thong",
+          "briefs",
+          "panties",
+          "boxer briefs",
+          "boxers"
+        ],
+        "synonym_counts": [
+          {
+            "term": "underwear",
+            "product_count": 473
+          },
+          {
+            "term": "thong",
+            "product_count": 334
+          },
+          {
+            "term": "briefs",
+            "product_count": 276
+          },
+          {
+            "term": "panties",
+            "product_count": 160
+          },
+          {
+            "term": "boxer briefs",
+            "product_count": 122
+          },
+          {
+            "term": "boxers",
+            "product_count": 38
+          }
+        ],
+        "product_count": 473,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "bra": {
+        "canonical": "bra",
+        "synonyms": [
+          "bra",
+          "sports bra",
+          "bralette",
+          "wireless bra"
+        ],
+        "synonym_counts": [
+          {
+            "term": "bra",
+            "product_count": 909
+          },
+          {
+            "term": "sports bra",
+            "product_count": 240
+          },
+          {
+            "term": "bralette",
+            "product_count": 77
+          },
+          {
+            "term": "wireless bra",
+            "product_count": 21
+          }
+        ],
+        "product_count": 909,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "socks": {
+        "canonical": "socks",
+        "synonyms": [
+          "socks",
+          "sock",
+          "crew socks",
+          "ankle socks",
+          "no show socks",
+          "dress socks"
+        ],
+        "synonym_counts": [
+          {
+            "term": "socks",
+            "product_count": 1065
+          },
+          {
+            "term": "sock",
+            "product_count": 582
+          },
+          {
+            "term": "crew socks",
+            "product_count": 203
+          },
+          {
+            "term": "ankle socks",
+            "product_count": 65
+          },
+          {
+            "term": "no show socks",
+            "product_count": 57
+          },
+          {
+            "term": "dress socks",
+            "product_count": 55
+          }
+        ],
+        "product_count": 1065,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "tights": {
+        "canonical": "tights",
+        "synonyms": [
+          "tights",
+          "stockings",
+          "pantyhose",
+          "hosiery"
+        ],
+        "synonym_counts": [
+          {
+            "term": "tights",
+            "product_count": 309
+          },
+          {
+            "term": "stockings",
+            "product_count": 92
+          },
+          {
+            "term": "pantyhose",
+            "product_count": 58
+          },
+          {
+            "term": "hosiery",
+            "product_count": 30
+          }
+        ],
+        "product_count": 309,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "hat": {
+        "canonical": "hat",
+        "synonyms": [
+          "hat",
+          "cap",
+          "beanie",
+          "baseball cap",
+          "sun hat",
+          "snapback",
+          "fedora",
+          "bucket hat"
+        ],
+        "synonym_counts": [
+          {
+            "term": "hat",
+            "product_count": 1136
+          },
+          {
+            "term": "cap",
+            "product_count": 987
+          },
+          {
+            "term": "beanie",
+            "product_count": 251
+          },
+          {
+            "term": "baseball cap",
+            "product_count": 189
+          },
+          {
+            "term": "sun hat",
+            "product_count": 96
+          },
+          {
+            "term": "snapback",
+            "product_count": 82
+          },
+          {
+            "term": "fedora",
+            "product_count": 54
+          },
+          {
+            "term": "bucket hat",
+            "product_count": 45
+          }
+        ],
+        "product_count": 1136,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "scarf": {
+        "canonical": "scarf",
+        "synonyms": [
+          "scarf",
+          "shawl",
+          "bandana",
+          "scarf wrap"
+        ],
+        "synonym_counts": [
+          {
+            "term": "scarf",
+            "product_count": 480
+          },
+          {
+            "term": "shawl",
+            "product_count": 240
+          },
+          {
+            "term": "bandana",
+            "product_count": 140
+          },
+          {
+            "term": "scarf wrap",
+            "product_count": 13
+          }
+        ],
+        "product_count": 480,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "gloves": {
+        "canonical": "gloves",
+        "synonyms": [
+          "gloves",
+          "mittens",
+          "fingerless gloves",
+          "work gloves"
+        ],
+        "synonym_counts": [
+          {
+            "term": "gloves",
+            "product_count": 318
+          },
+          {
+            "term": "mittens",
+            "product_count": 55
+          },
+          {
+            "term": "fingerless gloves",
+            "product_count": 18
+          },
+          {
+            "term": "work gloves",
+            "product_count": 2
+          }
+        ],
+        "product_count": 318,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "belt": {
+        "canonical": "belt",
+        "synonyms": [
+          "belt",
+          "leather belt",
+          "waist belt"
+        ],
+        "synonym_counts": [
+          {
+            "term": "belt",
+            "product_count": 1062
+          },
+          {
+            "term": "leather belt",
+            "product_count": 93
+          },
+          {
+            "term": "waist belt",
+            "product_count": 82
+          }
+        ],
+        "product_count": 1062,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "bag": {
+        "canonical": "bag",
+        "synonyms": [
+          "bag",
+          "purse",
+          "handbag",
+          "tote",
+          "shoulder bag",
+          "clutch",
+          "crossbody bag",
+          "satchel"
+        ],
+        "synonym_counts": [
+          {
+            "term": "bag",
+            "product_count": 2108
+          },
+          {
+            "term": "purse",
+            "product_count": 624
+          },
+          {
+            "term": "handbag",
+            "product_count": 500
+          },
+          {
+            "term": "tote",
+            "product_count": 427
+          },
+          {
+            "term": "shoulder bag",
+            "product_count": 395
+          },
+          {
+            "term": "clutch",
+            "product_count": 245
+          },
+          {
+            "term": "crossbody bag",
+            "product_count": 232
+          },
+          {
+            "term": "satchel",
+            "product_count": 169
+          }
+        ],
+        "product_count": 2108,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "backpack": {
+        "canonical": "backpack",
+        "synonyms": [
+          "backpack",
+          "daypack",
+          "rucksack",
+          "knapsack"
+        ],
+        "synonym_counts": [
+          {
+            "term": "backpack",
+            "product_count": 412
+          },
+          {
+            "term": "daypack",
+            "product_count": 45
+          },
+          {
+            "term": "rucksack",
+            "product_count": 17
+          },
+          {
+            "term": "knapsack",
+            "product_count": 4
+          }
+        ],
+        "product_count": 412,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "wallet": {
+        "canonical": "wallet",
+        "synonyms": [
+          "wallet",
+          "card holder",
+          "billfold"
+        ],
+        "synonym_counts": [
+          {
+            "term": "wallet",
+            "product_count": 856
+          },
+          {
+            "term": "card holder",
+            "product_count": 138
+          },
+          {
+            "term": "billfold",
+            "product_count": 19
+          }
+        ],
+        "product_count": 856,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "sunglasses": {
+        "canonical": "sunglasses",
+        "synonyms": [
+          "sunglasses",
+          "shades",
+          "sun glasses"
+        ],
+        "synonym_counts": [
+          {
+            "term": "sunglasses",
+            "product_count": 721
+          },
+          {
+            "term": "shades",
+            "product_count": 133
+          },
+          {
+            "term": "sun glasses",
+            "product_count": 34
+          }
+        ],
+        "product_count": 721,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "jewelry": {
+        "canonical": "jewelry",
+        "synonyms": [
+          "jewelry",
+          "necklace",
+          "ring",
+          "earrings",
+          "bracelet",
+          "pendant",
+          "charm",
+          "bangle",
+          "jewellery",
+          "anklet"
+        ],
+        "synonym_counts": [
+          {
+            "term": "jewelry",
+            "product_count": 2882
+          },
+          {
+            "term": "necklace",
+            "product_count": 1656
+          },
+          {
+            "term": "ring",
+            "product_count": 1629
+          },
+          {
+            "term": "earrings",
+            "product_count": 1580
+          },
+          {
+            "term": "bracelet",
+            "product_count": 1245
+          },
+          {
+            "term": "pendant",
+            "product_count": 1138
+          },
+          {
+            "term": "charm",
+            "product_count": 875
+          },
+          {
+            "term": "bangle",
+            "product_count": 239
+          },
+          {
+            "term": "jewellery",
+            "product_count": 98
+          },
+          {
+            "term": "anklet",
+            "product_count": 97
+          }
+        ],
+        "product_count": 2882,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "watch": {
+        "canonical": "watch",
+        "synonyms": [
+          "watch",
+          "wrist watch",
+          "wristwatch",
+          "timepiece"
+        ],
+        "synonym_counts": [
+          {
+            "term": "watch",
+            "product_count": 1276
+          },
+          {
+            "term": "wrist watch",
+            "product_count": 100
+          },
+          {
+            "term": "wristwatch",
+            "product_count": 48
+          },
+          {
+            "term": "timepiece",
+            "product_count": 33
+          }
+        ],
+        "product_count": 1276,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "sneakers": {
+        "canonical": "sneakers",
+        "synonyms": [
+          "sneakers",
+          "sneaker",
+          "running shoes",
+          "tennis shoes",
+          "athletic shoes",
+          "trainers",
+          "sport shoes",
+          "gym shoes"
+        ],
+        "synonym_counts": [
+          {
+            "term": "sneakers",
+            "product_count": 1284
+          },
+          {
+            "term": "sneaker",
+            "product_count": 1191
+          },
+          {
+            "term": "running shoes",
+            "product_count": 326
+          },
+          {
+            "term": "tennis shoes",
+            "product_count": 132
+          },
+          {
+            "term": "athletic shoes",
+            "product_count": 81
+          },
+          {
+            "term": "trainers",
+            "product_count": 81
+          },
+          {
+            "term": "sport shoes",
+            "product_count": 49
+          },
+          {
+            "term": "gym shoes",
+            "product_count": 21
+          }
+        ],
+        "product_count": 1284,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "boots": {
+        "canonical": "boots",
+        "synonyms": [
+          "boot",
+          "boots",
+          "ankle boots",
+          "rain boots",
+          "winter boots",
+          "hiking boots",
+          "knee high boots",
+          "combat boots"
+        ],
+        "synonym_counts": [
+          {
+            "term": "boot",
+            "product_count": 1992
+          },
+          {
+            "term": "boots",
+            "product_count": 1663
+          },
+          {
+            "term": "ankle boots",
+            "product_count": 188
+          },
+          {
+            "term": "rain boots",
+            "product_count": 102
+          },
+          {
+            "term": "winter boots",
+            "product_count": 71
+          },
+          {
+            "term": "hiking boots",
+            "product_count": 58
+          },
+          {
+            "term": "knee high boots",
+            "product_count": 51
+          },
+          {
+            "term": "combat boots",
+            "product_count": 39
+          }
+        ],
+        "product_count": 1992,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "sandals": {
+        "canonical": "sandals",
+        "synonyms": [
+          "sandals",
+          "flip flops",
+          "slides",
+          "strappy sandals",
+          "sport sandals"
+        ],
+        "synonym_counts": [
+          {
+            "term": "sandals",
+            "product_count": 1402
+          },
+          {
+            "term": "flip flops",
+            "product_count": 209
+          },
+          {
+            "term": "slides",
+            "product_count": 193
+          },
+          {
+            "term": "strappy sandals",
+            "product_count": 31
+          },
+          {
+            "term": "sport sandals",
+            "product_count": 25
+          }
+        ],
+        "product_count": 1402,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "heels": {
+        "canonical": "heels",
+        "synonyms": [
+          "heels",
+          "high heels",
+          "pumps",
+          "wedges",
+          "stilettos",
+          "kitten heels"
+        ],
+        "synonym_counts": [
+          {
+            "term": "heels",
+            "product_count": 1016
+          },
+          {
+            "term": "high heels",
+            "product_count": 403
+          },
+          {
+            "term": "pumps",
+            "product_count": 288
+          },
+          {
+            "term": "wedges",
+            "product_count": 164
+          },
+          {
+            "term": "stilettos",
+            "product_count": 28
+          },
+          {
+            "term": "kitten heels",
+            "product_count": 17
+          }
+        ],
+        "product_count": 1016,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "flats": {
+        "canonical": "flats",
+        "synonyms": [
+          "slippers",
+          "flats",
+          "loafers",
+          "clogs",
+          "ballet flats",
+          "moccasins",
+          "mules",
+          "oxfords",
+          "derbies"
+        ],
+        "synonym_counts": [
+          {
+            "term": "slippers",
+            "product_count": 706
+          },
+          {
+            "term": "flats",
+            "product_count": 465
+          },
+          {
+            "term": "loafers",
+            "product_count": 289
+          },
+          {
+            "term": "clogs",
+            "product_count": 133
+          },
+          {
+            "term": "ballet flats",
+            "product_count": 86
+          },
+          {
+            "term": "moccasins",
+            "product_count": 76
+          },
+          {
+            "term": "mules",
+            "product_count": 75
+          },
+          {
+            "term": "oxfords",
+            "product_count": 71
+          },
+          {
+            "term": "derbies",
+            "product_count": 1
+          }
+        ],
+        "product_count": 706,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      }
+    },
+    "price": {
+      "budget_max": {
+        "canonical": "budget_max",
+        "synonyms": [
+          "affordable",
+          "cheap",
+          "under $"
+        ],
+        "synonym_counts": [
+          {
+            "term": "affordable",
+            "product_count": 284
+          },
+          {
+            "term": "cheap",
+            "product_count": 117
+          },
+          {
+            "term": "under $",
+            "product_count": 11
+          }
+        ],
+        "product_count": 284,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "budget_min": {
+        "canonical": "budget_min",
+        "synonyms": [
+          "premium",
+          "high end",
+          "over $",
+          "more than $"
+        ],
+        "synonym_counts": [
+          {
+            "term": "premium",
+            "product_count": 1887
+          },
+          {
+            "term": "high end",
+            "product_count": 54
+          },
+          {
+            "term": "over $",
+            "product_count": 8
+          },
+          {
+            "term": "more than $",
+            "product_count": 1
+          }
+        ],
+        "product_count": 1887,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      }
+    },
+    "attribute_aliases": {
+      "material": {
+        "canonical": "material",
+        "synonyms": [
+          "material",
+          "fabric",
+          "made of",
+          "made from",
+          "textile",
+          "fabric type"
+        ],
+        "synonym_counts": [
+          {
+            "term": "material",
+            "product_count": 7997
+          },
+          {
+            "term": "fabric",
+            "product_count": 7271
+          },
+          {
+            "term": "made of",
+            "product_count": 4259
+          },
+          {
+            "term": "made from",
+            "product_count": 1194
+          },
+          {
+            "term": "textile",
+            "product_count": 1023
+          },
+          {
+            "term": "fabric type",
+            "product_count": 41
+          }
+        ],
+        "product_count": 7997,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "color": {
+        "canonical": "color",
+        "synonyms": [
+          "color",
+          "tone",
+          "shade",
+          "colour"
+        ],
+        "synonym_counts": [
+          {
+            "term": "color",
+            "product_count": 5191
+          },
+          {
+            "term": "tone",
+            "product_count": 849
+          },
+          {
+            "term": "shade",
+            "product_count": 150
+          },
+          {
+            "term": "colour",
+            "product_count": 116
+          }
+        ],
+        "product_count": 5191,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "size": {
+        "canonical": "size",
+        "synonyms": [
+          "size",
+          "fit",
+          "sizing",
+          "measurements",
+          "dimensions"
+        ],
+        "synonym_counts": [
+          {
+            "term": "size",
+            "product_count": 13655
+          },
+          {
+            "term": "fit",
+            "product_count": 9888
+          },
+          {
+            "term": "sizing",
+            "product_count": 800
+          },
+          {
+            "term": "measurements",
+            "product_count": 699
+          },
+          {
+            "term": "dimensions",
+            "product_count": 483
+          }
+        ],
+        "product_count": 13655,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "style": {
+        "canonical": "style",
+        "synonyms": [
+          "design",
+          "style",
+          "look",
+          "cut"
+        ],
+        "synonym_counts": [
+          {
+            "term": "design",
+            "product_count": 8263
+          },
+          {
+            "term": "style",
+            "product_count": 6407
+          },
+          {
+            "term": "look",
+            "product_count": 4240
+          },
+          {
+            "term": "cut",
+            "product_count": 1586
+          }
+        ],
+        "product_count": 8263,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "use_case": {
+        "canonical": "use_case",
+        "synonyms": [
+          "occasion",
+          "use",
+          "event",
+          "activity",
+          "purpose"
+        ],
+        "synonym_counts": [
+          {
+            "term": "occasion",
+            "product_count": 3738
+          },
+          {
+            "term": "use",
+            "product_count": 2829
+          },
+          {
+            "term": "event",
+            "product_count": 376
+          },
+          {
+            "term": "activity",
+            "product_count": 329
+          },
+          {
+            "term": "purpose",
+            "product_count": 168
+          }
+        ],
+        "product_count": 3738,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      },
+      "budget": {
+        "canonical": "budget",
+        "synonyms": [
+          "price",
+          "cost",
+          "budget",
+          "affordability"
+        ],
+        "synonym_counts": [
+          {
+            "term": "price",
+            "product_count": 427
+          },
+          {
+            "term": "cost",
+            "product_count": 73
+          },
+          {
+            "term": "budget",
+            "product_count": 12
+          },
+          {
+            "term": "affordability",
+            "product_count": 8
+          }
+        ],
+        "product_count": 427,
+        "sources": [
+          "seed",
+          "catalog"
+        ]
+      }
+    }
+  },
+  "composition_patterns_top": [
+    {
+      "pattern": "100% cotton",
+      "product_count": 1106
+    },
+    {
+      "pattern": "95% polyester",
+      "product_count": 784
+    },
+    {
+      "pattern": "100% polyester",
+      "product_count": 630
+    },
+    {
+      "pattern": "50% cotton",
+      "product_count": 627
+    },
+    {
+      "pattern": "90% cotton",
+      "product_count": 617
+    },
+    {
+      "pattern": "60% cotton",
+      "product_count": 465
+    },
+    {
+      "pattern": "95% cotton",
+      "product_count": 458
+    },
+    {
+      "pattern": "95% rayon",
+      "product_count": 366
+    },
+    {
+      "pattern": "90% polyester",
+      "product_count": 261
+    },
+    {
+      "pattern": "65% polyester",
+      "product_count": 240
+    },
+    {
+      "pattern": "65% cotton",
+      "product_count": 221
+    },
+    {
+      "pattern": "92% polyester",
+      "product_count": 206
+    },
+    {
+      "pattern": "80% cotton",
+      "product_count": 191
+    },
+    {
+      "pattern": "100% leather",
+      "product_count": 180
+    },
+    {
+      "pattern": "60% polyester",
+      "product_count": 161
+    },
+    {
+      "pattern": "50% polyester",
+      "product_count": 157
+    },
+    {
+      "pattern": "82% nylon",
+      "product_count": 151
+    },
+    {
+      "pattern": "98% cotton",
+      "product_count": 141
+    },
+    {
+      "pattern": "35% polyester",
+      "product_count": 129
+    },
+    {
+      "pattern": "80% nylon",
+      "product_count": 118
+    },
+    {
+      "pattern": "85% polyester",
+      "product_count": 117
+    },
+    {
+      "pattern": "88% polyester",
+      "product_count": 115
+    },
+    {
+      "pattern": "97% polyester",
+      "product_count": 111
+    },
+    {
+      "pattern": "55% cotton",
+      "product_count": 111
+    },
+    {
+      "pattern": "80% polyester",
+      "product_count": 102
+    },
+    {
+      "pattern": "35% cotton",
+      "product_count": 98
+    },
+    {
+      "pattern": "35% rayon",
+      "product_count": 95
+    },
+    {
+      "pattern": "100% nylon",
+      "product_count": 87
+    },
+    {
+      "pattern": "40% polyester",
+      "product_count": 85
+    },
+    {
+      "pattern": "97% cotton",
+      "product_count": 80
+    }
+  ],
+  "public_set_added_terms": {
+    "feature": 0,
+    "material": 44,
+    "style": 26,
+    "use_case": 3,
+    "color": 25,
+    "size": 14
+  }
+}

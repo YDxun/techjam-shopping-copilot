@@ -118,6 +118,11 @@ def _environment_overrides(
         "SAMPLE_LIMIT": ("sample_limit", _parse_int),
         "OUTPUT_PATH": ("output_path", _parse_text),
         "MAX_CONSTRAINT_ASKS": ("max_constraint_asks", _parse_int),
+        "LLM_INTENT_ENABLE": ("llm_intent_enabled", _parse_bool),
+        "LLM_CLARIFY_ENABLE": ("llm_clarify_enabled", _parse_bool),
+        "BLAIR_OFFLINE_EMBEDDING_PATH": ("blair_offline_embedding_path", _parse_text),
+        "BLAIR_QUERY_ENCODER_MODEL": ("blair_query_encoder_model", _parse_text),
+        "RERANKER_MODEL_ENABLE": ("reranker_model_enabled", _parse_bool),
     }
     for name, (field_name, parser) in flat_fields.items():
         value = _environment_value(env, name)
@@ -276,12 +281,17 @@ def _build_and_validate(data: Mapping[str, Any], selected_key: SecretValue) -> A
         top_k=_int_value(data.get("top_k"), "top_k"),
         embedding_model=_string_value(data.get("embedding_model"), "embedding_model"),
         reranker_model=_string_value(data.get("reranker_model"), "reranker_model"),
+        blair_offline_embedding_path=_string_value(data.get("blair_offline_embedding_path"), "blair_offline_embedding_path"),
+        blair_query_encoder_model=_string_value(data.get("blair_query_encoder_model"), "blair_query_encoder_model"),
+        reranker_model_enabled=_bool_value(data.get("reranker_model_enabled"), "reranker_model_enabled"),
         clarify_strategy=_string_value(data.get("clarify_strategy"), "clarify_strategy"),
         override_erase=_bool_value(data.get("override_erase"), "override_erase"),
         skip_data_verify=_bool_value(data.get("skip_data_verify"), "skip_data_verify"),
         sample_limit=_optional_int_value(data.get("sample_limit"), "sample_limit"),
         output_path=_string_value(data.get("output_path"), "output_path"),
         max_constraint_asks=_int_value(data.get("max_constraint_asks"), "max_constraint_asks"),
+        llm_intent_enabled=_bool_value(data.get("llm_intent_enabled"), "llm_intent_enabled"),
+        llm_clarify_enabled=_bool_value(data.get("llm_clarify_enabled"), "llm_clarify_enabled"),
         llm=llm,
     )
     _validate(config)
@@ -300,7 +310,7 @@ def _build_provider(data: Mapping[str, Any], field: str, api_key: SecretValue) -
 
 def _validate(config: AppConfig) -> None:
     _in(config.env_mode, "env_mode", {"dev", "submit"})
-    _in(config.retrieval_backend, "retrieval_backend", {"bm25", "dense", "hybrid"})
+    _in(config.retrieval_backend, "retrieval_backend", {"bm25", "dense", "hybrid", "auto"})
     _in(config.clarify_strategy, "clarify_strategy", {"other", "attribute"})
     _in(config.llm.provider, "llm.provider", {"none", "deepseek", "openai"})
     _positive(config.top_k, "top_k")

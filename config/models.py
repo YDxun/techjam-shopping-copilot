@@ -65,7 +65,7 @@ def _default_provider_configs() -> ProviderConfigs:
 @dataclass(frozen=True, repr=False)
 class LLMConfig:
     provider: str = "deepseek"
-    rerank_enabled: bool = True
+    rerank_enabled: bool = False
     rerank_candidates: int = 12
     health_check_enabled: bool = True
     connect_timeout_seconds: float = 3.0
@@ -111,10 +111,20 @@ class AppConfig:
     top_k: int = 10
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
     reranker_model: str = "BAAI/bge-reranker-v2-m3"
+    # BLaIR 稠密检索（Pillar I 通道3）：离线预计算商品向量 + 查询编码模型
+    # 推理阶段只编码用户查询；商品向量由 scripts/encode_catalog_blair.py 预先生成。
+    blair_offline_embedding_path: str = "data/offline_blair_embeds.npy"
+    blair_query_encoder_model: str = "hyp1231/blair-roberta-large"
     clarify_strategy: str = "other"
     override_erase: bool = False
     skip_data_verify: bool = False
     sample_limit: int | None = None
     output_path: str = "results.json"
     max_constraint_asks: int = 3
+    # 自主能力开关（默认全关）：LLM 用于意图识别 / 澄清决策；
+    # 由 runtime_controller 在探测到 LLM 实际可用时才真正启用（环境自适应）。
+    llm_intent_enabled: bool = False
+    llm_clarify_enabled: bool = False
+    # bge-reranker-v2-m3 交叉编码重排（默认关，环境自感知开启时可用才启用）
+    reranker_model_enabled: bool = False
     llm: LLMConfig = field(default_factory=LLMConfig)

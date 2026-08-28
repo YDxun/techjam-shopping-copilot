@@ -17,3 +17,7 @@ docs/participant_release_checklist.md
 tests/test_5core_builder.py
 tests/test_organizer_pipeline.py
 *.log
+
+# Generated BLaIR offline embeddings (large; regenerate via scripts/encode_catalog_blair.py)
+data/offline_blair_embeds*.npy
+data/offline_blair_embeds_info.json

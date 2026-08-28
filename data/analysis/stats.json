@@ -1,0 +1,163 @@
+{
+  "total_products": 50000,
+  "field_coverage": {
+    "parent_asin": 1.0,
+    "title": 1.0,
+    "features": 1.0,
+    "description": 1.0,
+    "price": 1.0,
+    "categories": 1.0,
+    "details": 1.0,
+    "average_rating": 1.0,
+    "rating_number": 1.0,
+    "store": 1.0
+  },
+  "missing_dirty": {
+    "price_missing": {
+      "count": 39473,
+      "ratio": 0.7895
+    },
+    "description_empty": {
+      "count": 23887,
+      "ratio": 0.4777
+    },
+    "features_empty": {
+      "count": 5219,
+      "ratio": 0.1044
+    },
+    "store_dirty": {
+      "count": 578,
+      "ratio": 0.0116
+    },
+    "details_empty": {
+      "count": 1670,
+      "ratio": 0.0334
+    },
+    "price_non_numeric": {
+      "count": 117,
+      "ratio": 0.0023
+    },
+    "store_generic": {
+      "count": 263,
+      "ratio": 0.0053
+    },
+    "title_empty": {
+      "count": 2,
+      "ratio": 0.0
+    },
+    "title_short_or_generic": {
+      "count": 3,
+      "ratio": 0.0001
+    },
+    "price_zero_or_neg": {
+      "count": 1,
+      "ratio": 0.0
+    }
+  },
+  "price_stats": {
+    "has_price_ratio": 0.2082,
+    "median": 22.88,
+    "p25": 14.99,
+    "p75": 39.99,
+    "min": 0.0,
+    "max": 4119.0
+  },
+  "category_top_level": {
+    "Clothing, Shoes & Jewelry": 49990,
+    "Shoe, Jewelry & Watch Accessories": 10
+  },
+  "category_second_level_top": {
+    "Women": 26406,
+    "Men": 9901,
+    "Novelty & More": 3376,
+    "Girls": 1716,
+    "Westlake": 1136,
+    "Boot Shop": 1131,
+    "Sport Specific Clothing": 1114,
+    "Boys": 1101,
+    "Baby": 1031,
+    "Luggage & Travel Gear": 976,
+    "Costumes & Accessories": 937,
+    "Shoe, Jewelry & Watch Accessories": 436,
+    "Toddler Test": 48,
+    "Kids Shoes Union": 36,
+    "Top 50 by Product Type": 32,
+    "Uniforms, Work & Safety": 31,
+    "Swimwear TEST": 29,
+    "Plus-Size Fashion": 29,
+    "Women's Plus-Size Apparel": 27,
+    "Customers' Most-Loved: Sweaters Under $30 pASIN Test": 24
+  },
+  "category_full_path_top": {
+    "Clothing, Shoes & Jewelry > Westlake": 1136,
+    "Clothing, Shoes & Jewelry > Novelty & More > Clothing > Novelty > Men > Shirts > T-Shirts": 1040,
+    "Clothing, Shoes & Jewelry > Women > Shoes": 765,
+    "Clothing, Shoes & Jewelry > Women > Clothing > Tops, Tees & Blouses > T-Shirts": 680,
+    "Clothing, Shoes & Jewelry > Women > Clothing > Tops, Tees & Blouses > Blouses & Button-Down Shirts": 672,
+    "Clothing, Shoes & Jewelry > Women > Clothing > Dresses > Casual": 659,
+    "Clothing, Shoes & Jewelry > Women > Shoes > Pumps": 630,
+    "Clothing, Shoes & Jewelry > Men > Watches > Wrist Watches": 577,
+    "Clothing, Shoes & Jewelry > Novelty & More > Clothing > Novelty > Women > Tops & Tees > T-Shirts": 574,
+    "Clothing, Shoes & Jewelry > Women > Shoes > Fashion Sneakers": 567,
+    "Clothing, Shoes & Jewelry > Women > Shoes > Sandals > Platforms & Wedges": 545,
+    "Clothing, Shoes & Jewelry > Women > Jewelry > Necklaces > Pendant Necklaces": 531,
+    "Clothing, Shoes & Jewelry > Women > Shoes > Flats": 520,
+    "Clothing, Shoes & Jewelry > Women > Clothing > Tops, Tees & Blouses > Tunics": 519,
+    "Clothing, Shoes & Jewelry > Women > Clothing > Dresses": 504,
+    "Clothing, Shoes & Jewelry > Women > Jewelry > Earrings > Drop & Dangle": 493,
+    "Clothing, Shoes & Jewelry > Men > Shoes > Fashion Sneakers": 450,
+    "Clothing, Shoes & Jewelry > Women > Watches > Wrist Watches": 449,
+    "Clothing, Shoes & Jewelry > Women > Shoes > Boots > Ankle & Bootie": 382,
+    "Clothing, Shoes & Jewelry > Women > Clothing > Tops, Tees & Blouses > Tanks & Camis": 381,
+    "Clothing, Shoes & Jewelry > Men > Shoes": 374,
+    "Clothing, Shoes & Jewelry > Women > Accessories > Sunglasses & Eyewear Accessories > Sunglasses": 352,
+    "Clothing, Shoes & Jewelry > Men > Shoes > Loafers & Slip-Ons": 344,
+    "Clothing, Shoes & Jewelry > Women > Shoes > Slippers": 343,
+    "Clothing, Shoes & Jewelry > Women > Clothing > Fashion Hoodies & Sweatshirts": 338
+  },
+  "rating_avg_hist": {
+    "4.0-4.5": 17104,
+    "4.5-5.0": 9542,
+    "5.0": 7034,
+    "3.5-4.0": 8881,
+    "3.0-3.5": 4542,
+    "<3.0": 2897
+  },
+  "rating_number_buckets": {
+    "0": 0,
+    "1-10": 23455,
+    "11-100": 17224,
+    "101-1000": 7789,
+    "1000+": 1532
+  },
+  "rating_avg_median": 4.2,
+  "store_top_20": {
+    "Nike": 564,
+    "adidas": 438,
+    "Skechers": 375,
+    "(empty)": 314,
+    "PUMA": 265,
+    "Amazon Collection": 245,
+    "Clarks": 239,
+    "Calvin Klein": 224,
+    "ASICS": 221,
+    "NINE WEST": 216,
+    "Columbia": 202,
+    "Under Armour": 199,
+    "Generic": 197,
+    "Disney": 175,
+    "Reebok": 149,
+    "Levi's": 137,
+    "Amazon Essentials": 136,
+    "Crocs": 131,
+    "New Balance": 121,
+    "UGG": 119
+  },
+  "dirty_store_examples": {
+    "generic": 198,
+    "unknown": 63,
+    "none": 1,
+    "na": 1
+  },
+  "description_empty_ratio": 0.4777
+}

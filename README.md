@@ -1,4 +1,4 @@
-﻿# TechJam2026 购物副驾 · AI 对话式搜索与推荐 Agent
+# TechJam2026 购物副驾 · AI 对话式搜索与推荐 Agent
 
 基于 TechJam2026「购物副驾：AI 对话式搜索与推荐」竞赛冻结工具包（Amazon Reviews 2023
 `Clothing_Shoes_and_Jewelry`，50,000 商品 / 200 公开开发会话 / 800 私有评测会话）的完整工程实现。
@@ -26,10 +26,15 @@
   - BM25 路由：SQLite FTS5 多字段加权（title/features 高权重）；
   - 类别路由：品类域命中过滤；
   - 硬约束 AND 路由：对 hard 约束做索引级交集 + 品类折入 SQL 的低权重召回补齐（防高频词把目标挤出池）；
-  - 稠密向量路由（可选，`RETRIEVAL_BACKEND=dense/hybrid`）：本地 sentence-transformers，未安装自动降级。
+  - **BLaIR 稠密向量路由**（`RETRIEVAL_BACKEND=dense/hybrid`，推荐）：商品向量由
+    `scripts/encode_catalog_blair.py` **离线预计算**（`hyp1231/blair-roberta-large`，CLS pooling + L2，
+    产物 `data/offline_blair_embeds.npy`，维度 1024）；推理阶段只编码用户查询文本
+    （`utils/blair.py`），与全目录向量做点积召回。编码器（transformers）或离线 npy 任一缺失 → 自动回退 BM25。
   - 融合：Reciprocal Rank Fusion（RRF）。
 - **重排序** `agent/reranker.py`：规则融合打分（约束覆盖度 0.5 / 品类 0.25 / RRF 0.15 / 热度 0.05 / 画像 0.05）
-  + 可选的统一 LLM 语义重排（`LLM_PROVIDER=deepseek/openai`）；无 selected key、`LLM_PROVIDER=none` 或 `LLM_RERANK=0` 时纯规则排序，完全离线可跑。
+  + 可选的统一 LLM 语义重排（`LLM_PROVIDER=deepseek/openai`）；+ 可选本地 **bge-reranker-v2-m3**
+  交叉编码精排（`RERANKER_MODEL_ENABLE=1` 且 FlagEmbedding 可用，失败自动回退规则排序）；
+  无 selected key、`LLM_PROVIDER=none` 或 `LLM_RERANK=0` 时纯规则排序，完全离线可跑。
 
 ### 支柱 II｜对话策略：多轮场景演进
 - **动态状态机** `agent/dialogue_state_machine.py`：
@@ -65,6 +70,12 @@ pip install -r requirements.txt
 
 # 可选的本地检索增强（未安装会自动降级）
 # pip install sentence-transformers numpy torch
+# BLaIR 稠密检索（推荐；离线编码 + 查询编码，CPU 可跑）：
+#   pip install "transformers>=4.40" torch
+#   python scripts/encode_catalog_blair.py          # 一次性预计算 50k 商品向量（CPU 约 6h）
+# bge-reranker-v2-m3 本地安装配置（可选，交叉编码精排）：
+#   pip install "FlagEmbedding>=1.3" "huggingface-hub>=0.20"
+#   python -c "from huggingface_hub import snapshot_download; snapshot_download('BAAI/bge-reranker-v2-m3')"
 ```
 
 数据集使用竞赛冻结工具包内的 `data/catalog.jsonl`（50,000 行）与 `data/public_set.jsonl`（200 行）。首次运行会自动做 SHA256 完整性校验（`utils/data_verify.py`）；`SKIP_DATA_VERIFY=1` 可跳过该校验。
@@ -84,7 +95,7 @@ pip install -r requirements.txt
 |---|---:|---|
 | `ENV_MODE` | `dev` | 本地开发或 `submit` 提交模拟；submit 模式强制离线约束 |
 | `LLM_BACKEND` | 未设置 | 兼容映射：`none/local → none`，`openai → openai`；若设置 `LLM_PROVIDER` 则后者优先 |
-| `RETRIEVAL_BACKEND` | `bm25` | `bm25` / `dense` / `hybrid` |
+| `RETRIEVAL_BACKEND` | `bm25` | `bm25` / `dense` / `hybrid` / `auto`（auto：稠密可用→hybrid，否则→bm25） |
 | `TOP_K` | `10` | 推荐数量 K |
 | `APP_CONFIG_PATH` | `config/default.json` | 非机密 JSON 配置文件的位置 |
 | `DEEPSEEK_API_KEY` / `OPENAI_API_KEY` | 空 | 仅 selected provider 的匹配 key 生效；未设置时不会发起网络请求 |
@@ -97,6 +108,9 @@ pip install -r requirements.txt
 | `LLM_MAX_RETRIES` | `2` | 可重试探测的额外重试次数（启动探测最多 3 次请求） |
 | `LLM_RETRY_BASE_DELAY_SECONDS` / `LLM_RETRY_MAX_DELAY_SECONDS` | `0.5` / `1.5` | 重试退避范围（秒） |
 | `LLM_CIRCUIT_BREAKER_FAILURE_THRESHOLD` | `2` | 运行期失败后打开断路器的阈值 |
+| `LLM_INTENT_ENABLE` | `0` | 意图识别使用 LLM（默认关；探测到 LLM 可用才真正启用，失败回退规则） |
+| `LLM_CLARIFY_ENABLE` | `0` | 澄清决策使用 LLM（默认关；同上） |
+| `CAPABILITY_NETWORK_PROBE` | `0` | LLM 不可用时是否额外探测外网连通性（1=启用，httpx 2s） |
 | `EMBEDDING_MODEL` / `RERANKER_MODEL` | 见 `config/default.json` | 可选检索与重排模型 |
 | `CLARIFY_STRATEGY` / `OVERRIDE_ERASE` / `LLM_RERANK` | `other` / `0` / `1` | 对话策略；`LLM_RERANK=0` 强制确定性规则重排 |
 | `SAMPLE_LIMIT` / `SKIP_DATA_VERIFY` / `OUTPUT_PATH` | 空 / `0` / `results.json` | 冒烟范围、数据校验和结果路径 |
@@ -152,6 +166,31 @@ When an available client is selected, Reranker sends at most 12 candidates by de
 Usage is split deliberately: startup health-check tokens accumulate on the shared client, while each Agent response reports only that turn's reranking prompt/completion tokens. The former Reranker-owned OpenAI loader has been removed: create and initialize the client once at runner startup, then inject it into Agent (and therefore Reranker).
 
 
+### 环境自感知与自主决策（团队特色）
+
+Agent 启动时执行一次**能力探测**（`agent/capability_probe.py`），随后由**自主决策控制器**
+（`agent/runtime_controller.py`）根据探测结果 + 配置决定各环节执行方式，并在启动时打印：
+
+```
+[capability] device=cpu llm=deepseek:disabled dense=yes reranker=yes network=no
+[decisions ] retrieval=bm25 intent=rule clarify=rule rerank=rule reranker_model=no
+```
+
+- **探测项**：设备（cuda/cpu）、LLM 可用性（真实健康检查，无 key 不发网络请求）、
+  稠密检索（BLaIR 查询编码器 transformers/sentence-transformers 可导入 **且** 离线商品向量 npy 存在）、
+  交叉编码重排（FlagEmbedding 可导入 + bge-reranker-v2-m3 已缓存/可下载）、可选外网探测。
+- **自主决策原则**：所有 LLM/重排能力开关**默认关**；配置开启 + 探测可用 → 启用；
+  配置开启但环境不可用 → **自动回退规则**（意图识别/澄清/重排/稠密检索全部可回退）；
+  `RETRIEVAL_BACKEND=auto` → 稠密可用用 hybrid，否则 bm25。
+- **BLaIR 稠密通道的鲁棒性（环境自感知）**：
+  - 离线 npy 缺失 / 维度不符 → `BlairEmbeddingStore.load` 返回 None → 稠密通道禁用；
+  - 查询编码器加载失败 → 自动尝试 sentence-transformers 兜底，仍失败则禁用；
+  - 任意异常都被 `_route_dense` 捕获，只影响稠密路由，不阻塞 BM25/类别/约束路由主流程。
+- **LLM 意图识别**（`agent/llm_intent.py`）：LLM 判定 buying/browsing + 结构化槽位补充，
+  严格 JSON 解析，失败/非法输出一律回退规则；**LLM 抽取的约束只作 soft 检索词**（防幻觉污染 hard 过滤）。
+- **LLM 澄清决策**：LLM 决定 `ask_attribute` + 自然语言问题，非法属性回退规则策略。
+- 超时（connect 3s / total 8s）与熔断（2 次失败）由统一 LLM 客户端保证，LLM 失效不阻塞主流程。
+
 ## 4. 本地复现测试
 
 ```bash
@@ -164,8 +203,17 @@ SAMPLE_LIMIT=10 python run_local_eval.py        # Linux/macOS
 $env:SAMPLE_LIMIT="10"; python run_local_eval.py  # Windows PowerShell
 
 # ③ 切换检索后端 / 澄清策略
+# 先离线预计算 BLaIR 商品向量（一次即可）：
+#   python scripts/encode_catalog_blair.py --limit 2000   # 冒烟（验证维度/格式）
+#   python scripts/encode_catalog_blair.py                # 全量 50k（CPU 约 6h，支持 --resume 断点续跑）
+RETRIEVAL_BACKEND=auto python run_local_eval.py   # 稠密可用→hybrid，否则 bm25（环境自感知）
 RETRIEVAL_BACKEND=hybrid python run_local_eval.py
 CLARIFY_STRATEGY=attribute python run_local_eval.py
+
+# ③b 启用 bge-reranker-v2-m3 交叉编码精排（需先安装并下载模型）：
+RERANKER_MODEL_ENABLE=1 python run_local_eval.py
+# ③c 独立检索管线演示（第4-6步完整链路：BLaIR 稠密 + 加权 BM25 + RRF + bge 重排）：
+python retrieval_pipeline/test_pipeline.py
 
 # ④ 不含 key 的离线模式，以及 provider-specific 在线重排
 LLM_PROVIDER=none python run_local_eval.py
@@ -191,13 +239,16 @@ python -m unittest discover tests -v
    （标签文本与约束文本重叠率 0–12%），故画像仅作 5% 弱先验。若私有集画像更有区分度，可重新调权。
 3. **本质困难样本**：仍有 1/200 会话因约束过于泛化（265 个商品满足全部约束）无法区分；
    这类样本需标题级语义信号才能解决。
-4. **稠密/LLM 路径未在本次环境验证**：sentence-transformers / openai 为可选增强，
-   已实现优雅降级，但端到端收益（HR/MRR）尚未实测。
+4. **稠密路径端到端收益待实测**：BLaIR 稠密通道已打通并验证（CLS pooling + 离线 npy + 点积），
+   bge-reranker-v2-m3 已本地安装配置（CPU 加载评分正常），但全量 50k 商品向量编码（CPU 约 6h）
+   与 hybrid/重排端到端 A/B（HR/MRR 边际收益）尚未在本次会话跑完。
 5. **评估耗时**：50k 商品 FTS 建索引约 10s，200 会话约 30s；未做极端低延迟优化。
 
 ### 更多时间的迭代方向
-- **语义检索实证**：安装 sentence-transformers 后跑 dense/hybrid，A/B 对比 MRR/HR 边际收益；
-  用 `BAAI/bge-reranker-v2-m3` 或电商专用 `RexReranker` 做第二级精排。
+- **稠密/重排实证**：全量 50k BLaIR 向量编码完成后，跑 `RETRIEVAL_BACKEND=hybrid` +
+  `RERANKER_MODEL_ENABLE=1` 的 A/B，对比 MRR/HR 边际收益；可再试电商专用 `RexReranker-large`。
+- **BLaIR 文本模板调优**：当前剔除 description/details（数据分析结论），可 A/B 加入带权描述字段
+  观察语义召回变化；也可尝试 `hyp1231/blair-roberta-base`（4 倍速，768 维）做速度/质量权衡。
 - **离线策略进化**：利用确定性模拟器做"对弈式"自动调参（BM25 字段权重、RRF 常数、澄清轮数、
   打分权重），在留出子集上验证泛化，避免过拟合公开集。
 - **解析鲁棒性**：对 paraphrasing 变体做对抗测试，扩展槽位提取模式（材质/颜色/尺码/价格正则）。

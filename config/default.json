@@ -4,15 +4,19 @@
   "top_k": 10,
   "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
   "reranker_model": "BAAI/bge-reranker-v2-m3",
+  "blair_offline_embedding_path": "data/offline_blair_embeds.npy",
+  "blair_query_encoder_model": "hyp1231/blair-roberta-large",
   "clarify_strategy": "other",
   "override_erase": false,
   "skip_data_verify": false,
   "sample_limit": null,
   "output_path": "results.json",
   "max_constraint_asks": 3,
+  "llm_intent_enabled": false,
+  "llm_clarify_enabled": false,
   "llm": {
     "provider": "deepseek",
-    "rerank_enabled": true,
+    "rerank_enabled": false,
     "rerank_candidates": 12,
     "health_check_enabled": true,
     "connect_timeout_seconds": 3.0,
@@ -41,5 +45,6 @@
         "supports_temperature": true
       }
     }
-  }
+  },
+  "reranker_model_enabled": false
 }

@@ -29,6 +29,7 @@ W_CATEGORY = 0.25
 W_RRF = 0.15
 W_POPULARITY = 0.05
 W_PROFILE = 0.05
+BGE_RERANK_CANDIDATES = 50   # bge 交叉编码重排候选规模（与检索管线 RERANK_CANDIDATES_NORMAL 一致）
 
 
 class Reranker:
@@ -39,10 +40,12 @@ class Reranker:
         self.env = env or EnvConfig.from_env()
         self.llm_client = llm_client if llm_client is not None else DisabledLLMClient()
         self.last_usage: dict = {"prompt_tokens": 0, "completion_tokens": 0}
+        self._bge = None          # 惰性加载的 bge-reranker 实例（None=未加载/加载失败）
 
     # ------------------------------------------------------------------
     def rerank(self, retriever: HybridRetriever, candidates: list[dict],
-               state: DialogueState, route: IntentRoute, top_k: int, mode: str) -> list[str]:
+               state: DialogueState, route: IntentRoute, top_k: int, mode: str,
+               use_reranker_model: bool = False) -> list[str]:
         self.last_usage = {"prompt_tokens": 0, "completion_tokens": 0}
         if not candidates:
             return []
@@ -68,6 +71,11 @@ class Reranker:
             llm_order = self._llm_rerank(order, retriever, state)
             if llm_order:
                 order = llm_order
+        # 可选 bge-reranker-v2-m3 交叉编码重排（本地模型，环境自感知；失败自动回退）
+        if use_reranker_model and len(order) >= 2:
+            bge_order = self._bge_rerank(order, retriever, state, route)
+            if bge_order:
+                order = bge_order
         return order[:top_k]
 
     # ------------------------------------------------------------------
@@ -146,6 +154,66 @@ class Reranker:
             return 0.0
         hits = sum(1 for t in tags if t.lower() in text)
         return min(1.0, hits * 0.25)
+
+    # ------------------------------------------------------------------
+    # 可选 bge-reranker-v2-m3 交叉编码重排（本地模型；失败自动回退规则排序）
+    # ------------------------------------------------------------------
+    def _ensure_bge(self):
+        """惰性加载 FlagReranker（BAAI/bge-reranker-v2-m3），device 自动 cuda/cpu。"""
+        if self._bge is not None:
+            return self._bge
+        try:
+            from FlagEmbedding import FlagReranker
+            import torch
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            self._bge = FlagReranker(self.env.reranker_model,
+                                     use_fp16=(device == "cuda"), device=device)
+            logger.info("[reranker] bge-reranker loaded: %s on %s", self.env.reranker_model, device)
+        except Exception as exc:
+            logger.warning("[reranker] bge-reranker 不可用（%s）→ 不使用模型重排", exc)
+            self._bge = None
+        return self._bge
+
+    def _bge_rerank(self, order: list[str], retriever: HybridRetriever,
+                    state: DialogueState, route: IntentRoute) -> list[str]:
+        """用 bge-reranker-v2-m3 对 Top-BGE_RERANK_CANDIDATES 精排；异常回退原顺序。"""
+        model = self._ensure_bge()
+        if model is None:
+            return []
+        submitted = order[:BGE_RERANK_CANDIDATES]
+        query = self._bge_query_text(state, route)
+        pairs: list[tuple[str, str]] = []
+        for asin in submitted:
+            product = retriever.product(asin) or {}
+            pairs.append((query, self._bge_product_text(product)))
+        if not any(p[1] for p in pairs):
+            return []
+        try:
+            scores = model.compute_score(pairs, normalize=True)
+            if isinstance(scores, float):
+                scores = [scores]
+            ranked = [a for _, a in sorted(zip(scores, submitted), key=lambda x: x[0], reverse=True)]
+            return ranked + [a for a in order if a not in ranked]
+        except Exception as exc:  # OOM / 其它异常 → 降级
+            logger.warning("[reranker] bge rerank failed, fallback to rule order: %s", exc)
+            return []
+
+    @staticmethod
+    def _bge_query_text(state: DialogueState, route: IntentRoute) -> str:
+        parts = [c.value for c in state.active]
+        if route.query_terms:
+            parts.append(" ".join(route.query_terms))
+        return " ".join(parts).strip() or "clothing"
+
+    @staticmethod
+    def _bge_product_text(product: dict) -> str:
+        parts = [str(product.get("title") or "")]
+        features = product.get("features") or []
+        if isinstance(features, list):
+            parts.extend(str(f) for f in features[:5])
+        else:
+            parts.append(str(features))
+        return " | ".join(p for p in parts if p)
 
     # ------------------------------------------------------------------
     # 可选 LLM 语义重排（Pillar I：共享客户端；无网络/无 key 时自动回退）

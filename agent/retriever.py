@@ -4,8 +4,9 @@
 - 类别路由：品类词在 category 字段中的命中过滤。
 - 硬约束路由：对 hard 约束 token 组做 FTS "AND" 查询（索引级交集），
   保证"必中"候选一定进入池子（提升 HitRate@K）。
-- 稠密路由：可选 sentence-transformers 本地 embedding（CPU 可跑）；
-  未安装/不可用时自动降级为 BM25，保证脱离外部 API 可运行。
+- 稠密路由：BLaIR（hyp1231/blair-roberta-large）离线预计算商品向量 npy +
+  推理阶段只编码用户查询（utils/blair.py，CLS pooling + L2 + 点积）；
+  离线 npy 缺失 / 编码器不可用 / 任何异常 → 自动回退 BM25（环境自感知）。
 - 融合：Reciprocal Rank Fusion（RRF）+ 并集候选池，交由重排模块精排。
 """
 from __future__ import annotations
@@ -19,6 +20,7 @@ from typing import Any
 
 from agent.intent_router import IntentRoute
 from config.env_config import EnvConfig
+from utils import blair as blair_utils
 from utils import session_utils as su
 
 logger = logging.getLogger(__name__)
@@ -27,10 +29,16 @@ logger = logging.getLogger(__name__)
 class HybridRetriever:
     """混合检索器：索引构建一次，每轮多路由召回 + RRF 融合。"""
 
-    def __init__(self, catalog_path: str | Path, env: EnvConfig | None = None) -> None:
+    def __init__(self, catalog_path: str | Path, env: EnvConfig | None = None,
+                 backend: str | None = None) -> None:
         self.catalog_path = Path(catalog_path)
         self.env = env or EnvConfig.from_env()
-        self.backend = self.env.retrieval_backend
+        # backend 优先取显式传入（runtime_controller 已把 auto 解析为 hybrid/bm25）
+        self.backend = backend or self.env.retrieval_backend
+        if self.backend == "auto":
+            self.backend = "hybrid" if self._dense_backend_available() else "bm25"
+        elif self.backend in ("dense", "hybrid") and not self._dense_backend_available():
+            self.backend = "bm25"   # 环境自适应：BLaIR 稠密不可用自动回退 BM25
         self._conn = sqlite3.connect(":memory:")
         self._products: dict[str, dict] = {}
         self._text_lower: dict[str, str] = {}
@@ -70,6 +78,27 @@ class HybridRetriever:
             cur.executemany("INSERT INTO products VALUES (?,?,?,?,?,?,?)", batch)
         self._conn.commit()
         logger.info("[retriever] indexed %d products (backend=%s)", len(self._products), self.backend)
+
+    @staticmethod
+    def _spec_available(name: str) -> bool:
+        import importlib.util
+        return importlib.util.find_spec(name) is not None
+
+
+    def _dense_backend_available(self) -> bool:
+        """环境自感知：BLaIR 稠密通道是否真正可用（编码器可导入 + 离线 npy 存在）。
+
+        查询编码模型可用（transformers/sentence-transformers 任一）且离线商品向量
+        文件存在 → 稠密通道可用；否则回退 BM25。不做模型实际加载（避免启动开销，
+        实际加载失败仍由 _ensure_dense 兜底回退）。
+        """
+        enc_ok = (self._spec_available("transformers")
+                  or self._spec_available("sentence_transformers"))
+        if not enc_ok:
+            return False
+        path = Path(self.env.blair_offline_embedding_path)
+        emb = path if path.suffix == ".npy" else path.with_suffix(".npy")
+        return emb.exists()
 
     @staticmethod
     def _text(value: Any) -> str:
@@ -177,40 +206,45 @@ class HybridRetriever:
 
     # -- 路由 4：稠密向量（可选，离线本地 embedding） -----------------------
     def _route_dense(self, route: IntentRoute, pool: dict, top_k: int) -> None:
-        model, matrix, ids = self._ensure_dense()
-        if model is None:
+        encoder, store = self._ensure_dense()
+        if encoder is None or store is None:
             return
         query = " ".join([*route.category_tokens, *route.query_terms]) or "clothing"
         try:
-            qv = model.encode([query], normalize_embeddings=True)[0]
+            qv = encoder.encode(query)
+            if qv is None:
+                return
             import numpy as np  # 局部导入，避免核心路径依赖
-            sims = matrix @ qv
+            sims = store.matrix @ qv
             order = np.argsort(-sims)[:top_k]
             for rank, idx in enumerate(order, start=1):
-                self._accumulate(pool, ids[int(idx)], float(sims[idx]) / (60.0 + rank), "dense")
-        except Exception as exc:  # 稠密路由任何异常都不影响主流程
+                self._accumulate(pool, store.asins[int(idx)], float(sims[idx]) / (60.0 + rank), "dense")
+        except Exception as exc:  # 稠密路由任何异常都不影响主流程（环境自感知回退）
             logger.warning("[retriever] dense route failed, fallback to bm25: %s", exc)
 
     def _ensure_dense(self):
-        """惰性加载 embedding 模型 + 全目录向量矩阵；失败返回 (None,None,None)。"""
+        """惰性加载 BLaIR 查询编码器 + 离线商品向量 npy；失败返回 (None,None)。
+
+        商品向量是 scripts/encode_catalog_blair.py 的离线产物，推理阶段只编码查询文本；
+        文件缺失 / 模型不可用 → (None, None)，稠密路由自动跳过（回退 BM25）。
+        """
         if self._dense is not None:
             return self._dense
-        try:
-            from sentence_transformers import SentenceTransformer
-            import numpy as np
-            model = SentenceTransformer(self.env.embedding_model)
-            ids = list(self._products.keys())
-            texts = [self._text_lower[a][:512] for a in ids]
-            matrix = model.encode(texts, normalize_embeddings=True, batch_size=64, show_progress_bar=False)
-            matrix = np.asarray(matrix, dtype=np.float32)
-            self._dense = (model, matrix, ids)
-            logger.info("[retriever] dense route ready: %s (%d dims)", self.env.embedding_model, matrix.shape[1])
-        except Exception as exc:
-            logger.warning("[retriever] dense backend unavailable (%s); using bm25/category only", exc)
-            self._dense = (None, None, None)
+        store = blair_utils.BlairEmbeddingStore.load(self.env.blair_offline_embedding_path)
+        encoder = None
+        if store is not None:
+            encoder = blair_utils.BlairQueryEncoder(self.env.blair_query_encoder_model)
+            if not encoder.ready:
+                logger.warning("[retriever] BLaIR 查询编码器不可用；稠密通道禁用（回退 BM25）")
+                encoder = None
+        if encoder is None or store is None:
+            self._dense = (None, None)
+        else:
+            self._dense = (encoder, store)
+            logger.info("[retriever] dense route ready: %s (%d dims)",
+                        self.env.blair_query_encoder_model, store.dim)
         return self._dense
 
-    # -- 融合工具 ----------------------------------------------------------
     @staticmethod
     def _accumulate(pool: dict, asin: str, score: float, source: str) -> None:
         entry = pool.setdefault(asin, {"parent_asin": asin, "rrf": 0.0, "routes": set()})

@@ -72,12 +72,24 @@ class EnvConfig:
         return self._app_config.reranker_model
 
     @property
+    def blair_offline_embedding_path(self) -> str:
+        return self._app_config.blair_offline_embedding_path
+
+    @property
+    def blair_query_encoder_model(self) -> str:
+        return self._app_config.blair_query_encoder_model
+
+    @property
     def clarify_strategy(self) -> str:
         return self._app_config.clarify_strategy
 
     @property
     def llm_rerank(self) -> bool:
         return self.llm.rerank_enabled
+
+    @property
+    def reranker_model_enabled(self) -> bool:
+        return self._app_config.reranker_model_enabled
 
     @property
     def override_erase(self) -> bool:
@@ -102,6 +114,14 @@ class EnvConfig:
     @property
     def max_constraint_asks(self) -> int:
         return self._app_config.max_constraint_asks
+
+    @property
+    def llm_intent_enabled(self) -> bool:
+        return self._app_config.llm_intent_enabled
+
+    @property
+    def llm_clarify_enabled(self) -> bool:
+        return self._app_config.llm_clarify_enabled
 
     @property
     def offline(self) -> bool:

@@ -210,7 +210,7 @@ RETRIEVAL_BACKEND=auto python run_local_eval.py   # 稠密可用→hybrid，否�
 RETRIEVAL_BACKEND=hybrid python run_local_eval.py
 CLARIFY_STRATEGY=attribute python run_local_eval.py
 
-# ③b 启用 bge-reranker-v2-m3 交叉编码精排（需先安装并下载模型）：
+# ③b 启用 bge-reranker-v2-m3 交叉编码精排（实验性：A/B 显示纯语义重排会掉分，默认关闭）
 RERANKER_MODEL_ENABLE=1 python run_local_eval.py
 # ③c 独立检索管线演示（第4-6步完整链路：BLaIR 稠密 + 加权 BM25 + RRF + bge 重排）：
 python retrieval_pipeline/test_pipeline.py
@@ -239,14 +239,21 @@ python -m unittest discover tests -v
    （标签文本与约束文本重叠率 0–12%），故画像仅作 5% 弱先验。若私有集画像更有区分度，可重新调权。
 3. **本质困难样本**：仍有 1/200 会话因约束过于泛化（265 个商品满足全部约束）无法区分；
    这类样本需标题级语义信号才能解决。
-4. **稠密路径端到端收益待实测**：BLaIR 稠密通道已打通并验证（CLS pooling + 离线 npy + 点积），
-   bge-reranker-v2-m3 已本地安装配置（CPU 加载评分正常），但全量 50k 商品向量编码（CPU 约 6h）
-   与 hybrid/重排端到端 A/B（HR/MRR 边际收益）尚未在本次会话跑完。
+4. **稠密/重排 A/B 结论（已实测，全量 50k BLaIR 向量 + GPU 编码）**：
+   - `RETRIEVAL_BACKEND=hybrid`（BM25+BLaIR 稠密）：**0.99 HR / 0.6115 MRR / 0.8622 TS**，
+     MRR 提升 +0.012，HR 微降 1 例——稠密通道把命中商品推得更靠前（MRR 收益），
+     但极少数高频约束场景下 RRF 融合会把目标挤出 Top-10（HR 代价）；
+   - `hybrid + RERANKER_MODEL_ENABLE=1`（bge-reranker-v2-m3 精排）：**0.92 HR / 0.5163 MRR / 0.7798 TS**，
+     显著下降——bge 交叉编码按纯语义相关性重排，与官方确定性评估器的信息揭示机制不匹配，
+     会推掉规则排序选中的目标商品，故**默认关闭**，仅作实验性开关保留。
 5. **评估耗时**：50k 商品 FTS 建索引约 10s，200 会话约 30s；未做极端低延迟优化。
 
 ### 更多时间的迭代方向
-- **稠密/重排实证**：全量 50k BLaIR 向量编码完成后，跑 `RETRIEVAL_BACKEND=hybrid` +
-  `RERANKER_MODEL_ENABLE=1` 的 A/B，对比 MRR/HR 边际收益；可再试电商专用 `RexReranker-large`。
+- **bge 重排改进**：当前 bge 直接覆盖规则排序会掉分（纯语义与评估器机制不匹配）。
+  可改为「bge 仅在规则分接近的候选内部做 tie-break / 或仅对浏览轨道生效」，
+  或对 bge 打分与规则分做加权融合（如 0.3×bge + 0.7×rule），避免覆盖已对齐的规则信号。
+- **稠密路由调优**：hybrid 的 HR 微降源于 RRF 融合把目标挤出 Top-10，可降低稠密通道 α 权重
+  或对稠密候选做约束覆盖回验后再融合。
 - **BLaIR 文本模板调优**：当前剔除 description/details（数据分析结论），可 A/B 加入带权描述字段
   观察语义召回变化；也可尝试 `hyp1231/blair-roberta-base`（4 倍速，768 维）做速度/质量权衡。
 - **离线策略进化**：利用确定性模拟器做"对弈式"自动调参（BM25 字段权重、RRF 常数、澄清轮数、

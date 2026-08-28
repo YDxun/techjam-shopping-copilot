@@ -14,7 +14,7 @@ import json
 import logging
 import math
 
-from agent.dialogue_state_machine import DialogueState
+from agent.dialogue.models import RecommendationContext
 from agent.intent_router import IntentRoute
 from agent.retriever import HybridRetriever
 from config.env_config import EnvConfig
@@ -42,7 +42,7 @@ class Reranker:
 
     # ------------------------------------------------------------------
     def rerank(self, retriever: HybridRetriever, candidates: list[dict],
-               state: DialogueState, route: IntentRoute, top_k: int, mode: str) -> list[str]:
+               state: RecommendationContext, route: IntentRoute, top_k: int, mode: str) -> list[str]:
         self.last_usage = {"prompt_tokens": 0, "completion_tokens": 0}
         if not candidates:
             return []
@@ -71,7 +71,7 @@ class Reranker:
         return order[:top_k]
 
     # ------------------------------------------------------------------
-    def _rule_score(self, cand: dict, state: DialogueState, route: IntentRoute,
+    def _rule_score(self, cand: dict, state: RecommendationContext, route: IntentRoute,
                     product: dict, text: str, cat: str, max_rrf: float, mode: str) -> float:
         # 1) 约束覆盖度（核心强信号，Pillar I 硬约束过滤 + Pillar II 槽位）
         hard = state.hard
@@ -140,7 +140,7 @@ class Reranker:
         return min(1.0, frac + title_bonus)
 
     @staticmethod
-    def _profile_match(state: DialogueState, text: str) -> float:
+    def _profile_match(state: RecommendationContext, text: str) -> float:
         tags = [t for t in (state.user_profile or {}).get("preference_tags", []) if isinstance(t, str)]
         if not tags:
             return 0.0
@@ -151,7 +151,7 @@ class Reranker:
     # 可选 LLM 语义重排（Pillar I：共享客户端；无网络/无 key 时自动回退）
     # ------------------------------------------------------------------
     def _llm_rerank(self, order: list[str], retriever: HybridRetriever,
-                    state: DialogueState) -> list[str]:
+                    state: RecommendationContext) -> list[str]:
         submitted = order[:self.env.llm.rerank_candidates]
         compact_candidates = [self._compact_candidate(retriever.product(asin) or {}, asin)
                               for asin in submitted]

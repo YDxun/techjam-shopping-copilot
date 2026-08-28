@@ -86,6 +86,14 @@ class RecognizerTest(unittest.TestCase):
         self.assertEqual(result.source, RecognitionSource.RULE)
         self.assertEqual(client.calls, [])
 
+    def test_attribute_specific_no_additional_preference_is_not_global_stop(self) -> None:
+        result = self.rules.recognize(
+            self.request("I don't have an additional preference for brand.")
+        )
+
+        self.assertEqual(result.dialogue_act, DialogueAct.NO_PREFERENCE)
+        self.assertEqual(result.constraint_operations[0].attribute, "brand")
+
     def test_valid_llm_json_replaces_the_complete_rule_result(self) -> None:
         client = FakeLLMClient(
             successful_result(

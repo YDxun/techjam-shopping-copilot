@@ -220,9 +220,12 @@ class HybridRetriever:
     def product(self, asin: str) -> dict | None:
         return self._products.get(asin)
 
+    def iter_products(self) -> tuple[dict, ...]:
+        """Expose a read-only snapshot for dialogue question statistics."""
+        return tuple(self._products.values())
+
     def text_lower(self, asin: str) -> str:
         return self._text_lower.get(asin, "")
 
     def close(self) -> None:
         self._conn.close()
-

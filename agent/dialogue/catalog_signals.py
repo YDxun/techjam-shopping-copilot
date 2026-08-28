@@ -36,6 +36,18 @@ COLORS = (
     "yellow",
     "orange",
 )
+ANSWERABILITY_PRIORS = {
+    "material": 0.90,
+    "feature": 0.95,
+    "color": 0.80,
+    "size": 0.65,
+    "style": 0.75,
+    "use_case": 0.70,
+    "budget": 0.75,
+    "brand": 0.10,
+    "category": 0.30,
+    "other": 0.98,
+}
 
 
 @dataclass(frozen=True)
@@ -122,9 +134,16 @@ class CatalogQuestionSignals:
         for attribute in ATTRIBUTE_ORDER:
             coverage = covered[attribute] / total if total else 0.0
             entropy = cls._normalized_entropy(counters[attribute])
-            answer_probability = min(1.0, 0.15 + 0.85 * coverage)
+            answer_probability = min(
+                1.0,
+                0.7 * ANSWERABILITY_PRIORS[attribute] + 0.3 * coverage,
+            )
             result[attribute] = AttributeSignal(coverage, entropy, answer_probability)
-        result["other"] = AttributeSignal(1.0 if total else 0.0, 0.6, 0.95)
+        result["other"] = AttributeSignal(
+            1.0 if total else 0.0,
+            1.0 if total else 0.0,
+            ANSWERABILITY_PRIORS["other"] if total else 0.15,
+        )
         return result
 
     @classmethod

@@ -87,6 +87,17 @@ class StateReducer:
         )
         return ReduceResult(state=new_state, applied=True, reason_code="applied")
 
+    @staticmethod
+    def record_question(state: DialogueState, attribute: str | None) -> DialogueState:
+        if not attribute or attribute in state.asked_attributes:
+            return state
+        if attribute not in ALLOWED_ATTRIBUTES:
+            raise ValueError("question attribute is not allowed")
+        return replace(
+            state,
+            asked_attributes=(*state.asked_attributes, attribute),
+        )
+
     def _validate(self, recognition: RecognitionResult, turn: int) -> str | None:
         if turn <= 0:
             return "invalid_turn"

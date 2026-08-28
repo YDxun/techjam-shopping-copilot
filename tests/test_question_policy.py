@@ -111,6 +111,23 @@ class QuestionPolicyTest(unittest.TestCase):
         )
         self.assertEqual(gap_policy.decide(state, parsed(), signals).ask_attribute, "size")
 
+    def test_default_policy_uses_catch_all_when_the_user_has_no_constraints(self) -> None:
+        state = DialogueState(session_id="s1", user_profile={}, category="shoes", turn=1)
+        products = [
+            {
+                "categories": ["Shoes"],
+                "title": f"Shoe {index}",
+                "features": ["general purpose"],
+                "store": f"Brand {index}",
+            }
+            for index in range(4)
+        ]
+        signals = CatalogQuestionSignals.from_products(products)
+
+        decision = QuestionPolicy(DecisionConfig()).decide(state, parsed(), signals)
+
+        self.assertEqual(decision.ask_attribute, "other")
+
     def test_catalog_coverage_and_entropy_change_information_gain(self) -> None:
         products = [
             {"categories": ["Shoes"], "title": "Cotton shoe", "features": ["cotton"]},

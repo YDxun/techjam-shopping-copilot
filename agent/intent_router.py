@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from agent.dialogue_state_machine import DialogueState
+from agent.dialogue.models import RecommendationContext
 from config.env_config import EnvConfig
 
 
@@ -34,7 +34,7 @@ class IntentRouter:
         self.env = env or EnvConfig.from_env()
 
     # ------------------------------------------------------------------
-    def route(self, state: DialogueState, mode: str) -> IntentRoute:
+    def route(self, state: RecommendationContext, mode: str) -> IntentRoute:
         hard = state.hard
         soft = state.soft
         route = IntentRoute()
@@ -53,7 +53,7 @@ class IntentRouter:
         if len(hard) >= 1:
             route.track = "buying"
             route.confidence = min(0.95, 0.55 + 0.2 * len(hard))
-        elif state.flags.get("vague") or state.total_constraints() == 0:
+        elif state.buying_or_browsing == "browsing" or state.total_constraints() == 0:
             route.track = "browsing"
             route.confidence = 0.5
         else:

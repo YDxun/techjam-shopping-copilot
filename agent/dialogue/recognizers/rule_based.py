@@ -28,10 +28,11 @@ RE_OVERRIDE = re.compile(
     r"ignore my earlier preference.*?what i need is\s*[:：]?\s*(.+?)(?:\.\s*)?$",
     re.I | re.S,
 )
-RE_NO_PREFERENCE = re.compile(r"(?:don't|do not) have a preference for\s+([a-z_]+)", re.I)
-RE_NO_MORE = re.compile(
-    r"(?:no additional preference|don.t have an additional preference)", re.I
+RE_NO_PREFERENCE = re.compile(
+    r"(?:don't|do not) have (?:an additional|a) preference for\s+([a-z_]+)",
+    re.I,
 )
+RE_NO_MORE = re.compile(r"(?:no more preferences|no additional preferences)", re.I)
 RE_NOT_RIGHT = re.compile(r"(?:not quite right|not what i meant|reject)", re.I)
 RE_ASIN = re.compile(r"\bB0[A-Z0-9]{8}\b", re.I)
 RE_COMPLEX = re.compile(
@@ -69,9 +70,6 @@ class RuleBasedRecognizer:
             )
             dialogue_act = DialogueAct.REPLACE_CONSTRAINT
             confidence = 0.95
-        elif no_more:
-            dialogue_act = DialogueAct.NO_MORE_PREFERENCES
-            confidence = 0.98
         elif no_preference:
             attribute = no_preference.group(1).lower()
             if attribute not in ALLOWED_ATTRIBUTES:
@@ -89,6 +87,9 @@ class RuleBasedRecognizer:
             )
             dialogue_act = DialogueAct.NO_PREFERENCE
             confidence = 0.95
+        elif no_more:
+            dialogue_act = DialogueAct.NO_MORE_PREFERENCES
+            confidence = 0.98
         else:
             for pattern, strength in (
                 (RE_KEY_REQUIREMENT, ConstraintStrength.HARD),

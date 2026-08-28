@@ -162,6 +162,15 @@ class ProductContextLists:
 
 
 @dataclass(frozen=True)
+class QuestionDecision:
+    should_ask: bool
+    ask_attribute: str | None
+    reason_code: str
+    utility_score: float
+    alternative_scores: dict[str, float]
+
+
+@dataclass(frozen=True)
 class ReduceResult:
     state: DialogueState
     applied: bool

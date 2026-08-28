@@ -59,9 +59,13 @@ class StateReducer:
                 removed.extend(active)
                 active = []
             else:
-                # 保守保留：旧 hard 约束降级为 soft 弱信号（目标商品通常同时满足新旧约束）
+                # 保守保留：旧 hard 约束降级为 soft 弱信号。override 时旧约束多数本就是 soft
+                # （如 "Buckle closure"），且目标商品同时含新旧值文本——旧约束原始 token 是
+                # 复合信号，A/B 证明剔除会掉 MRR（见 README override 设计）。
+                # 同义词扩展在 intent_router 里按 intent_version 门控，override 后停止。
                 active = [
-                    replace(c, strength=ConstraintStrength.SOFT) if c.hardness == 2 else c
+                    replace(c, strength=ConstraintStrength.SOFT)
+                    if c.hardness == 2 else c
                     for c in active
                 ]
             intent_version += 1

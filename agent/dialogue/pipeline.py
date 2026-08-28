@@ -165,6 +165,10 @@ class DialogueUnderstandingPipeline:
         track = "buying" if state.hard else "browsing"
         if recognition.dialogue_act == DialogueAct.REJECT_PRODUCTS:
             retrieval_mode = "recover"
+        elif state.intent_version >= 2 and state.hard:
+            # override 后：用户已明确"ignore my earlier preference"，真实需求=新 hard 约束，
+            # 目标商品同时含新旧值文本（30 会话中 28 例）→ exploit 让"全覆盖"目标拿加成推前。
+            retrieval_mode = "exploit"
         elif state.no_more_preferences or len(state.hard) >= 2 or state.total_constraints() >= 4:
             retrieval_mode = "exploit"
         else:

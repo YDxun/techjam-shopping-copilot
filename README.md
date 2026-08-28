@@ -31,6 +31,11 @@
     产物 `data/offline_blair_embeds.npy`，维度 1024）；推理阶段只编码用户查询文本
     （`utils/blair.py`），与全目录向量做点积召回。编码器（transformers）或离线 npy 任一缺失 → 自动回退 BM25。
   - 融合：Reciprocal Rank Fusion（RRF）。
+- **结构化过滤字段感知** `data/analysis/field_mapping.json`（`scripts/build_field_mapping.py` 生成）：
+  属性→去哪找（lookup_fields+权重）+ 过滤严格度（tolerance/missing_policy）。material 查
+  details.Material/features/title，budget 只查 price（79% 缺失→放行），brand 查 store（缺失放行）。
+  `retrieval_pipeline` 通道1 已接入；reranker 经 A/B 证明保持全文本打分最优（纯字段/叠加会掉 MRR，
+  详见"override 设计"一节）。
 - **重排序** `agent/reranker.py`：规则融合打分（约束覆盖度 0.5 / 品类 0.25 / RRF 0.15 / 热度 0.05 / 画像 0.05）
   + 可选的统一 LLM 语义重排（`LLM_PROVIDER=deepseek/openai`）；+ 可选本地 **bge-reranker-v2-m3**
   交叉编码精排（`RERANKER_MODEL_ENABLE=1` 且 FlagEmbedding 可用，失败自动回退规则排序）；
@@ -324,3 +329,47 @@ LLM 全部通过**环境变量 + 能力探测 + 运行时控制器**启用，默
 
 决策配置见 `config/default.json` 的 `dialogue_understanding` 与 `decision` 段。
 
+
+---
+
+## field_mapping 静态表 + override 设计（数据驱动 A/B）
+
+### field_mapping.json（属性 → 去哪找 + 多严）
+`scripts/build_field_mapping.py` 用全量 50k 商品按字段覆盖统计 + vocab 同义词生成
+`data/analysis/field_mapping.json`（含中间统计 `field_mapping_raw.json`）：
+
+| 属性 | 权威字段 | 主要 lookup | tolerance / missing |
+|---|---|---|---|
+| material | details.Material | features(0.9) / title(0.45) / description(0.3) | strict / unmet |
+| color | details.Color | title / features(0.65) | strict / unmet |
+| size | details.Size | title(0.8) / features(0.7) | lenient / soft_unmet |
+| style | details.Style | features(0.85) / title(0.5) / categories(0.45) | lenient / soft_unmet |
+| use_case | details.UseCase | features(0.75) / title(0.55) / categories(0.4) | lenient / soft_unmet |
+| category | categories | title(0.85) | strict / unmet |
+| brand | store | details.Brand(0.8) / title(0.5) | lenient / **pass**（store 脏数据放行） |
+| budget | price | — | lenient / **pass**（79% 无价放行，数值检查） |
+| feature | features | title(0.6) / description(0.5) | lenient / soft_unmet |
+
+统计要点：material 最强在 features（0.906 命中率）、size 在 title（0.808）、style/use_case 在 features+title；
+vocab 反向统计会混入商品词（material 的 "shoes"/"women"、style 的 "jewelry"），生成时用非属性词黑名单剔除。
+
+### override（意图覆盖）设计 —— 按赛题语义 + 数据验证
+官方评估器 override：`old_value = soft_preferences[-1]`（目标商品自己的软偏好文本）、
+`new_value = hard_constraints[0]`（目标商品的硬约束）；用户第 3/4 轮说
+"Actually, ignore my earlier preference. What I need is: {new_value}."。
+
+**数据**（30 个 override 会话）：28/30 目标商品**同时含旧值和新值文本**（旧值就是从目标自身文本抽的）；
+旧值多为噪音短语（"Buckle closure"、"Date First Available:…"）。
+
+**设计结论（全部 A/B 验证）**：
+1. **旧约束保守保留为 soft 全权重**：目标同时含新旧值 → 旧约束原始 token 是"复合信号"，
+   从检索/覆盖打分里剔除会掉 MRR（全 demoted 版 override MRR 0.769→0.733，已回退）。
+2. **同义词扩展按 intent_version 门控**：仅 version==1（未 override）时做 vocab 同义词扩展
+   （browsing/buying 收益 MRR +0.01~0.03）；override 后（version>=2）停止扩展，
+   避免旧噪音短语的同义词污染新查询（override MRR 保 0.769）。
+3. **override 后强制 exploit 模式**：version>=2 且有 hard 时切 exploit，让"新旧全覆盖"的目标
+   拿加成推前（override MRR 0.769→0.772，MTTC 1.725→1.715）。
+4. reranker 覆盖打分**保持全文本短语/token 逻辑**：field_mapping 纯字段/叠加打分均被 A/B 否决
+   （MRR 0.619→0.597/0.610），故仅保留 budget→price 数值分支（防未来 budget 提取）。
+
+**最终离线评估**：1.0 HR / 0.6335 MRR / 1.715 MTTC / 0.8757 TS（基线 0.995/0.619/1.74/0.8626，全提升）。

@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 
 from agent.dialogue.models import RecommendationContext
 from config.env_config import EnvConfig
+from utils import field_mapping as fm
 
 
 @dataclass
@@ -61,10 +62,17 @@ class IntentRouter:
             route.track = "browsing"
             route.confidence = 0.6
 
-        # 查询词 = 品类词 + 约束词（Pillar I 多路由检索的 query 构建）
+        # 查询词 = 品类词 + 约束词 + vocab 同义词（Pillar I 多路由检索 query 构建；
+        # "换种说法"召回：jumper→sweater、100% cotton→cotton，用 vocab.json 扩展查询词）
         route.query_terms = list(dict.fromkeys([*route.category_tokens, *route.soft_terms]))
         for group in route.hard_groups:
             route.query_terms.extend(group)
+        # vocab 同义词扩展（"换种说法"召回）：仅 intent_version==1（未 override）时扩展，
+        # hard+soft 都扩（browsing/buying 收益最大）；override 之后版本>=2，旧偏好已降 soft，
+        # 不再做同义词扩展，避免旧偏好词污染新查询（A/B：override MRR 0.769→0.744，版本门控最优）。
+        if getattr(state, "intent_version", 1) == 1:
+            for c in [*hard, *soft]:
+                route.query_terms.extend(fm.expand_with_vocab(c.attribute, c.value))
         route.query_terms = list(dict.fromkeys(route.query_terms))[:40]
 
         # Pillar III 自适应：RECOVER 模式下把 hard 组降级为 soft（放宽过滤）

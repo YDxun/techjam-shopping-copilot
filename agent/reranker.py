@@ -20,6 +20,7 @@ from agent.intent_router import IntentRoute
 from agent.retriever import HybridRetriever
 from config.env_config import EnvConfig
 from llm.base import DisabledLLMClient, LLMClient, LLMState
+from utils import field_mapping as fm_utils
 from utils import session_utils as su
 
 logger = logging.getLogger(__name__)
@@ -117,11 +118,11 @@ class Reranker:
         cov_denom = 0.0
         for c in hard:
             w = 1.0
-            cov_numer += w * self._constraint_hit(c, text)
+            cov_numer += w * self._constraint_hit(c, product, text)
             cov_denom += w
         for c in soft:
             w = 0.4
-            cov_numer += w * self._constraint_hit(c, text)
+            cov_numer += w * self._constraint_hit(c, product, text)
             cov_denom += w
         coverage = (cov_numer / cov_denom) if cov_denom > 0 else 0.5
 
@@ -154,9 +155,19 @@ class Reranker:
         return score
 
     # ------------------------------------------------------------------
-    @staticmethod
-    def _constraint_hit(c, text: str) -> float:
-        """单条约束命中度：短语子串满分；否则 token 覆盖率。"""
+    def _constraint_hit(self, c, product: dict, text: str) -> float:
+        """约束命中度（Pillar I field_mapping 字段感知）。
+
+        - budget：数值价格检查（price 缺失放行，79% 缺失不做硬过滤）；
+        - 其它属性：先按旧全文本逻辑（短语满分/token 覆盖，保召回），
+          再叠加字段感知分（authoritative details.<Key> 高置信、缺失策略 pass/soft），
+          取两者较大值——字段感知只加分不掉分，避免覆盖已对齐的规则信号。
+        """
+        if getattr(c, "attribute", "") == "budget":
+            # budget→price 数值检查（field_mapping；price 缺失放行，不做硬过滤）
+            return fm_utils.constraint_hit("budget", c.value, c.tokens, product=product)
+        # 其余属性保持全文本短语/token 逻辑：field_mapping A/B 显示纯字段/叠加打分
+        # 都会扰动已对齐的规则排序（MRR 0.619→0.597/0.610），故不替换。
         if su.phrase_exists(text, c.value):
             return 1.0
         if c.tokens:

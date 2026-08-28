@@ -18,6 +18,7 @@ import numpy as np
 from retrieval_pipeline import config
 from retrieval_pipeline.data_access import BlairEmbeddingStore, CatalogStore
 from retrieval_pipeline.models import QueryBundle, SessionState
+from utils import field_mapping as fm
 
 logger = logging.getLogger(__name__)
 
@@ -249,7 +250,13 @@ class RetrieverPipeline:
     # 通道1：结构化约束匹配（第5步-通道1）
     # ------------------------------------------------------------------
     def _channel_structured(self, filters: dict, recovery: bool) -> list[tuple[str, int]]:
-        """返回 [(parent_asin, rank)]，按结构分排序。普通模式硬过滤；RECOVER 改为惩罚。"""
+        """返回 [(parent_asin, rank)]，按结构分排序。普通模式硬过滤；RECOVER 改为惩罚。
+
+        字段感知（field_mapping.json，Pillar I 结构化过滤精度）：
+          - 文本约束只查映射的 lookup_fields（material→details.Material/features/title/…），
+            不再全文乱找；budget→price 数值检查（price 缺失放行，79% 无价不做硬过滤）；
+          - brand→store 缺失放行（missing_policy=pass）。
+        """
         if not filters:
             return []
         scored: list[tuple[str, float]] = []
@@ -262,15 +269,19 @@ class RetrieverPipeline:
                     continue
                 value = filters[key]
                 values = value if isinstance(value, (list, tuple)) else [value]
-                if not any(str(v).lower() in text for v in values):
+                ok = False
+                for v in values:
+                    if fm.constraint_hit(key, str(v), None, product=product, text=text) > 0:
+                        ok = True
+                        break
+                if not ok:
                     unmet.append(key)
             for key in _NUMERIC_FILTER_FIELDS:
                 if key not in filters:
                     continue
                 price = product.get("price")
                 if not isinstance(price, (int, float)):
-                    unmet.append("budget")
-                    continue
+                    continue  # price 缺失 → 放行（field_mapping budget missing_policy=pass）
                 limit = float(filters[key])
                 if key == "budget_max" and price > limit:
                     unmet.append("budget")

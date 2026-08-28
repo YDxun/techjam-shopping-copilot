@@ -54,6 +54,12 @@ class RecognitionSource(str, Enum):
     LLM = "llm"
 
 
+class ProductFeedback(str, Enum):
+    NONE = "none"
+    SOFT_DEMOTED = "soft_demoted"
+    HARD_REJECTED = "hard_rejected"
+
+
 @dataclass(frozen=True)
 class ConstraintOperation:
     operation: OperationKind
@@ -135,6 +141,24 @@ class RecognitionRequest:
     turn: int
     state: DialogueState
     recently_shown_asins: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class ShownProductState:
+    asin: str
+    intent_version: int
+    shown_turns: tuple[int, ...]
+    shown_count: int
+    evaluation_eliminated: bool = False
+    feedback: ProductFeedback = ProductFeedback.NONE
+    feedback_evidence: str = ""
+
+
+@dataclass(frozen=True)
+class ProductContextLists:
+    evaluation_excluded_asins: tuple[str, ...]
+    hard_rejected_asins: tuple[str, ...]
+    soft_demoted_asins: tuple[str, ...]
 
 
 @dataclass(frozen=True)

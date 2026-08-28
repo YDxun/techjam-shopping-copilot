@@ -6,7 +6,12 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from config.loader import load_config
-from config.models import AppConfig, LLMConfig
+from config.models import (
+    AppConfig,
+    DecisionConfig,
+    DialogueUnderstandingConfig,
+    LLMConfig,
+)
 
 
 @dataclass(frozen=True, repr=False)
@@ -31,6 +36,14 @@ class EnvConfig:
     @property
     def llm(self) -> LLMConfig:
         return self._app_config.llm
+
+    @property
+    def dialogue_understanding(self) -> DialogueUnderstandingConfig:
+        return self._app_config.dialogue_understanding
+
+    @property
+    def decision(self) -> DecisionConfig:
+        return self._app_config.decision
 
     @property
     def env_mode(self) -> str:
@@ -101,7 +114,7 @@ class EnvConfig:
 
     @property
     def max_constraint_asks(self) -> int:
-        return self._app_config.max_constraint_asks
+        return self.decision.max_questions
 
     @property
     def offline(self) -> bool:

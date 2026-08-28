@@ -37,6 +37,53 @@ class CircuitBreakerConfig:
 
 
 @dataclass(frozen=True)
+class DialogueUnderstandingConfig:
+    mode: str = "cascaded"
+    rule_confidence_threshold: float = 0.75
+    max_evidence_length: int = 180
+
+
+@dataclass(frozen=True)
+class AskUtilityWeights:
+    information_gain: float = 0.30
+    constraint_gap: float = 0.25
+    answer_probability: float = 0.15
+    ambiguity_reduction: float = 0.20
+    repeat_penalty: float = 0.40
+    no_preference_penalty: float = 0.60
+    turn_cost: float = 0.15
+
+
+@dataclass(frozen=True)
+class AskUtilityConfig:
+    weights: AskUtilityWeights = field(default_factory=AskUtilityWeights)
+    normalization: str = "clamp_0_1"
+    minimum_ask_utility: float = 0.20
+
+
+@dataclass(frozen=True)
+class StopUtilityWeights:
+    constraint_completeness: float = 0.35
+    intent_confidence: float = 0.25
+    asked_count: float = 0.15
+    turn_pressure: float = 0.25
+    unresolved_ambiguity: float = 0.30
+
+
+@dataclass(frozen=True)
+class StopUtilityConfig:
+    weights: StopUtilityWeights = field(default_factory=StopUtilityWeights)
+    minimum_stop_utility: float = 0.55
+
+
+@dataclass(frozen=True)
+class DecisionConfig:
+    max_questions: int = 3
+    ask_utility: AskUtilityConfig = field(default_factory=AskUtilityConfig)
+    stop_utility: StopUtilityConfig = field(default_factory=StopUtilityConfig)
+
+
+@dataclass(frozen=True)
 class ProviderConfig:
     model: str
     base_url: str
@@ -116,5 +163,8 @@ class AppConfig:
     skip_data_verify: bool = False
     sample_limit: int | None = None
     output_path: str = "results.json"
-    max_constraint_asks: int = 3
+    dialogue_understanding: DialogueUnderstandingConfig = field(
+        default_factory=DialogueUnderstandingConfig
+    )
+    decision: DecisionConfig = field(default_factory=DecisionConfig)
     llm: LLMConfig = field(default_factory=LLMConfig)

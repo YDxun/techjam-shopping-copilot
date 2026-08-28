@@ -9,7 +9,37 @@
   "skip_data_verify": false,
   "sample_limit": null,
   "output_path": "results.json",
-  "max_constraint_asks": 3,
+  "dialogue_understanding": {
+    "mode": "cascaded",
+    "rule_confidence_threshold": 0.75,
+    "max_evidence_length": 180
+  },
+  "decision": {
+    "max_questions": 3,
+    "ask_utility": {
+      "normalization": "clamp_0_1",
+      "minimum_ask_utility": 0.2,
+      "weights": {
+        "information_gain": 0.3,
+        "constraint_gap": 0.25,
+        "answer_probability": 0.15,
+        "ambiguity_reduction": 0.2,
+        "repeat_penalty": 0.4,
+        "no_preference_penalty": 0.6,
+        "turn_cost": 0.15
+      }
+    },
+    "stop_utility": {
+      "minimum_stop_utility": 0.55,
+      "weights": {
+        "constraint_completeness": 0.35,
+        "intent_confidence": 0.25,
+        "asked_count": 0.15,
+        "turn_pressure": 0.25,
+        "unresolved_ambiguity": 0.3
+      }
+    }
+  },
   "llm": {
     "provider": "deepseek",
     "rerank_enabled": true,

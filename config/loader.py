@@ -9,12 +9,18 @@ from typing import Any, Callable, Mapping
 
 from config.models import (
     AppConfig,
+    AskUtilityConfig,
+    AskUtilityWeights,
     CircuitBreakerConfig,
+    DecisionConfig,
+    DialogueUnderstandingConfig,
     LLMConfig,
     ProviderConfig,
     ProviderConfigs,
     RetryConfig,
     SecretValue,
+    StopUtilityConfig,
+    StopUtilityWeights,
 )
 
 
@@ -117,7 +123,6 @@ def _environment_overrides(
         "SKIP_DATA_VERIFY": ("skip_data_verify", _parse_bool),
         "SAMPLE_LIMIT": ("sample_limit", _parse_int),
         "OUTPUT_PATH": ("output_path", _parse_text),
-        "MAX_CONSTRAINT_ASKS": ("max_constraint_asks", _parse_int),
     }
     for name, (field_name, parser) in flat_fields.items():
         value = _environment_value(env, name)
@@ -146,6 +151,25 @@ def _environment_overrides(
                 _set_nested(result, ("llm", "providers", generic_provider, field), _parse_text(value, name))
 
     nested_fields: dict[str, tuple[tuple[str, ...], Callable[[str, str], Any]]] = {
+        "MAX_CONSTRAINT_ASKS": (("decision", "max_questions"), _parse_int),
+        "SHOPPING_DIALOGUE__MODE": (
+            ("dialogue_understanding", "mode"), _parse_text
+        ),
+        "SHOPPING_DIALOGUE__RULE_CONFIDENCE_THRESHOLD": (
+            ("dialogue_understanding", "rule_confidence_threshold"), _parse_float
+        ),
+        "SHOPPING_DIALOGUE__MAX_EVIDENCE_LENGTH": (
+            ("dialogue_understanding", "max_evidence_length"), _parse_int
+        ),
+        "SHOPPING_DECISION__MAX_QUESTIONS": (
+            ("decision", "max_questions"), _parse_int
+        ),
+        "SHOPPING_DECISION__ASK_UTILITY__MINIMUM": (
+            ("decision", "ask_utility", "minimum_ask_utility"), _parse_float
+        ),
+        "SHOPPING_DECISION__STOP_UTILITY__MINIMUM": (
+            ("decision", "stop_utility", "minimum_stop_utility"), _parse_float
+        ),
         "LLM_RERANK": (("llm", "rerank_enabled"), _parse_bool),
         "LLM_RERANK_CANDIDATES": (("llm", "rerank_candidates"), _parse_int),
         "LLM_HEALTH_CHECK_ENABLED": (("llm", "health_check_enabled"), _parse_bool),
@@ -156,6 +180,32 @@ def _environment_overrides(
         "LLM_RETRY_MAX_DELAY_SECONDS": (("llm", "retry", "max_delay_seconds"), _parse_float),
         "LLM_CIRCUIT_BREAKER_FAILURE_THRESHOLD": (("llm", "circuit_breaker", "failure_threshold"), _parse_int),
     }
+    for field in (
+        "information_gain",
+        "constraint_gap",
+        "answer_probability",
+        "ambiguity_reduction",
+        "repeat_penalty",
+        "no_preference_penalty",
+        "turn_cost",
+    ):
+        name = f"SHOPPING_DECISION__ASK_UTILITY__WEIGHTS__{field.upper()}"
+        nested_fields[name] = (
+            ("decision", "ask_utility", "weights", field),
+            _parse_float,
+        )
+    for field in (
+        "constraint_completeness",
+        "intent_confidence",
+        "asked_count",
+        "turn_pressure",
+        "unresolved_ambiguity",
+    ):
+        name = f"SHOPPING_DECISION__STOP_UTILITY__WEIGHTS__{field.upper()}"
+        nested_fields[name] = (
+            ("decision", "stop_utility", "weights", field),
+            _parse_float,
+        )
     for name, (field_path, parser) in nested_fields.items():
         value = _environment_value(env, name)
         if value is not None:
@@ -237,6 +287,18 @@ def _parse_bool(value: str, name: str) -> bool:
 
 def _build_and_validate(data: Mapping[str, Any], selected_key: SecretValue) -> AppConfig:
     llm_data = _mapping(data.get("llm"), "llm")
+    dialogue_data = _mapping(
+        data.get("dialogue_understanding"), "dialogue_understanding"
+    )
+    decision_data = _mapping(data.get("decision"), "decision")
+    ask_data = _mapping(decision_data.get("ask_utility"), "decision.ask_utility")
+    ask_weights_data = _mapping(
+        ask_data.get("weights"), "decision.ask_utility.weights"
+    )
+    stop_data = _mapping(decision_data.get("stop_utility"), "decision.stop_utility")
+    stop_weights_data = _mapping(
+        stop_data.get("weights"), "decision.stop_utility.weights"
+    )
     retry_data = _mapping(llm_data.get("retry"), "llm.retry")
     circuit_data = _mapping(llm_data.get("circuit_breaker"), "llm.circuit_breaker")
     providers_data = _mapping(llm_data.get("providers"), "llm.providers")
@@ -281,7 +343,58 @@ def _build_and_validate(data: Mapping[str, Any], selected_key: SecretValue) -> A
         skip_data_verify=_bool_value(data.get("skip_data_verify"), "skip_data_verify"),
         sample_limit=_optional_int_value(data.get("sample_limit"), "sample_limit"),
         output_path=_string_value(data.get("output_path"), "output_path"),
-        max_constraint_asks=_int_value(data.get("max_constraint_asks"), "max_constraint_asks"),
+        dialogue_understanding=DialogueUnderstandingConfig(
+            mode=_string_value(
+                dialogue_data.get("mode"), "dialogue_understanding.mode"
+            ),
+            rule_confidence_threshold=_number_value(
+                dialogue_data.get("rule_confidence_threshold"),
+                "dialogue_understanding.rule_confidence_threshold",
+            ),
+            max_evidence_length=_int_value(
+                dialogue_data.get("max_evidence_length"),
+                "dialogue_understanding.max_evidence_length",
+            ),
+        ),
+        decision=DecisionConfig(
+            max_questions=_int_value(
+                decision_data.get("max_questions"), "decision.max_questions"
+            ),
+            ask_utility=AskUtilityConfig(
+                weights=AskUtilityWeights(
+                    **{
+                        field: _number_value(
+                            ask_weights_data.get(field),
+                            f"decision.ask_utility.weights.{field}",
+                        )
+                        for field in AskUtilityWeights.__dataclass_fields__
+                    }
+                ),
+                normalization=_string_value(
+                    ask_data.get("normalization"),
+                    "decision.ask_utility.normalization",
+                ),
+                minimum_ask_utility=_number_value(
+                    ask_data.get("minimum_ask_utility"),
+                    "decision.ask_utility.minimum_ask_utility",
+                ),
+            ),
+            stop_utility=StopUtilityConfig(
+                weights=StopUtilityWeights(
+                    **{
+                        field: _number_value(
+                            stop_weights_data.get(field),
+                            f"decision.stop_utility.weights.{field}",
+                        )
+                        for field in StopUtilityWeights.__dataclass_fields__
+                    }
+                ),
+                minimum_stop_utility=_number_value(
+                    stop_data.get("minimum_stop_utility"),
+                    "decision.stop_utility.minimum_stop_utility",
+                ),
+            ),
+        ),
         llm=llm,
     )
     _validate(config)
@@ -302,9 +415,39 @@ def _validate(config: AppConfig) -> None:
     _in(config.env_mode, "env_mode", {"dev", "submit"})
     _in(config.retrieval_backend, "retrieval_backend", {"bm25", "dense", "hybrid"})
     _in(config.clarify_strategy, "clarify_strategy", {"other", "attribute"})
+    _in(
+        config.dialogue_understanding.mode,
+        "dialogue_understanding.mode",
+        {"rule_only", "cascaded"},
+    )
+    _in(
+        config.decision.ask_utility.normalization,
+        "decision.ask_utility.normalization",
+        {"clamp_0_1"},
+    )
     _in(config.llm.provider, "llm.provider", {"none", "deepseek", "openai"})
     _positive(config.top_k, "top_k")
-    _positive(config.max_constraint_asks, "max_constraint_asks")
+    _positive(
+        config.dialogue_understanding.max_evidence_length,
+        "dialogue_understanding.max_evidence_length",
+    )
+    _unit_interval(
+        config.dialogue_understanding.rule_confidence_threshold,
+        "dialogue_understanding.rule_confidence_threshold",
+    )
+    _positive(config.decision.max_questions, "decision.max_questions")
+    _unit_interval(
+        config.decision.ask_utility.minimum_ask_utility,
+        "decision.ask_utility.minimum_ask_utility",
+    )
+    _unit_interval(
+        config.decision.stop_utility.minimum_stop_utility,
+        "decision.stop_utility.minimum_stop_utility",
+    )
+    for name, value in vars(config.decision.ask_utility.weights).items():
+        _non_negative(value, f"decision.ask_utility.weights.{name}")
+    for name, value in vars(config.decision.stop_utility.weights).items():
+        _non_negative(value, f"decision.stop_utility.weights.{name}")
     _positive(config.llm.rerank_candidates, "llm.rerank_candidates")
     _positive(config.llm.connect_timeout_seconds, "llm.connect_timeout_seconds")
     _positive(config.llm.timeout_seconds, "llm.timeout_seconds")
@@ -377,4 +520,9 @@ def _positive(value: int | float, field: str) -> None:
 
 def _non_negative(value: int | float, field: str) -> None:
     if value < 0:
-        raise ConfigError(f"{field} must be >= 0")
+        raise ConfigError(f"{field} must be non-negative (>= 0)")
+
+
+def _unit_interval(value: float, field: str) -> None:
+    if value < 0 or value > 1:
+        raise ConfigError(f"{field} must be between 0 and 1")

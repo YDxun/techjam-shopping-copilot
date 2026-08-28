@@ -23,6 +23,7 @@ from llm.base import DisabledLLMClient, LLMClient, LLMState
 from llm.rerank import RerankClient
 from utils import field_mapping as fm_utils
 from utils import session_utils as su
+from utils.rex_reranker import RexRerankerScorer, is_generation_reranker
 
 logger = logging.getLogger(__name__)
 
@@ -215,21 +216,29 @@ class Reranker:
     # ------------------------------------------------------------------
     # 可选 bge-reranker-v2-m3 交叉编码重排（本地模型；失败自动回退规则排序）
     # ------------------------------------------------------------------
-    def _ensure_bge(self):
-        """惰性加载 FlagReranker（BAAI/bge-reranker-v2-m3），device 自动 cuda/cpu。"""
+    def _ensure_reranker_model(self):
+        """惰性加载重排模型（按模型名分发，device 自动 cuda/cpu）。
+
+        - RexReranker-0.6B / Qwen3-Reranker（电商生成式重排）：transformers yes/no 打分；
+        - BAAI/bge-reranker-v2-m3 等：FlagEmbedding 交叉编码。
+        任一加载失败 → None，由调用方回退规则排序（环境自感知）。
+        """
         if self._bge is not None:
             return self._bge
+        model_name = self.env.reranker_model
         try:
-            import torch
-            from FlagEmbedding import FlagReranker
+            if is_generation_reranker(model_name):
+                self._bge = RexRerankerScorer(model_name)
+                logger.info("[reranker] RexReranker loaded: %s", model_name)
+            else:
+                import torch
+                from FlagEmbedding import FlagReranker
 
-            device = "cuda" if torch.cuda.is_available() else "cpu"
-            self._bge = FlagReranker(
-                self.env.reranker_model, use_fp16=(device == "cuda"), device=device
-            )
-            logger.info("[reranker] bge-reranker loaded: %s on %s", self.env.reranker_model, device)
+                device = "cuda" if torch.cuda.is_available() else "cpu"
+                self._bge = FlagReranker(model_name, use_fp16=(device == "cuda"), device=device)
+                logger.info("[reranker] cross-encoder loaded: %s on %s", model_name, device)
         except Exception as exc:
-            logger.warning("[reranker] bge-reranker 不可用（%s）→ 不使用模型重排", exc)
+            logger.warning("[reranker] 重排模型不可用（%s）→ 不使用模型重排", exc)
             self._bge = None
         return self._bge
 
@@ -240,8 +249,8 @@ class Reranker:
         state: RecommendationContext,
         route: IntentRoute,
     ) -> list[str]:
-        """用 bge-reranker-v2-m3 对 Top-BGE_RERANK_CANDIDATES 精排；异常回退原顺序。"""
-        model = self._ensure_bge()
+        """用重排模型（RexReranker-0.6B / bge-reranker-v2-m3）对 Top-BGE_RERANK_CANDIDATES 精排。"""
+        model = self._ensure_reranker_model()
         if model is None:
             return []
         submitted = order[:BGE_RERANK_CANDIDATES]
@@ -253,9 +262,12 @@ class Reranker:
         if not any(p[1] for p in pairs):
             return []
         try:
-            scores = model.compute_score(pairs, normalize=True)
-            if isinstance(scores, float):
-                scores = [scores]
+            if hasattr(model, "score_pairs"):  # RexReranker/Qwen3 生成式
+                scores = model.score_pairs(pairs)
+            else:  # FlagEmbedding 交叉编码
+                scores = model.compute_score(pairs, normalize=True)
+                if isinstance(scores, float):
+                    scores = [scores]
             ranked = [
                 a
                 for _, a in sorted(

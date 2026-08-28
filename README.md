@@ -38,9 +38,10 @@
   详见"override 设计"一节）。
 - **重排序** `agent/reranker.py`：规则融合打分（约束覆盖度 0.5 / 品类 0.25 / RRF 0.15 / 热度 0.05 / 画像 0.05）
   + 可选 **qwen3-rerank 文本重排**（`LLM_RERANK=1` + `LLM_RERANK_BACKEND=text`，阿里云 MaaS
-  `/reranks`，`DASHSCOPE_API_KEY` 注入；失败自动回退规则）；+ 可选本地 **bge-reranker-v2-m3**
-  交叉编码精排（`RERANKER_MODEL_ENABLE=1` 且 FlagEmbedding 可用，失败自动回退规则排序）；
-  默认 `LLM_RERANK=0` 纯规则排序，完全离线可跑。
+  `/reranks`，`DASHSCOPE_API_KEY` 注入；失败自动回退规则）；+ 可选本地**重排模型**
+  （`RERANKER_MODEL_ENABLE=1`，按 `RERANKER_MODEL` 自动分发：`thebajajra/RexReranker-0.6B` /
+  `Qwen/Qwen3-Reranker-*` 走生成式 yes/no 打分，`BAAI/bge-reranker-v2-m3` 走 FlagEmbedding
+  交叉编码；失败自动回退规则排序）；默认 `LLM_RERANK=0` / `RERANKER_MODEL_ENABLE=0` 纯规则排序，完全离线可跑。
 
 ### 支柱 II｜对话策略：多轮场景演进（对话理解管线 `agent/dialogue/`）
 - **识别层** `agent/dialogue/recognizers/`：级联意图识别（规则先行 + LLM 严格 JSON 兜底），
@@ -398,3 +399,27 @@ vocab 反向统计会混入商品词（material 的 "shoes"/"women"、style 的 
 （HR 不降但 MRR 掉）。因此**默认 `LLM_RERANK=0`**，由自动化控制按环境决定是否启用；
 若要启用：`LLM_RERANK=1`（可选 `LLM_RERANK_BACKEND=text|chat|auto`）+
 `DASHSCOPE_API_KEY` 注入。
+
+
+---
+
+## RexReranker-0.6B 电商重排模型部署（与 bge-reranker-v2-m3 A/B）
+
+`RERANKER_MODEL=thebajajra/RexReranker-0.6B` 时，重排分支走**电商领域增强的生成式重排器**
+（Qwen3-Reranker-0.6B 微调，633 万条电商 query-product 数据训练，Apache-2.0，本地 ~1.2GB）：
+`utils/rex_reranker.py` 按模型卡实现——chat 模板 + assistant 后缀，取最后 token 的
+"yes"/"no" logit，`score = exp(yes)/(exp(yes)+exp(no))`（GPU 批处理 ~22 条/秒）。
+`agent/reranker.py` 按模型名自动分发（Rex/Qwen3-Reranker→transformers，bge→FlagEmbedding），
+capability_probe 按模型类型探测可用性，失败一律回退规则排序。
+
+### 真实全量 200 会话 A/B（RERANKER_MODEL_ENABLE=1）
+| 重排模型 | HR@10 | MRR | MTTC | TS | 耗时 |
+|---|---|---|---|---|---|
+| 规则（默认不启用） | 1.0 | **0.6335** | **1.715** | **0.8757** | ~30s |
+| **bge-reranker-v2-m3** | 0.92 | **0.5163** | **2.755** | **0.7798** | ~30min |
+| **RexReranker-0.6B** | **0.995** | 0.3154 | 3.105 | 0.7500 | ~56min |
+
+结论：RexReranker HR 更高（0.995 vs 0.92）但 **MRR/TS 明显不如 bge**（0.315/0.750 vs 0.516/0.780），
+且生成式模型更慢（56min vs 30min）——**保留 bge-reranker-v2-m3 为默认重排模型，不删除**；
+两者均可经 `RERANKER_MODEL` 环境变量切换。语义重排整体仍低于纯规则基线（同 bge/qwen3 三方一致），
+默认关闭，由自动化控制按环境决定。

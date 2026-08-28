@@ -25,6 +25,7 @@ from dataclasses import dataclass, field
 from config.env_config import EnvConfig
 from llm.base import LLMClient
 from llm.rerank import RerankClient, RerankState
+from utils.rex_reranker import is_generation_reranker
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +99,12 @@ class CapabilityProbe:
         profile.blair_npy_ready = self._blair_npy_exists()
         # 稠密通道：编码器 + 离线商品向量 都就绪才算可用（BLaIR 稠密检索）
         profile.dense_available = profile.dense_encoder_available and profile.blair_npy_ready
-        profile.reranker_available = _spec_available("FlagEmbedding")
+        # 重排模型可用性：RexReranker/Qwen3-Reranker（生成式）→ transformers 可导入；
+        # bge-reranker-v2-m3 等交叉编码 → FlagEmbedding 可导入。
+        if is_generation_reranker(self.env.reranker_model):
+            profile.reranker_available = _spec_available("transformers")
+        else:
+            profile.reranker_available = _spec_available("FlagEmbedding")
         profile.reranker_model_cached = self._reranker_model_cached()
 
         # qwen3-rerank 文本重排（MaaS）：backend=text/auto 时做真实探测
@@ -155,15 +161,12 @@ class CapabilityProbe:
         emb = path if path.suffix == ".npy" else path.with_suffix(".npy")
         return emb.exists()
 
-    @staticmethod
-    def _reranker_model_cached() -> bool:
-        """bge-reranker-v2-m3 是否已下载到本地 HF 缓存（可离线加载）。"""
-        import os
-
+    def _reranker_model_cached(self) -> bool:
+        """配置的重排模型是否已下载到本地 HF 缓存（可离线加载）。"""
         try:
             from huggingface_hub import scan_cache_dir
 
-            model_name = os.environ.get("RERANKER_MODEL_NAME", "BAAI/bge-reranker-v2-m3")
+            model_name = self.env.reranker_model
             repos = scan_cache_dir()
             for r in repos.repos:
                 if r.repo_id == model_name and r.repo_type == "model":

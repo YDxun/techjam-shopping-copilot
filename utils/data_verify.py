@@ -1,4 +1,4 @@
-﻿"""数据集 SHA256 完整性校验（Pillar IV / 硬性约束 3）。
+"""数据集 SHA256 完整性校验（Pillar IV / 硬性约束 3）。
 
 - 只校验竞赛冻结工具包内的 catalog.jsonl / public_set.jsonl。
 - 不下载任何上游完整原始 Amazon Reviews 数据。
@@ -50,11 +50,24 @@ def verify_file(path: str | Path, expected: str, label: str, skip: bool = False)
 
 def verify_dataset(skip: bool = False) -> bool:
     """校验冻结工具包两个核心文件 + 行数合理性。"""
-    ok_cat = verify_file(constants.CATALOG_PATH, constants.EXPECTED_SHA256_CATALOG, "catalog.jsonl", skip=skip)
-    ok_pub = verify_file(constants.PUBLIC_SET_PATH, constants.EXPECTED_SHA256_PUBLIC_SET, "public_set.jsonl", skip=skip)
+    ok_cat = verify_file(
+        constants.CATALOG_PATH,
+        constants.EXPECTED_SHA256_CATALOG,
+        "catalog.jsonl",
+        skip=skip,
+    )
+    ok_pub = verify_file(
+        constants.PUBLIC_SET_PATH,
+        constants.EXPECTED_SHA256_PUBLIC_SET,
+        "public_set.jsonl",
+        skip=skip,
+    )
     # 行数抽查（不作为硬性校验，仅提示）
     if ok_cat:
         rows = sum(1 for _ in open(constants.CATALOG_PATH, encoding="utf-8"))
         if rows != constants.CATALOG_EXPECTED_ROWS:
-            print(f"[WARN] catalog 行数 {rows} != 期望 {constants.CATALOG_EXPECTED_ROWS}", file=sys.stderr)
+            print(
+                f"[WARN] catalog 行数 {rows} != 期望 {constants.CATALOG_EXPECTED_ROWS}",
+                file=sys.stderr,
+            )
     return ok_cat and ok_pub

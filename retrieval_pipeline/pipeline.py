@@ -12,8 +12,8 @@ from retrieval_pipeline import config
 from retrieval_pipeline.data_access import BlairEmbeddingStore, CatalogStore, load_catalog
 from retrieval_pipeline.models import PipelineOutput, SessionState
 from retrieval_pipeline.query_builder import QueryBuilder
-from retrieval_pipeline.retriever_pipeline import RetrieverPipeline
 from retrieval_pipeline.reranker_module import RerankerModule
+from retrieval_pipeline.retriever_pipeline import RetrieverPipeline
 
 logger = logging.getLogger(__name__)
 

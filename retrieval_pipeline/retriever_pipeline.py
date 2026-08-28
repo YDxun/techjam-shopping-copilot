@@ -29,12 +29,18 @@ _STOPWORDS = frozenset({
 })
 
 # 结构化约束字段 → 通道1文本匹配
-_TEXT_FILTER_FIELDS = ("material", "color", "size", "style", "brand", "feature", "use_case", "category")
+_TEXT_FILTER_FIELDS = (
+    "material", "color", "size", "style", "brand", "feature", "use_case", "category"
+)
 _NUMERIC_FILTER_FIELDS = ("budget_max", "budget_min")
 
 
 def _tokens(text: str) -> list[str]:
-    return [t.lower() for t in _TOKEN_RE.findall(text or "") if len(t) > 1 and t.lower() not in _STOPWORDS]
+    return [
+        t.lower()
+        for t in _TOKEN_RE.findall(text or "")
+        if len(t) > 1 and t.lower() not in _STOPWORDS
+    ]
 
 
 def _field_text(value) -> str:
@@ -72,7 +78,7 @@ class _BM25OkapiFallback:
         scores = np.zeros(len(self.corpus), dtype=np.float64)
         q_terms = set(query)
         avgdl = self.avgdl or 1.0
-        for i, (freqs, dl) in enumerate(zip(self.doc_freqs, self.doc_len)):
+        for i, (freqs, dl) in enumerate(zip(self.doc_freqs, self.doc_len, strict=True)):
             denom = self.k1 * (1 - self.b + self.b * dl / avgdl)
             total = 0.0
             for t in q_terms:
@@ -143,6 +149,7 @@ class _QueryEncoder:
         # 首选：transformers AutoModel（BLaIR CLS 规范用法）
         try:
             import os
+
             import torch
             from transformers import AutoModel, AutoTokenizer
             torch.set_num_threads(max(1, os.cpu_count() or 8))
@@ -150,15 +157,23 @@ class _QueryEncoder:
             model = AutoModel.from_pretrained(self.model_name)
             model.eval()
             self._model = {"tokenizer": tokenizer, "model": model}
-            logger.info("[retriever] BLaIR query encoder loaded (transformers): %s", self.model_name)
+            logger.info(
+                "[retriever] BLaIR query encoder loaded (transformers): %s", self.model_name
+            )
             return self._model
         except Exception as exc:
-            logger.warning("[retriever] transformers BLaIR 加载失败（%s）→ 尝试 sentence-transformers", exc)
+            logger.warning(
+                "[retriever] transformers BLaIR 加载失败（%s）→ 尝试 sentence-transformers",
+                exc,
+            )
         # 兜底：sentence-transformers（部分环境只装了它）
         try:
             from sentence_transformers import SentenceTransformer
             self._model = SentenceTransformer(self.model_name)
-            logger.info("[retriever] BLaIR query encoder loaded (sentence-transformers): %s", self.model_name)
+            logger.info(
+                "[retriever] BLaIR query encoder loaded (sentence-transformers): %s",
+                self.model_name,
+            )
             return self._model
         except Exception as exc:
             logger.warning("[retriever] BLaIR 查询编码器不可用（%s）→ 稠密通道禁用", exc)
@@ -264,8 +279,10 @@ class RetrieverPipeline:
 
             if recovery:
                 # 惩罚打分：budget 最先放宽（惩罚最小）→ material 最后放宽（惩罚最大）
-                penalty = sum(config.STRUCT_UNMET_PENALTY.get(u, config.STRUCT_UNMET_PENALTY["other"])
-                              for u in unmet)
+                penalty = sum(
+                    config.STRUCT_UNMET_PENALTY.get(u, config.STRUCT_UNMET_PENALTY["other"])
+                    for u in unmet
+                )
                 scored.append((asin, config.STRUCT_BASE_SCORE - penalty))
             else:
                 if not unmet:

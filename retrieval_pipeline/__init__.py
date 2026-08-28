@@ -4,10 +4,10 @@
 上层（意图识别+对话状态机）传入 session_state，本包返回 PipelineOutput。
 """
 from retrieval_pipeline.models import (
+    PipelineOutput,
+    QueryBundle,
     SessionState,
     StrategyConfig,
-    QueryBundle,
-    PipelineOutput,
 )
 from retrieval_pipeline.pipeline import RetrievalPipeline, run_pipeline
 

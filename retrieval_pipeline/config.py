@@ -20,7 +20,9 @@ RERANKER_MODEL_NAME = os.environ.get(
 BLAIR_QUERY_ENCODER_MODEL = os.environ.get(
     "BLAIR_QUERY_ENCODER_MODEL", "hyp1231/blair-roberta-large")
 DEVICE = os.environ.get("DEVICE", "auto").strip().lower()          # auto/cpu/cuda
-QUERY_REWRITE_ENABLE = os.environ.get("QUERY_REWRITE_ENABLE", "false").strip().lower() in {"1", "true", "yes", "on"}
+QUERY_REWRITE_ENABLE = os.environ.get(
+    "QUERY_REWRITE_ENABLE", "false"
+).strip().lower() in {"1", "true", "yes", "on"}
 
 # ---------------------------------------------------------------------------
 # 第5步-通道2：加权 BM25 字段权重（title 最高，description 最低）

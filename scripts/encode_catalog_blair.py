@@ -41,7 +41,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from utils import data_verify  # 复用 SHA256 校验（warn-only）
+from utils import data_verify  # noqa: E402 复用 SHA256 校验（warn-only）
 
 logger = logging.getLogger("encode_catalog_blair")
 
@@ -138,15 +138,26 @@ class BlairEncoder:
 def parse_args() -> argparse.Namespace:
     ap = argparse.ArgumentParser(description="BLaIR 离线商品向量化（预先编码）")
     ap.add_argument("--catalog", default=str(ROOT / "data" / "catalog.jsonl"))
-    ap.add_argument("--output", default="",
-                    help="输出 npy 路径（默认 BLAIR_OFFLINE_EMBEDDING_PATH 或 data/offline_blair_embeds.npy）")
+    ap.add_argument(
+        "--output",
+        default="",
+        help=(
+            "输出 npy 路径（默认 BLAIR_OFFLINE_EMBEDDING_PATH "
+            "或 data/offline_blair_embeds.npy）"
+        ),
+    )
     ap.add_argument("--limit", type=int, default=0, help=">0 时只编码前 N 条（冒烟测试）")
     ap.add_argument("--batch-size", type=int, default=32)
-    ap.add_argument("--max-length", type=int, default=128, help="商品文本截断长度（CLS 只依赖首位 token）")
+    ap.add_argument(
+        "--max-length", type=int, default=128, help="商品文本截断长度（CLS 只依赖首位 token）"
+    )
     ap.add_argument("--device", default="auto", help="auto/cpu/cuda")
     ap.add_argument("--skip-verify", action="store_true", help="跳过 SHA256 校验（默认 warn-only）")
-    ap.add_argument("--resume", action="store_true",
-                    help="从 data/offline_blair_embeds_checkpoint.npy 断点续跑（跳过已编码行）")
+    ap.add_argument(
+        "--resume",
+        action="store_true",
+        help="从 data/offline_blair_embeds_checkpoint.npy 断点续跑（跳过已编码行）",
+    )
     return ap.parse_args()
 
 
@@ -227,7 +238,10 @@ def main() -> int:
 
     # 3) 保存 npy + asins 映射 + 元信息（最终产物原子写）
     out_path = Path(args.output) if args.output else Path(
-        os.environ.get("BLAIR_OFFLINE_EMBEDDING_PATH", str(ROOT / "data" / "offline_blair_embeds.npy")))
+        os.environ.get(
+            "BLAIR_OFFLINE_EMBEDDING_PATH", str(ROOT / "data" / "offline_blair_embeds.npy")
+        )
+    )
     if out_path.suffix != ".npy":
         out_path = out_path.with_suffix(".npy")
     out_path.parent.mkdir(parents=True, exist_ok=True)

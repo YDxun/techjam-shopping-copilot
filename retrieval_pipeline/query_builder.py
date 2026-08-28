@@ -40,7 +40,6 @@ SYNONYM_MAP: dict[str, list[str]] = {
     "purse": ["handbag"],
     "backpack": ["rucksack", "knapsack"],
     "jewelry": ["jewellery"],
-    "sneaker": ["trainer"],
     "gym shoes": ["training shoes", "workout shoes"],
     "workout": ["gym", "training"],
     "gift": ["present"],
@@ -71,7 +70,9 @@ def _load_vocab_synonyms() -> dict[str, list[str]]:
                     continue
                 syns = ent.get("synonyms") or []
                 if isinstance(syns, list) and syns:
-                    out[str(canonical).lower()] = [str(s).lower() for s in syns if isinstance(s, str)]
+                    out[str(canonical).lower()] = [
+                        str(s).lower() for s in syns if isinstance(s, str)
+                    ]
     except Exception as exc:
         logger.warning("[query_builder] vocab.json 加载失败（回退内置同义词表）: %s", exc)
     _vocab_cache = out
@@ -80,9 +81,12 @@ def _load_vocab_synonyms() -> dict[str, list[str]]:
 
 # 价格文本 → 数值约束
 _PRICE_RE = [
-    re.compile(r"(?:under|below|less than|max|<=|≤|at most)\s*\$?\s*(\d+(?:\.\d+)?)", re.I),   # under $50
-    re.compile(r"budget\s*(?:around|of|:)?\s*\$?\s*(\d+(?:\.\d+)?)", re.I),                    # budget around $50
-    re.compile(r"\$?\s*(\d+(?:\.\d+)?)\s*[-–]\s*\$?\s*(\d+(?:\.\d+)?)", re.I),                 # $30-$50
+    # under $50
+    re.compile(r"(?:under|below|less than|max|<=|≤|at most)\s*\$?\s*(\d+(?:\.\d+)?)", re.I),
+    # budget around $50
+    re.compile(r"budget\s*(?:around|of|:)?\s*\$?\s*(\d+(?:\.\d+)?)", re.I),
+    # $30-$50
+    re.compile(r"\$?\s*(\d+(?:\.\d+)?)\s*[-–]\s*\$?\s*(\d+(?:\.\d+)?)", re.I),
 ]
 _BUDGET_KEYS = {"budget_max", "budget_min", "price_max", "price_min", "budget"}
 
@@ -119,7 +123,10 @@ class QueryBuilder:
         # 1) 约束解析（价格文本 → 数值）
         bundle.structured_filters = self._parse_constraints(state.constraints)
         # 1b) 从原始 query 文本挖掘价格约束（under $50 → budget_max=50），未显式给定时补全
-        if "budget_max" not in bundle.structured_filters and "budget_min" not in bundle.structured_filters:
+        if (
+            "budget_max" not in bundle.structured_filters
+            and "budget_min" not in bundle.structured_filters
+        ):
             price = self._extract_price(raw)
             if price is not None:
                 bundle.structured_filters["budget_max"] = price
@@ -135,7 +142,9 @@ class QueryBuilder:
         else:
             constraint_text = ""   # override 已清空约束 → 直接用原始 query
         if self.enable_llm_rewrite:
-            bundle.main_query = self._llm_rewrite(constraint_text, raw) or self._template_join(constraint_text, expanded_query)
+            bundle.main_query = self._llm_rewrite(constraint_text, raw) or self._template_join(
+                constraint_text, expanded_query
+            )
         else:
             bundle.main_query = self._template_join(constraint_text, expanded_query)
 
@@ -227,15 +236,19 @@ class QueryBuilder:
         """可选 LLM 查询改写（第4步）；失败/无 key 返回 None → 走模板拼接。"""
         try:
             import os
+
             import openai
             api_key = os.environ.get("OPENAI_API_KEY", "").strip()
             if not api_key:
                 return None
-            client = openai.OpenAI(api_key=api_key, base_url=os.environ.get("OPENAI_BASE_URL") or None)
+            client = openai.OpenAI(
+                api_key=api_key, base_url=os.environ.get("OPENAI_BASE_URL") or None
+            )
             prompt = (
                 "Rewrite this shopping search query into a concise e-commerce retrieval query "
                 "(keep material/color/size/budget, drop filler words).\n"
-                f"constraints: {constraint_text or 'none'}\nquery: {raw_query}\nOnly output the rewritten query."
+                f"constraints: {constraint_text or 'none'}\n"
+                f"query: {raw_query}\nOnly output the rewritten query."
             )
             resp = client.chat.completions.create(
                 model=os.environ.get("LLM_MODEL", "gpt-4o-mini"),

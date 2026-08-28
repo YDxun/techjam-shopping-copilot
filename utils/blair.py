@@ -78,6 +78,7 @@ class BlairQueryEncoder:
         # 首选：transformers AutoModel（BLaIR CLS 规范用法）
         try:
             import os
+
             import torch
             from transformers import AutoModel, AutoTokenizer
             torch.set_num_threads(max(1, os.cpu_count() or 8))

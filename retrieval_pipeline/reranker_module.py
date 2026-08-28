@@ -1,4 +1,4 @@
-﻿"""模块3｜重排序（赛题第6步）：BAAI/bge-reranker-v2-m3 交叉编码器重排。
+"""模块3｜重排序（赛题第6步）：BAAI/bge-reranker-v2-m3 交叉编码器重排。
 
 - 优先 FlagEmbedding 加载 bge-reranker-v2-m3（自动从 HuggingFace 下载）；
 - device 自动选择 cuda / cpu（DEVICE=auto/cpu/cuda）；
@@ -8,7 +8,6 @@
 from __future__ import annotations
 
 import logging
-from typing import Callable
 
 from retrieval_pipeline import config
 from retrieval_pipeline.data_access import CatalogStore
@@ -79,7 +78,7 @@ class RerankerModule:
         try:
             scores = self._score_pairs(pairs)          # cross-encoder 打分
             ordered = [a for a, _ in
-                       sorted(zip([a for a, _ in raw_candidates], scores),
+                       sorted(zip([a for a, _ in raw_candidates], scores, strict=True),
                               key=lambda x: x[1], reverse=True)]
             return self._dedup_top10(ordered)
         except Exception as exc:

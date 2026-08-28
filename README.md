@@ -36,22 +36,30 @@
   交叉编码精排（`RERANKER_MODEL_ENABLE=1` 且 FlagEmbedding 可用，失败自动回退规则排序）；
   无 selected key、`LLM_PROVIDER=none` 或 `LLM_RERANK=0` 时纯规则排序，完全离线可跑。
 
-### 支柱 II｜对话策略：多轮场景演进
-- **动态状态机** `agent/dialogue_state_machine.py`：
-  - 增量槽位提取：品类槽、约束槽（hard=2/soft=1）、场景信号（boundary/override/no_more_pref/vague）；
-  - 突发意图覆盖：首轮把"旧偏好"打标，检测到 "ignore my earlier preference" 时精准擦除旧偏好、
-    把新意图提升为最高优先级 hard 槽位（`OVERRIDE_ERASE=1` 可切回激进擦除）。
-- **主动澄清** `agent/clarifier.py`：
-  - 候选过载/描述过泛 → 主动结构化澄清提问，通过 `ask_attribute` 收敛需求；
-  - `CLARIFY_STRATEGY=other`（默认，一次最多蒸馏 2 条任意约束，信息量最大）或 `attribute`（按属性优先级逐项问）；
-  - 顾客表示"无更多偏好"或约束饱和 → 停止提问（STOP-ASK），避免冗余轮次，优化 MTTC。
+### 支柱 II｜对话策略：多轮场景演进（对话理解管线 `agent/dialogue/`）
+- **识别层** `agent/dialogue/recognizers/`：级联意图识别（规则先行 + LLM 严格 JSON 兜底），
+  产出 `DialogueAct`（new_search / add_constraint / replace_constraint / remove_constraint /
+  reject_products / no_preference / no_more_preferences / ambiguous）与 `ConstraintOperation`
+  （极性 include/exclude、强度 hard/soft、证据、置信度）。
+- **状态归约** `agent/dialogue/reducer.py`：唯一允许产出新 `DialogueState` 的组件——增量槽位累积 +
+  突发意图覆盖（REPLACE / NEW_SEARCH 清空旧约束并升级 `intent_version`；默认保守保留旧偏好为 soft
+  弱信号，`OVERRIDE_ERASE=1` 切回激进擦除）。
+- **主动澄清** `agent/dialogue/question_policy.py` + `catalog_signals.py`：目录感知提问效用打分与
+  停止策略——`ask_other_first` 默认（"other" 一轮平均把候选池 4930→307、命中保持 0.99，
+  数据验证最优）；候选过载/信息不足 → `ask_attribute` 收敛需求；效用饱和/顾客"无更多偏好" →
+  停止提问（STOP-ASK），避免冗余轮次，优化 MTTC。
+- **商品反馈闭环** `agent/dialogue/product_history.py`：版本化商品展示/反馈追踪
+  （hard_rejected / soft_demoted → 下一轮检索排除/降权）。
 
 ### 支柱 III｜自我进化：动态上下文编程
-- **运行时上下文蒸馏** `agent/dynamic_context_program.py`：每轮把会话历史编译成 `ContextProgram`
-  （约束/品类/意图轨道/模式/路由权重/置信度），检索、澄清、重排模块按它"重新编译"执行；
-  长期用户画像仅作弱先验（内存态，不落盘），并叠加进程内跨会话统计。
-- **自适应编排**：根据状态动态切换 `probe / exploit / recover / stop_ask` 四种运行模式，
-  动态调整路由权重、是否触发澄清、是否硬过滤——**无需模型训练**，纯上下文编程实现策略调整。
+- **运行时上下文蒸馏** `agent/dialogue/pipeline.py::_build_context`：每轮把 `DialogueState` +
+  识别结果 + `ProductHistory` 编译成 `RecommendationContext`（约束 / 品类 / 意图轨道 /
+  检索模式 probe-exploit-recover / 已问属性 / 排除与降权商品），下游
+  `intent_router -> retriever -> reranker` 按它"重新编译"执行；长期用户画像仅作弱先验
+  （内存态，不落盘）。
+- **自适应编排**：根据状态动态计算 `probe / exploit / recover` 检索模式；`IntentRouter` 在
+  RECOVER 下把 hard 组降级为 soft 放宽过滤；`RuntimeController` 依据能力探测自主决定
+  LLM/稠密/重排是否启用——**无需模型训练**，纯上下文编程实现策略调整。
 
 ### 支柱 IV｜对接评估矩阵
 - 面向指标：混合检索保障 **HitRate@K** 召回；重排（全覆盖加分 + 规则精排）把目标推前提升 **MRR**；
@@ -186,9 +194,9 @@ Agent 启动时执行一次**能力探测**（`agent/capability_probe.py`），�
   - 离线 npy 缺失 / 维度不符 → `BlairEmbeddingStore.load` 返回 None → 稠密通道禁用；
   - 查询编码器加载失败 → 自动尝试 sentence-transformers 兜底，仍失败则禁用；
   - 任意异常都被 `_route_dense` 捕获，只影响稠密路由，不阻塞 BM25/类别/约束路由主流程。
-- **LLM 意图识别**（`agent/llm_intent.py`）：LLM 判定 buying/browsing + 结构化槽位补充，
-  严格 JSON 解析，失败/非法输出一律回退规则；**LLM 抽取的约束只作 soft 检索词**（防幻觉污染 hard 过滤）。
-- **LLM 澄清决策**：LLM 决定 `ask_attribute` + 自然语言问题，非法属性回退规则策略。
+- **LLM 意图识别**（`agent/dialogue/recognizers/llm.py`）：级联识别中规则低置信/歧义/替换约束时
+  咨询 LLM（严格 JSON，失败/非法输出一律回退规则）；**LLM 抽取的约束只作 soft 检索词**（防幻觉污染 hard 过滤）。
+- **澄清决策固定走规则策略**（`ask_other_first`，数据验证最优），不使用 LLM。
 - 超时（connect 3s / total 8s）与熔断（2 次失败）由统一 LLM 客户端保证，LLM 失效不阻塞主流程。
 
 ## 4. 本地复现测试

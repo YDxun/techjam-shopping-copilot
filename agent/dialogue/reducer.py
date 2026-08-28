@@ -70,7 +70,10 @@ class StateReducer:
             no_more_preferences = True
         if recognition.dialogue_act == DialogueAct.NO_PREFERENCE:
             no_preference_attributes = frozenset(
-                {*no_preference_attributes, *(op.attribute for op in recognition.constraint_operations)}
+                {
+                    *no_preference_attributes,
+                    *(op.attribute for op in recognition.constraint_operations),
+                }
             )
 
         new_state = replace(

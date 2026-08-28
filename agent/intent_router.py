@@ -1,10 +1,11 @@
-﻿"""Pillar I：双轨意图路由（购买高意图轨道 / 浏览开放式轨道）。
+"""Pillar I：双轨意图路由（购买高意图轨道 / 浏览开放式轨道）。
 
 - 购买轨道：存在 hard 约束（"key requirement"/"what matters"）→ 高精度硬约束过滤。
 - 浏览轨道：无 hard 约束、仍在探索 → 多样化稠密/泛化召回。
 - 输出 IntentRoute：检索关键词、品类域、hard 约束 token 组、soft 词，
   下游检索与重排据此动态选择路由权重（Pillar III 自适应编排会改写权重）。
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -15,7 +16,7 @@ from config.env_config import EnvConfig
 
 @dataclass
 class IntentRoute:
-    track: str = "browsing"                 # buying / browsing
+    track: str = "browsing"  # buying / browsing
     confidence: float = 0.5
     category_tokens: list[str] = field(default_factory=list)
     hard_groups: list[tuple[str, ...]] = field(default_factory=list)  # 组内 AND

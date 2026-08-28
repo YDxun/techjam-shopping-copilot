@@ -4,7 +4,6 @@ from agent.dialogue.catalog_signals import ATTRIBUTE_ORDER, CatalogQuestionSigna
 from agent.dialogue.models import DialogueState, QuestionDecision, RecognitionResult
 from config.models import DecisionConfig
 
-
 QUESTION_MESSAGES = {
     "category": "What type of product are you looking for?",
     "material": "Do you have a material preference?",
@@ -40,8 +39,7 @@ class QuestionPolicy:
         candidates = [
             attribute
             for attribute in ATTRIBUTE_ORDER
-            if attribute in category_signals
-            and not (attribute == "category" and state.category)
+            if attribute in category_signals and not (attribute == "category" and state.category)
         ]
         if not candidates:
             return self._stop("no_candidate_attribute")
@@ -56,7 +54,9 @@ class QuestionPolicy:
             )
             for attribute in candidates
         }
-        best = min(candidates, key=lambda attribute: (-scores[attribute], ATTRIBUTE_ORDER.index(attribute)))
+        best = min(
+            candidates, key=lambda attribute: (-scores[attribute], ATTRIBUTE_ORDER.index(attribute))
+        )
         best_score = scores[best]
         stop_score = self._stop_utility(state, recognition)
         ordered_scores = {
@@ -107,9 +107,7 @@ class QuestionPolicy:
             "answer_probability": self._clamp(signal.answer_probability),
             "ambiguity_reduction": 1.0 if recognition.ambiguities else 0.0,
             "repeat_penalty": 1.0 if attribute in state.asked_attributes else 0.0,
-            "no_preference_penalty": (
-                1.0 if attribute in state.no_preference_attributes else 0.0
-            ),
+            "no_preference_penalty": (1.0 if attribute in state.no_preference_attributes else 0.0),
             "turn_cost": self._clamp(max(0, state.turn - 1) / 9.0),
         }
         self.last_components[attribute] = components
@@ -130,8 +128,7 @@ class QuestionPolicy:
     ) -> float:
         weights = self.config.stop_utility.weights
         return (
-            weights.constraint_completeness
-            * self._clamp(len(state.active_constraints) / 4.0)
+            weights.constraint_completeness * self._clamp(len(state.active_constraints) / 4.0)
             + weights.intent_confidence * self._clamp(recognition.confidence)
             + weights.asked_count
             * self._clamp(len(state.asked_attributes) / self.config.max_questions)

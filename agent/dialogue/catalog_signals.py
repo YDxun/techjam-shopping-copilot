@@ -9,7 +9,6 @@ from typing import Iterable, Mapping
 from config import constants
 from utils import session_utils as su
 
-
 ATTRIBUTE_ORDER = (
     "material",
     "feature",
@@ -71,8 +70,7 @@ class CatalogQuestionSignals:
         return cls(
             by_category={
                 "__all__": {
-                    attribute: AttributeSignal(0.0, 0.0, 0.15)
-                    for attribute in ATTRIBUTE_ORDER
+                    attribute: AttributeSignal(0.0, 0.0, 0.15) for attribute in ATTRIBUTE_ORDER
                 }
             }
         )
@@ -89,8 +87,7 @@ class CatalogQuestionSignals:
         grouped["__all__"] = all_products
         return cls(
             by_category={
-                category: cls._signals_for_products(rows)
-                for category, rows in grouped.items()
+                category: cls._signals_for_products(rows) for category, rows in grouped.items()
             }
         )
 
@@ -117,9 +114,7 @@ class CatalogQuestionSignals:
     @classmethod
     def _signals_for_products(cls, products: list[dict]) -> dict[str, AttributeSignal]:
         total = len(products)
-        counters: dict[str, Counter[str]] = {
-            attribute: Counter() for attribute in ATTRIBUTE_ORDER
-        }
+        counters: dict[str, Counter[str]] = {attribute: Counter() for attribute in ATTRIBUTE_ORDER}
         covered: Counter[str] = Counter()
         for product in products:
             values = cls._attribute_values(product)
@@ -151,8 +146,12 @@ class CatalogQuestionSignals:
         text = cls._text(product).lower()
         details = product.get("details") if isinstance(product.get("details"), dict) else {}
         features = product.get("features") if isinstance(product.get("features"), list) else []
-        categories = product.get("categories") if isinstance(product.get("categories"), list) else []
-        materials = [value for value in constants.MATERIALS if re.search(rf"\b{re.escape(value)}\b", text)]
+        categories = (
+            product.get("categories") if isinstance(product.get("categories"), list) else []
+        )
+        materials = [
+            value for value in constants.MATERIALS if re.search(rf"\b{re.escape(value)}\b", text)
+        ]
         colors = [value for value in COLORS if re.search(rf"\b{value}\b", text)]
         sizes = [
             str(value).lower()
@@ -199,8 +198,5 @@ class CatalogQuestionSignals:
         total = sum(counter.values())
         if total <= 0 or len(counter) <= 1:
             return 0.0
-        entropy = -sum(
-            (count / total) * math.log(count / total)
-            for count in counter.values()
-        )
+        entropy = -sum((count / total) * math.log(count / total) for count in counter.values())
         return entropy / math.log(len(counter))

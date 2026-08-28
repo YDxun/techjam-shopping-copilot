@@ -16,14 +16,9 @@ from agent.dialogue.models import (
 from config import constants
 from utils import session_utils as su
 
-
 RE_LOOKING_FOR = re.compile(r"looking for\s+(.+?)(?=,|\.\s|;|$)", re.I | re.S)
-RE_KEY_REQUIREMENT = re.compile(
-    r"key requirement is\s*[:：]?\s*(.+?)(?:\.\s*)?$", re.I | re.S
-)
-RE_WHAT_MATTERS = re.compile(
-    r"what matters is\s*[:：]?\s*(.+?)(?:\.\s*)?$", re.I | re.S
-)
+RE_KEY_REQUIREMENT = re.compile(r"key requirement is\s*[:：]?\s*(.+?)(?:\.\s*)?$", re.I | re.S)
+RE_WHAT_MATTERS = re.compile(r"what matters is\s*[:：]?\s*(.+?)(?:\.\s*)?$", re.I | re.S)
 RE_OVERRIDE = re.compile(
     r"ignore my earlier preference.*?what i need is\s*[:：]?\s*(.+?)(?:\.\s*)?$",
     re.I | re.S,

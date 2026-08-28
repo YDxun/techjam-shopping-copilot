@@ -7,7 +7,6 @@ from config.env_config import EnvConfig
 from evaluator.local_evaluator import ALLOWED_ATTRIBUTES
 from llm.base import DisabledLLMClient, LLMState, LLMStatus, LLMUsage
 
-
 PRODUCTS = (
     {
         "parent_asin": "A",

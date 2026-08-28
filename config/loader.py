@@ -23,7 +23,6 @@ from config.models import (
     StopUtilityWeights,
 )
 
-
 DEFAULT_CONFIG_PATH = Path(__file__).with_name("default.json")
 
 
@@ -37,8 +36,8 @@ def load_config(
     environ: Mapping[str, str] | None = None,
 ) -> AppConfig:
     env = os.environ if environ is None else environ
-    selected_path = Path(path) if path is not None else Path(
-        env.get("APP_CONFIG_PATH", DEFAULT_CONFIG_PATH)
+    selected_path = (
+        Path(path) if path is not None else Path(env.get("APP_CONFIG_PATH", DEFAULT_CONFIG_PATH))
     )
     data = _load_json_object(selected_path)
     _reject_secret_fields(data, source=str(selected_path))
@@ -81,7 +80,9 @@ def _reject_secret_fields(data: Mapping[str, Any], source: str) -> None:
     if not isinstance(llm, Mapping):
         return
     if "api_key" in llm:
-        raise ConfigError(f"{source} may not set llm.api_key; use DEEPSEEK_API_KEY or OPENAI_API_KEY")
+        raise ConfigError(
+            f"{source} may not set llm.api_key; use DEEPSEEK_API_KEY or OPENAI_API_KEY"
+        )
     providers = llm.get("providers")
     if not isinstance(providers, Mapping):
         return
@@ -130,7 +131,10 @@ def _environment_overrides(
             result[field_name] = parser(value, name)
 
     provider = _selected_provider_from_environment(env, json_provider)
-    if _environment_value(env, "LLM_PROVIDER") is not None or _environment_value(env, "LLM_BACKEND") is not None:
+    if (
+        _environment_value(env, "LLM_PROVIDER") is not None
+        or _environment_value(env, "LLM_BACKEND") is not None
+    ):
         _set_nested(result, ("llm", "provider"), provider)
 
     provider_fields: dict[str, tuple[tuple[str, ...], Callable[[str, str], Any]]] = {
@@ -148,27 +152,29 @@ def _environment_overrides(
         for name, field in (("LLM_MODEL", "model"), ("LLM_BASE_URL", "base_url")):
             value = _environment_value(env, name)
             if value is not None:
-                _set_nested(result, ("llm", "providers", generic_provider, field), _parse_text(value, name))
+                _set_nested(
+                    result, ("llm", "providers", generic_provider, field), _parse_text(value, name)
+                )
 
     nested_fields: dict[str, tuple[tuple[str, ...], Callable[[str, str], Any]]] = {
         "MAX_CONSTRAINT_ASKS": (("decision", "max_questions"), _parse_int),
-        "SHOPPING_DIALOGUE__MODE": (
-            ("dialogue_understanding", "mode"), _parse_text
-        ),
+        "SHOPPING_DIALOGUE__MODE": (("dialogue_understanding", "mode"), _parse_text),
         "SHOPPING_DIALOGUE__RULE_CONFIDENCE_THRESHOLD": (
-            ("dialogue_understanding", "rule_confidence_threshold"), _parse_float
+            ("dialogue_understanding", "rule_confidence_threshold"),
+            _parse_float,
         ),
         "SHOPPING_DIALOGUE__MAX_EVIDENCE_LENGTH": (
-            ("dialogue_understanding", "max_evidence_length"), _parse_int
+            ("dialogue_understanding", "max_evidence_length"),
+            _parse_int,
         ),
-        "SHOPPING_DECISION__MAX_QUESTIONS": (
-            ("decision", "max_questions"), _parse_int
-        ),
+        "SHOPPING_DECISION__MAX_QUESTIONS": (("decision", "max_questions"), _parse_int),
         "SHOPPING_DECISION__ASK_UTILITY__MINIMUM": (
-            ("decision", "ask_utility", "minimum_ask_utility"), _parse_float
+            ("decision", "ask_utility", "minimum_ask_utility"),
+            _parse_float,
         ),
         "SHOPPING_DECISION__STOP_UTILITY__MINIMUM": (
-            ("decision", "stop_utility", "minimum_stop_utility"), _parse_float
+            ("decision", "stop_utility", "minimum_stop_utility"),
+            _parse_float,
         ),
         "LLM_RERANK": (("llm", "rerank_enabled"), _parse_bool),
         "LLM_RERANK_CANDIDATES": (("llm", "rerank_candidates"), _parse_int),
@@ -178,7 +184,10 @@ def _environment_overrides(
         "LLM_MAX_RETRIES": (("llm", "retry", "max_retries"), _parse_int),
         "LLM_RETRY_BASE_DELAY_SECONDS": (("llm", "retry", "base_delay_seconds"), _parse_float),
         "LLM_RETRY_MAX_DELAY_SECONDS": (("llm", "retry", "max_delay_seconds"), _parse_float),
-        "LLM_CIRCUIT_BREAKER_FAILURE_THRESHOLD": (("llm", "circuit_breaker", "failure_threshold"), _parse_int),
+        "LLM_CIRCUIT_BREAKER_FAILURE_THRESHOLD": (
+            ("llm", "circuit_breaker", "failure_threshold"),
+            _parse_int,
+        ),
     }
     for field in (
         "information_gain",
@@ -275,30 +284,30 @@ def _parse_float(value: str, name: str) -> float:
 
 
 def _parse_bool(value: str, name: str) -> bool:
-    values = {"1": True, "true": True, "yes": True, "on": True,
-              "0": False, "false": False, "no": False, "off": False}
+    values = {
+        "1": True,
+        "true": True,
+        "yes": True,
+        "on": True,
+        "0": False,
+        "false": False,
+        "no": False,
+        "off": False,
+    }
     try:
         return values[value.lower()]
     except KeyError as error:
-        raise ConfigError(
-            f"{name} must be one of 1/0, true/false, yes/no, or on/off"
-        ) from error
+        raise ConfigError(f"{name} must be one of 1/0, true/false, yes/no, or on/off") from error
 
 
 def _build_and_validate(data: Mapping[str, Any], selected_key: SecretValue) -> AppConfig:
     llm_data = _mapping(data.get("llm"), "llm")
-    dialogue_data = _mapping(
-        data.get("dialogue_understanding"), "dialogue_understanding"
-    )
+    dialogue_data = _mapping(data.get("dialogue_understanding"), "dialogue_understanding")
     decision_data = _mapping(data.get("decision"), "decision")
     ask_data = _mapping(decision_data.get("ask_utility"), "decision.ask_utility")
-    ask_weights_data = _mapping(
-        ask_data.get("weights"), "decision.ask_utility.weights"
-    )
+    ask_weights_data = _mapping(ask_data.get("weights"), "decision.ask_utility.weights")
     stop_data = _mapping(decision_data.get("stop_utility"), "decision.stop_utility")
-    stop_weights_data = _mapping(
-        stop_data.get("weights"), "decision.stop_utility.weights"
-    )
+    stop_weights_data = _mapping(stop_data.get("weights"), "decision.stop_utility.weights")
     retry_data = _mapping(llm_data.get("retry"), "llm.retry")
     circuit_data = _mapping(llm_data.get("circuit_breaker"), "llm.circuit_breaker")
     providers_data = _mapping(llm_data.get("providers"), "llm.providers")
@@ -306,29 +315,41 @@ def _build_and_validate(data: Mapping[str, Any], selected_key: SecretValue) -> A
     providers = ProviderConfigs(
         deepseek=_build_provider(
             _mapping(providers_data.get("deepseek"), "llm.providers.deepseek"),
-            "llm.providers.deepseek", selected_key if provider == "deepseek" else SecretValue(),
+            "llm.providers.deepseek",
+            selected_key if provider == "deepseek" else SecretValue(),
         ),
         openai=_build_provider(
             _mapping(providers_data.get("openai"), "llm.providers.openai"),
-            "llm.providers.openai", selected_key if provider == "openai" else SecretValue(),
+            "llm.providers.openai",
+            selected_key if provider == "openai" else SecretValue(),
         ),
     )
     llm = LLMConfig(
         provider=provider,
         rerank_enabled=_bool_value(llm_data.get("rerank_enabled"), "llm.rerank_enabled"),
         rerank_candidates=_int_value(llm_data.get("rerank_candidates"), "llm.rerank_candidates"),
-        health_check_enabled=_bool_value(llm_data.get("health_check_enabled"), "llm.health_check_enabled"),
-        connect_timeout_seconds=_number_value(llm_data.get("connect_timeout_seconds"), "llm.connect_timeout_seconds"),
+        health_check_enabled=_bool_value(
+            llm_data.get("health_check_enabled"), "llm.health_check_enabled"
+        ),
+        connect_timeout_seconds=_number_value(
+            llm_data.get("connect_timeout_seconds"), "llm.connect_timeout_seconds"
+        ),
         timeout_seconds=_number_value(llm_data.get("timeout_seconds"), "llm.timeout_seconds"),
         temperature=_number_value(llm_data.get("temperature"), "llm.temperature"),
         max_tokens=_int_value(llm_data.get("max_tokens"), "llm.max_tokens"),
         retry=RetryConfig(
             max_retries=_int_value(retry_data.get("max_retries"), "llm.retry.max_retries"),
-            base_delay_seconds=_number_value(retry_data.get("base_delay_seconds"), "llm.retry.base_delay_seconds"),
-            max_delay_seconds=_number_value(retry_data.get("max_delay_seconds"), "llm.retry.max_delay_seconds"),
+            base_delay_seconds=_number_value(
+                retry_data.get("base_delay_seconds"), "llm.retry.base_delay_seconds"
+            ),
+            max_delay_seconds=_number_value(
+                retry_data.get("max_delay_seconds"), "llm.retry.max_delay_seconds"
+            ),
         ),
         circuit_breaker=CircuitBreakerConfig(
-            failure_threshold=_int_value(circuit_data.get("failure_threshold"), "llm.circuit_breaker.failure_threshold")
+            failure_threshold=_int_value(
+                circuit_data.get("failure_threshold"), "llm.circuit_breaker.failure_threshold"
+            )
         ),
         providers=providers,
     )
@@ -344,9 +365,7 @@ def _build_and_validate(data: Mapping[str, Any], selected_key: SecretValue) -> A
         sample_limit=_optional_int_value(data.get("sample_limit"), "sample_limit"),
         output_path=_string_value(data.get("output_path"), "output_path"),
         dialogue_understanding=DialogueUnderstandingConfig(
-            mode=_string_value(
-                dialogue_data.get("mode"), "dialogue_understanding.mode"
-            ),
+            mode=_string_value(dialogue_data.get("mode"), "dialogue_understanding.mode"),
             rule_confidence_threshold=_number_value(
                 dialogue_data.get("rule_confidence_threshold"),
                 "dialogue_understanding.rule_confidence_threshold",
@@ -357,9 +376,7 @@ def _build_and_validate(data: Mapping[str, Any], selected_key: SecretValue) -> A
             ),
         ),
         decision=DecisionConfig(
-            max_questions=_int_value(
-                decision_data.get("max_questions"), "decision.max_questions"
-            ),
+            max_questions=_int_value(decision_data.get("max_questions"), "decision.max_questions"),
             ask_utility=AskUtilityConfig(
                 weights=AskUtilityWeights(
                     **{
@@ -405,8 +422,12 @@ def _build_provider(data: Mapping[str, Any], field: str, api_key: SecretValue) -
     return ProviderConfig(
         model=_non_empty_string(data.get("model"), f"{field}.model"),
         base_url=_non_empty_string(data.get("base_url"), f"{field}.base_url"),
-        token_limit_parameter=_string_value(data.get("token_limit_parameter"), f"{field}.token_limit_parameter"),
-        supports_temperature=_bool_value(data.get("supports_temperature"), f"{field}.supports_temperature"),
+        token_limit_parameter=_string_value(
+            data.get("token_limit_parameter"), f"{field}.token_limit_parameter"
+        ),
+        supports_temperature=_bool_value(
+            data.get("supports_temperature"), f"{field}.supports_temperature"
+        ),
         api_key=api_key,
     )
 
@@ -458,8 +479,15 @@ def _validate(config: AppConfig) -> None:
     _positive(config.llm.circuit_breaker.failure_threshold, "llm.circuit_breaker.failure_threshold")
     if config.llm.retry.max_delay_seconds < config.llm.retry.base_delay_seconds:
         raise ConfigError("llm.retry.max_delay_seconds must be >= llm.retry.base_delay_seconds")
-    for name, profile in (("deepseek", config.llm.providers.deepseek), ("openai", config.llm.providers.openai)):
-        _in(profile.token_limit_parameter, f"llm.providers.{name}.token_limit_parameter", {"max_tokens", "max_completion_tokens"})
+    for name, profile in (
+        ("deepseek", config.llm.providers.deepseek),
+        ("openai", config.llm.providers.openai),
+    ):
+        _in(
+            profile.token_limit_parameter,
+            f"llm.providers.{name}.token_limit_parameter",
+            {"max_tokens", "max_completion_tokens"},
+        )
 
 
 def _mapping(value: Any, field: str) -> Mapping[str, Any]:

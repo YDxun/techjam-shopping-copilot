@@ -111,9 +111,7 @@ class RecognizerTest(unittest.TestCase):
             rule_confidence_threshold=0.75,
         )
 
-        result = cascade.recognize(
-            self.request("I want that sort, but cotton rather than wool.")
-        )
+        result = cascade.recognize(self.request("I want that sort, but cotton rather than wool."))
 
         self.assertEqual(result.source, RecognitionSource.LLM)
         self.assertEqual(result.category, "shoes")

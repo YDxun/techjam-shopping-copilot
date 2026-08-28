@@ -28,8 +28,7 @@ class ProductHistory:
         ordered = tuple(dict.fromkeys(asin for asin in asins if isinstance(asin, str) and asin))
         observations = list(self.observations)
         index_by_key = {
-            (item.asin, item.intent_version): index
-            for index, item in enumerate(observations)
+            (item.asin, item.intent_version): index for index, item in enumerate(observations)
         }
         for asin in ordered:
             key = (asin, intent_version)
@@ -81,17 +80,9 @@ class ProductHistory:
         ):
             pending = set(self.pending_batch)
             explicit = set(recognition.explicit_rejected_asins) & pending
-            feedback = (
-                ProductFeedback.HARD_REJECTED
-                if explicit
-                else ProductFeedback.SOFT_DEMOTED
-            )
+            feedback = ProductFeedback.HARD_REJECTED if explicit else ProductFeedback.SOFT_DEMOTED
             targets = explicit or pending
-            evidence = (
-                "explicit_product_rejection"
-                if explicit
-                else "generic_negative_feedback"
-            )
+            evidence = "explicit_product_rejection" if explicit else "generic_negative_feedback"
             observations = tuple(
                 self._with_feedback(item, feedback, evidence)
                 if item.intent_version == intent_version and item.asin in targets
@@ -101,20 +92,16 @@ class ProductHistory:
         return ProductHistory(observations=observations)
 
     def context_lists(self, intent_version: int) -> ProductContextLists:
-        current = tuple(
-            item for item in self.observations if item.intent_version == intent_version
-        )
+        current = tuple(item for item in self.observations if item.intent_version == intent_version)
         return ProductContextLists(
             evaluation_excluded_asins=tuple(
                 item.asin for item in current if item.evaluation_eliminated
             ),
             hard_rejected_asins=tuple(
-                item.asin for item in current
-                if item.feedback == ProductFeedback.HARD_REJECTED
+                item.asin for item in current if item.feedback == ProductFeedback.HARD_REJECTED
             ),
             soft_demoted_asins=tuple(
-                item.asin for item in current
-                if item.feedback == ProductFeedback.SOFT_DEMOTED
+                item.asin for item in current if item.feedback == ProductFeedback.SOFT_DEMOTED
             ),
         )
 

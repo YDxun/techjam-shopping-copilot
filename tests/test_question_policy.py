@@ -101,9 +101,7 @@ class QuestionPolicyTest(unittest.TestCase):
         information_policy = QuestionPolicy(
             decision_config(information_gain=1.0, constraint_gap=0.0)
         )
-        gap_policy = QuestionPolicy(
-            decision_config(information_gain=0.0, constraint_gap=1.0)
-        )
+        gap_policy = QuestionPolicy(decision_config(information_gain=0.0, constraint_gap=1.0))
 
         self.assertEqual(
             information_policy.decide(state, parsed(), signals).ask_attribute,

@@ -5,7 +5,6 @@ from enum import Enum
 
 from utils import session_utils as su
 
-
 ALLOWED_ATTRIBUTES = frozenset(
     {
         "category",

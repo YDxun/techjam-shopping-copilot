@@ -8,6 +8,7 @@
   未安装/不可用时自动降级为 BM25，保证脱离外部 API 可运行。
 - 融合：Reciprocal Rank Fusion（RRF）+ 并集候选池，交由重排模块精排。
 """
+
 from __future__ import annotations
 
 import json
@@ -35,7 +36,7 @@ class HybridRetriever:
         self._products: dict[str, dict] = {}
         self._text_lower: dict[str, str] = {}
         self._cat_lower: dict[str, str] = {}
-        self._dense = None          # 惰性加载的稠密模型
+        self._dense = None  # 惰性加载的稠密模型
         self._dense_matrix = None
         self._build_index()
 
@@ -61,7 +62,9 @@ class HybridRetriever:
                 description = self._text(p.get("description"))
                 batch.append((asin, title, features, details, categories, store, description))
                 self._products[asin] = p
-                self._text_lower[asin] = " ".join([title, features, details, categories, store, description]).lower()
+                self._text_lower[asin] = " ".join(
+                    [title, features, details, categories, store, description]
+                ).lower()
                 self._cat_lower[asin] = categories.lower()
                 if len(batch) >= 1000:
                     cur.executemany("INSERT INTO products VALUES (?,?,?,?,?,?,?)", batch)
@@ -69,7 +72,9 @@ class HybridRetriever:
         if batch:
             cur.executemany("INSERT INTO products VALUES (?,?,?,?,?,?,?)", batch)
         self._conn.commit()
-        logger.info("[retriever] indexed %d products (backend=%s)", len(self._products), self.backend)
+        logger.info(
+            "[retriever] indexed %d products (backend=%s)", len(self._products), self.backend
+        )
 
     @staticmethod
     def _text(value: Any) -> str:
@@ -87,7 +92,7 @@ class HybridRetriever:
         pool: dict[str, dict] = {}
         self._route_bm25(route, pool, top_k=top_k * 2)
         self._route_category(route, pool, top_k=top_k)
-        self._route_constraints(route, pool, top_k=top_k)     # 硬约束 AND（保命中）
+        self._route_constraints(route, pool, top_k=top_k)  # 硬约束 AND（保命中）
         if self.backend in ("dense", "hybrid"):
             self._route_dense(route, pool, top_k=top_k)
 
@@ -142,7 +147,9 @@ class HybridRetriever:
                 asin = str(asin)
                 # 与品类域交叉过滤（缩小 + 提升命中精度）
                 if route.category_tokens:
-                    frac = sum(1 for t in route.category_tokens if t in self._cat_lower.get(asin, ""))
+                    frac = sum(
+                        1 for t in route.category_tokens if t in self._cat_lower.get(asin, "")
+                    )
                     if frac / len(route.category_tokens) <= 0.5:
                         continue
                 self._accumulate(pool, asin, 1.0 / (10.0 + rank) + 0.1, "constraint")
@@ -184,6 +191,7 @@ class HybridRetriever:
         try:
             qv = model.encode([query], normalize_embeddings=True)[0]
             import numpy as np  # 局部导入，避免核心路径依赖
+
             sims = matrix @ qv
             order = np.argsort(-sims)[:top_k]
             for rank, idx in enumerate(order, start=1):
@@ -196,17 +204,26 @@ class HybridRetriever:
         if self._dense is not None:
             return self._dense
         try:
-            from sentence_transformers import SentenceTransformer
             import numpy as np
+            from sentence_transformers import SentenceTransformer
+
             model = SentenceTransformer(self.env.embedding_model)
             ids = list(self._products.keys())
             texts = [self._text_lower[a][:512] for a in ids]
-            matrix = model.encode(texts, normalize_embeddings=True, batch_size=64, show_progress_bar=False)
+            matrix = model.encode(
+                texts, normalize_embeddings=True, batch_size=64, show_progress_bar=False
+            )
             matrix = np.asarray(matrix, dtype=np.float32)
             self._dense = (model, matrix, ids)
-            logger.info("[retriever] dense route ready: %s (%d dims)", self.env.embedding_model, matrix.shape[1])
+            logger.info(
+                "[retriever] dense route ready: %s (%d dims)",
+                self.env.embedding_model,
+                matrix.shape[1],
+            )
         except Exception as exc:
-            logger.warning("[retriever] dense backend unavailable (%s); using bm25/category only", exc)
+            logger.warning(
+                "[retriever] dense backend unavailable (%s); using bm25/category only", exc
+            )
             self._dense = (None, None, None)
         return self._dense
 

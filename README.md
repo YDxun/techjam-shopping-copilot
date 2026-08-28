@@ -31,22 +31,21 @@
 - **重排序** `agent/reranker.py`：规则融合打分（约束覆盖度 0.5 / 品类 0.25 / RRF 0.15 / 热度 0.05 / 画像 0.05）
   + 可选的统一 LLM 语义重排（`LLM_PROVIDER=deepseek/openai`）；无 selected key、`LLM_PROVIDER=none` 或 `LLM_RERANK=0` 时纯规则排序，完全离线可跑。
 
-### 支柱 II｜对话策略：多轮场景演进
-- **动态状态机** `agent/dialogue_state_machine.py`：
-  - 增量槽位提取：品类槽、约束槽（hard=2/soft=1）、场景信号（boundary/override/no_more_pref/vague）；
-  - 突发意图覆盖：首轮把"旧偏好"打标，检测到 "ignore my earlier preference" 时精准擦除旧偏好、
-    把新意图提升为最高优先级 hard 槽位（`OVERRIDE_ERASE=1` 可切回激进擦除）。
-- **主动澄清** `agent/clarifier.py`：
-  - 候选过载/描述过泛 → 主动结构化澄清提问，通过 `ask_attribute` 收敛需求；
-  - `CLARIFY_STRATEGY=other`（默认，一次最多蒸馏 2 条任意约束，信息量最大）或 `attribute`（按属性优先级逐项问）；
-  - 顾客表示"无更多偏好"或约束饱和 → 停止提问（STOP-ASK），避免冗余轮次，优化 MTTC。
+### 支柱 II｜对话理解与主动提问
+- **级联意图识别** `agent/dialogue/recognizers/`：规则路径始终可用；`cascaded` 模式只在
+  规则低置信度或输入复杂时调用共享 LLM 客户端。合法 LLM JSON 整体优先，任何失败都完整回退规则结果。
+- **原子状态与商品反馈** `agent/dialogue/reducer.py`、`product_history.py`：所有状态变更统一经过
+  复制、应用和校验；意图覆盖使用版本隔离，泛化拒绝软降权，明确商品拒绝硬排除。
+- **确定性主动提问** `agent/dialogue/question_policy.py`：使用目录覆盖率、熵、当前约束缺口、
+  用户可回答概率、歧义收益及提问成本计算效用；全部权重可配置，提问决策不调用 LLM。
 
-### 支柱 III｜自我进化：动态上下文编程
-- **运行时上下文蒸馏** `agent/dynamic_context_program.py`：每轮把会话历史编译成 `ContextProgram`
-  （约束/品类/意图轨道/模式/路由权重/置信度），检索、澄清、重排模块按它"重新编译"执行；
-  长期用户画像仅作弱先验（内存态，不落盘），并叠加进程内跨会话统计。
-- **自适应编排**：根据状态动态切换 `probe / exploit / recover / stop_ask` 四种运行模式，
-  动态调整路由权重、是否触发澄清、是否硬过滤——**无需模型训练**，纯上下文编程实现策略调整。
+### 支柱 III｜统一推荐上下文
+- **单轮编排** `agent/dialogue/pipeline.py`：按顺序完成上轮展示结算、意图识别、状态归约、
+  提问决策，并输出不可变的 `RecommendationContext`。
+- **职责边界**：新对话子系统不召回、不排序、不去重，也不生成 Top10。现有
+  `IntentRouter → HybridRetriever → Reranker` 推荐链消费上下文并保持推荐结果顺序。
+- **可降级运行**：无 Key、provider 为 `none`、探测失败、请求超时或 LLM 输出非法时，主流程均
+  使用本地规则继续工作；本地小模型仅保留 `IntentRecognizer` 接口扩展点，本次未实现加载与推理。
 
 ### 支柱 IV｜对接评估矩阵
 - 面向指标：混合检索保障 **HitRate@K** 召回；重排（全覆盖加分 + 规则精排）把目标推前提升 **MRR**；
@@ -97,8 +96,12 @@ pip install -r requirements.txt
 | `LLM_MAX_RETRIES` | `2` | 可重试探测的额外重试次数（启动探测最多 3 次请求） |
 | `LLM_RETRY_BASE_DELAY_SECONDS` / `LLM_RETRY_MAX_DELAY_SECONDS` | `0.5` / `1.5` | 重试退避范围（秒） |
 | `LLM_CIRCUIT_BREAKER_FAILURE_THRESHOLD` | `2` | 运行期失败后打开断路器的阈值 |
+| `SHOPPING_DIALOGUE__MODE` | `cascaded` | `rule_only` / `cascaded` 意图识别模式 |
+| `SHOPPING_DIALOGUE__RULE_CONFIDENCE_THRESHOLD` | `0.75` | 规则结果达到该置信度时不调用 LLM |
+| `SHOPPING_DIALOGUE__MAX_EVIDENCE_LENGTH` | `180` | 单条证据文本最大长度 |
+| `SHOPPING_DECISION__MAX_QUESTIONS` | `3` | 单个意图版本的最大提问次数 |
 | `EMBEDDING_MODEL` / `RERANKER_MODEL` | 见 `config/default.json` | 可选检索与重排模型 |
-| `CLARIFY_STRATEGY` / `OVERRIDE_ERASE` / `LLM_RERANK` | `other` / `0` / `1` | 对话策略；`LLM_RERANK=0` 强制确定性规则重排 |
+| `LLM_RERANK` | `1` | 设为 `0` 时强制使用确定性规则重排 |
 | `SAMPLE_LIMIT` / `SKIP_DATA_VERIFY` / `OUTPUT_PATH` | 空 / `0` / `results.json` | 冒烟范围、数据校验和结果路径 |
 
 每次 `run_local_eval.py` 启动都会在数据校验前打印经脱敏的 LLM 状态，包含 provider、model、state、attempts，以及可用时的错误类别：
@@ -107,7 +110,36 @@ pip install -r requirements.txt
 - `available`：SDK 已准备就绪，且健康检查成功；若关闭健康检查，则不发送探测请求也可进入此状态。
 - `unavailable`：探测失败但评估不会因它抛出异常；输出仅显示分类（如 `timeout`），不显示凭据。
 
-统一客户端已在启动后注入 Agent，并仅由 Reranker 的可选语义重排使用；澄清仍是本地规则逻辑，并未实现 LLM 澄清。离线用法保持不变：不设置 selected-provider key，或设 `LLM_PROVIDER=none`，即可无网络运行。
+统一客户端在启动后注入 Agent，并由级联意图识别器和 Reranker 共享。LLM 只解析输入或辅助重排，
+不能直接决定是否提问、提问属性或生成推荐商品。离线用法保持不变：不设置 selected-provider key，
+或设 `LLM_PROVIDER=none`，即可无网络运行。
+
+### Dialogue modes and configurable question utility
+
+`rule_only` 完全跳过意图识别网络调用；`cascaded` 是默认模式，仅在规则低置信度或存在复杂指代时
+尝试 LLM，并对其 JSON 结果进行严格 Schema 和 ASIN 范围校验：
+
+```bash
+# 确定性离线识别
+SHOPPING_DIALOGUE__MODE=rule_only LLM_PROVIDER=none python run_local_eval.py
+
+# 级联识别；API Key 仍只从所选 provider 的环境变量读取
+SHOPPING_DIALOGUE__MODE=cascaded LLM_PROVIDER=deepseek \
+  DEEPSEEK_API_KEY="$DEEPSEEK_API_KEY" python run_local_eval.py
+```
+
+嵌套配置使用双下划线分隔。提问公式的七项权重均可通过同一规则覆盖，例如：
+
+```bash
+SHOPPING_DECISION__ASK_UTILITY__WEIGHTS__INFORMATION_GAIN=0.45 \
+SHOPPING_DECISION__ASK_UTILITY__WEIGHTS__TURN_COST=0.25 \
+SHOPPING_DECISION__ASK_UTILITY__MINIMUM_ASK_UTILITY=0.30 \
+python run_local_eval.py
+```
+
+`StopUtility` 同样支持 `SHOPPING_DECISION__STOP_UTILITY__WEIGHTS__...` 与
+`SHOPPING_DECISION__STOP_UTILITY__MINIMUM_STOP_UTILITY`。所有配置在 Agent 启动时加载、校验并冻结，
+不进行运行时热更新。
 
 ### Provider profiles, capabilities, and selection
 
@@ -149,7 +181,7 @@ The runner loads EnvConfig, enforces submit-mode offline policy, initializes the
 
 When an available client is selected, Reranker sends at most 12 candidates by default. Its compact payload contains only active constraints plus each candidate's parent_asin, title, categories, and normalized features; it excludes the conversation history and user profile. A parseable mixed response is normalized locally: retain only submitted string ASINs, filter unknown IDs, keep the first occurrence of each duplicate, then append every omitted submitted candidate in deterministic rule order. Empty, malformed, or candidate-free output falls back to the complete deterministic rule order. Set LLM_RERANK=0 for a deterministic opt-out even with an available key.
 
-Usage is split deliberately: startup health-check tokens accumulate on the shared client, while each Agent response reports only that turn's reranking prompt/completion tokens. The former Reranker-owned OpenAI loader has been removed: create and initialize the client once at runner startup, then inject it into Agent (and therefore Reranker).
+Usage is split deliberately: startup health-check tokens accumulate on the shared client, while each Agent response reports only that turn's intent-recognition and reranking prompt/completion tokens. The former Reranker-owned OpenAI loader has been removed: create and initialize the client once at runner startup, then inject it into Agent, the recognizer, and Reranker.
 
 
 ## 4. 本地复现测试
@@ -163,9 +195,9 @@ python run_local_eval.py
 SAMPLE_LIMIT=10 python run_local_eval.py        # Linux/macOS
 $env:SAMPLE_LIMIT="10"; python run_local_eval.py  # Windows PowerShell
 
-# ③ 切换检索后端 / 澄清策略
+# ③ 切换检索后端 / 对话识别模式
 RETRIEVAL_BACKEND=hybrid python run_local_eval.py
-CLARIFY_STRATEGY=attribute python run_local_eval.py
+SHOPPING_DIALOGUE__MODE=rule_only python run_local_eval.py
 
 # ④ 不含 key 的离线模式，以及 provider-specific 在线重排
 LLM_PROVIDER=none python run_local_eval.py
@@ -177,6 +209,11 @@ ENV_MODE=submit LLM_PROVIDER=none python run_local_eval.py
 
 # ⑥ 官方单元测试（评估器未被修改，应全部通过）
 python -m unittest discover tests -v
+
+# ⑦ 开发期格式与基础静态检查（不会增加运行时依赖）
+pip install -r requirements-dev.txt
+ruff format --check agent/dialogue config tests
+ruff check agent/dialogue config tests
 ```
 
 ---
@@ -184,8 +221,8 @@ python -m unittest discover tests -v
 ## 5. 解决方案局限与迭代方向
 
 ### 已知局限
-1. **公开集近似最优、私有集存在不确定性**：当前策略深度利用官方确定性模拟器的信息揭示机制
-   （`ask_attribute=other` 每轮最多蒸馏 2 条约束）。若私有评测加入 paraphrasing 或策略微调，
+1. **公开集近似最优、私有集存在不确定性**：当前策略利用官方确定性模拟器的信息揭示机制，
+   并以可配置效用函数选择 `ask_attribute`。若私有评测加入 paraphrasing 或策略微调，
    依赖固定话术的解析需要更强的容错（已预留正则容错，但未做大规模对抗改写测试）。
 2. **画像利用非常克制**：公开集 200 会话的 `preference_tags` 与目标约束几乎无相关性
    （标签文本与约束文本重叠率 0–12%），故画像仅作 5% 弱先验。若私有集画像更有区分度，可重新调权。

@@ -23,7 +23,6 @@ from agent.dialogue.reducer import StateReducer
 from config.env_config import EnvConfig
 from llm.base import LLMClient
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -110,14 +109,18 @@ class DialogueUnderstandingPipeline:
         context = self._build_context(dialogue, recognition, products)
         self._sessions[session_id] = SessionState(dialogue=dialogue, products=products)
         logger.info(
-            "[dialogue] session=%s turn=%d intent_version=%d source=%s decision=%s "
-            "score=%.4f components=%s",
+            "[dialogue] session=%s turn=%d intent_version=%d source=%s decision=%s score=%.4f",
             hashlib.sha256(session_id.encode("utf-8")).hexdigest()[:12],
             turn,
             dialogue.intent_version,
             recognition.source.value,
             decision.reason_code,
             decision.utility_score,
+        )
+        logger.debug(
+            "[dialogue.utility] session=%s turn=%d components=%s",
+            hashlib.sha256(session_id.encode("utf-8")).hexdigest()[:12],
+            turn,
             self.question_policy.last_components,
         )
         usage = self.recognizer.last_usage

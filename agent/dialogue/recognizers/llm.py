@@ -16,7 +16,6 @@ from agent.dialogue.models import (
 )
 from llm.base import LLMClient, LLMState, LLMUsage
 
-
 TOP_LEVEL_FIELDS = {
     "dialogue_act",
     "category",

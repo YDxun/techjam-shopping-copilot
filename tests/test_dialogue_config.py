@@ -40,11 +40,7 @@ class DialogueConfigTest(unittest.TestCase):
             load_config(environ={"SHOPPING_DIALOGUE__MODE": "legacy"})
         with self.assertRaisesRegex(ConfigError, "non-negative"):
             load_config(
-                overrides={
-                    "decision": {
-                        "ask_utility": {"weights": {"turn_cost": -0.1}}
-                    }
-                },
+                overrides={"decision": {"ask_utility": {"weights": {"turn_cost": -0.1}}}},
                 environ={},
             )
 

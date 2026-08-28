@@ -40,6 +40,5 @@ class CascadedIntentRecognizer:
         return (
             result.confidence < self.rule_confidence_threshold
             or bool(result.ambiguities)
-            or result.dialogue_act
-            in {DialogueAct.AMBIGUOUS, DialogueAct.REPLACE_CONSTRAINT}
+            or result.dialogue_act in {DialogueAct.AMBIGUOUS, DialogueAct.REPLACE_CONSTRAINT}
         )

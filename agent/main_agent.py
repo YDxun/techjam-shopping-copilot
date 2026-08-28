@@ -7,6 +7,7 @@
 对外契约（官方接口）：
   reset(session_id, user_profile) / respond(session_id, user_message, turn, top_k)
 """
+
 from __future__ import annotations
 
 import logging
@@ -15,8 +16,8 @@ from pathlib import Path
 from agent.base_agent import BaseAgent
 from agent.dialogue.pipeline import DialogueUnderstandingPipeline
 from agent.intent_router import IntentRouter
-from agent.retriever import HybridRetriever
 from agent.reranker import Reranker
+from agent.retriever import HybridRetriever
 from config.env_config import EnvConfig
 from llm.base import DisabledLLMClient, LLMClient
 from utils import data_verify
@@ -27,11 +28,14 @@ logger = logging.getLogger(__name__)
 class Agent(BaseAgent):
     """TechJam2026 购物副驾 Agent（官方接口兼容，业务逻辑完全替换基线）。"""
 
-    def __init__(self, catalog_path: str | Path = "data/catalog.jsonl",
-                 env: EnvConfig | None = None,
-                 llm_client: LLMClient | None = None,
-                 retriever: HybridRetriever | None = None,
-                 reranker: Reranker | None = None) -> None:
+    def __init__(
+        self,
+        catalog_path: str | Path = "data/catalog.jsonl",
+        env: EnvConfig | None = None,
+        llm_client: LLMClient | None = None,
+        retriever: HybridRetriever | None = None,
+        reranker: Reranker | None = None,
+    ) -> None:
         self.env = env or EnvConfig.from_env()
         self.llm_client = llm_client if llm_client is not None else DisabledLLMClient()
 
@@ -81,12 +85,14 @@ class Agent(BaseAgent):
         route = self.router.route(context, mode=context.retrieval_mode)
 
         # 2) 多路由混合召回 → 候选池（Pillar I）
-        candidates = self.retriever.search(route, top_k=max(self.env.rerank_candidates, top_k * 3),
-                                           mode=context.retrieval_mode)
+        candidates = self.retriever.search(
+            route, top_k=max(self.env.rerank_candidates, top_k * 3), mode=context.retrieval_mode
+        )
 
         # 3) 精排（Pillar I/IV）：规则 + 可选 LLM，目标把目标商品推前
-        ranked = self.reranker.rerank(self.retriever, candidates, context, route,
-                                      top_k=top_k, mode=context.retrieval_mode)
+        ranked = self.reranker.rerank(
+            self.retriever, candidates, context, route, top_k=top_k, mode=context.retrieval_mode
+        )
         shown = ranked[:top_k]
         self.dialogue.record_shown(session_id, shown, turn)
 
@@ -102,8 +108,7 @@ class Agent(BaseAgent):
                     turn_result.prompt_tokens + self.reranker.last_usage["prompt_tokens"]
                 ),
                 "completion_tokens": (
-                    turn_result.completion_tokens
-                    + self.reranker.last_usage["completion_tokens"]
+                    turn_result.completion_tokens + self.reranker.last_usage["completion_tokens"]
                 ),
             },
         }

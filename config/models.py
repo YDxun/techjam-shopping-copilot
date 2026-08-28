@@ -100,9 +100,7 @@ class ProviderConfigs:
 
 def _default_provider_configs() -> ProviderConfigs:
     return ProviderConfigs(
-        deepseek=ProviderConfig(
-            "deepseek-chat", "https://api.deepseek.com", "max_tokens", True
-        ),
+        deepseek=ProviderConfig("deepseek-chat", "https://api.deepseek.com", "max_tokens", True),
         openai=ProviderConfig(
             "gpt-4o-mini", "https://api.openai.com/v1", "max_completion_tokens", True
         ),

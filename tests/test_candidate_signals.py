@@ -122,7 +122,7 @@ class CandidateSignalCalculatorTest(unittest.TestCase):
             calculator(cache, temperature=0.0)
 
     def test_weighted_p90_uses_target_probability_mass(self) -> None:
-        # An unweighted nearest-rank P90 is one here (nine one-item branches),
+        # An unweighted nearest-rank P90 is two here (nine two-item branches),
         # while probability mass makes the high-RRF ten-item branch P90.
         cache = cache_for(
             A={"material": {"cotton"}},
@@ -173,8 +173,9 @@ class CandidateSignalCalculatorTest(unittest.TestCase):
         self.assertEqual(material.expected_remaining, 3.0)
 
     def test_joint_other_uses_best_concrete_pair_with_stable_tie_order(self) -> None:
-        # Color and size carry the same partition, so all three concrete pairs
-        # tie at one remaining candidate; canonical order must retain this pair.
+        # Color and size carry the same partition, so (material, color) and
+        # (material, size) tie at one remaining candidate. (Color, size) leaves
+        # groups of two, so canonical order must retain this pair.
         cache = cache_for(
             A={"material": {"cotton"}, "color": {"black"}, "size": {"small"}},
             B={"material": {"cotton"}, "color": {"red"}, "size": {"large"}},

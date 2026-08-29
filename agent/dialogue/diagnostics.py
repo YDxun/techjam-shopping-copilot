@@ -608,21 +608,24 @@ class DecisionTraceRecorder:
         ]
         directory_fd, leaf = _open_pinned_parent(output)
         descriptor: int | None = None
+        created = False
         try:
             flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
             if hasattr(os, "O_NOFOLLOW"):
                 flags |= os.O_NOFOLLOW
             descriptor = os.open(leaf, flags, 0o600, dir_fd=directory_fd)
+            created = True
             with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
                 descriptor = None
                 handle.write("\n".join(lines) + ("\n" if lines else ""))
         except Exception:
             if descriptor is not None:
                 os.close(descriptor)
-            try:
-                os.unlink(leaf, dir_fd=directory_fd)
-            except OSError:
-                pass
+            if created:
+                try:
+                    os.unlink(leaf, dir_fd=directory_fd)
+                except OSError:
+                    pass
             raise
         finally:
             os.close(directory_fd)

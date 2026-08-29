@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from dataclasses import FrozenInstanceError
 from pathlib import Path
+from unittest.mock import patch
 
 from agent.dialogue.diagnostics import DecisionTraceRecorder, DialogueDecisionTrace
 from agent.dialogue.models import (
@@ -455,6 +456,48 @@ class DecisionTraceRecorderTest(unittest.TestCase):
                 recorder.export_jsonl(output)
 
             self.assertFalse(missing_parent.exists())
+
+    def test_rejected_existing_targets_remain_intact(self) -> None:
+        # A failed exclusive create must never unlink a target this invocation did not create.
+        recorder = DecisionTraceRecorder(DecisionTraceConfig(enabled=True))
+        recorder.record(trace())
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "trace.jsonl"
+            output.write_bytes(b"keep-regular")
+            with self.assertRaises(FileExistsError):
+                recorder.export_jsonl(output)
+            self.assertEqual(output.read_bytes(), b"keep-regular")
+
+            target = Path(directory) / "target.jsonl"
+            target.write_bytes(b"keep-symlink-target")
+            link = Path(directory) / "link.jsonl"
+            link.symlink_to(target)
+            with self.assertRaises(FileExistsError):
+                recorder.export_jsonl(link)
+            self.assertTrue(link.is_symlink())
+            self.assertEqual(target.read_bytes(), b"keep-symlink-target")
+
+    def test_write_failure_removes_only_the_new_partial_leaf(self) -> None:
+        # A writer error must clean the created leaf without touching siblings.
+        recorder = DecisionTraceRecorder(DecisionTraceConfig(enabled=True))
+        recorder.record(trace())
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "partial.jsonl"
+
+            class FailingWriter:
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, *args):
+                    return False
+
+                def write(self, value):
+                    raise OSError("write failed")
+
+            with patch("agent.dialogue.diagnostics.os.fdopen", return_value=FailingWriter()):
+                with self.assertRaises(OSError):
+                    recorder.export_jsonl(output)
+            self.assertFalse(output.exists())
 
     def test_cap_preserves_aggregate_counters_and_export_is_deterministic_jsonl(self) -> None:
         # Break caught: capped traces lose counts or output non-deterministic JSON.

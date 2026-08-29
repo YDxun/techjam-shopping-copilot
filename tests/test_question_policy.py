@@ -300,7 +300,10 @@ class DynamicQuestionPolicyTest(unittest.TestCase):
         termination_legacy = replace(enabled, question_termination_mode="legacy")
         candidate = dynamic_signals({"material": candidate_signal("material", shrink=1.0)})
 
-        self.assertEqual(QuestionPolicy(disabled).decide(state, parsed(), static), expected)
+        self.assertEqual(
+            QuestionPolicy(disabled).decide(state, parsed(), static, candidate),
+            expected,
+        )
         self.assertEqual(QuestionPolicy(enabled).decide(state, parsed(), static), expected)
         self.assertEqual(
             QuestionPolicy(termination_legacy).decide(state, parsed(), static, candidate),

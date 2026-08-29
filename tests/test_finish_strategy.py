@@ -16,8 +16,8 @@ from tests.test_question_policy import (
 
 class FinishStrategyTest(unittest.TestCase):
     def test_exploration_prefers_candidate_shrink_before_finish_gate(self) -> None:
-        # Using two-step gain before the finish gate would select color rather than material.
-        policy = QuestionPolicy(dynamic_config(finish_enabled=False))
+        # Removing the inactive finish-gate check would select color via its two-step gain.
+        policy = QuestionPolicy(dynamic_config(finish_enabled=False, lookahead_depth=2))
         decision = policy.decide(
             DialogueState(session_id="s", user_profile={}, category="shoes", turn=2),
             parsed(),

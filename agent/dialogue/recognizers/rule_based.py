@@ -27,10 +27,8 @@ RE_NO_PREFERENCE = re.compile(
     r"(?:don't|do not) have (?:an additional|a) preference for\s+([a-z_]+)",
     re.I,
 )
-RE_NO_MORE = re.compile(
-    r"(?:no more prefer(?:e)?nces|no additional preferences)",
-    re.I,
-)
+RE_NO_MORE = re.compile(r"(?:no more preferences|no additional preferences)", re.I)
+RE_NO_MORE_GENERALIZATION = re.compile(r"no more prefer(?:e)?nces", re.I)
 RE_BOUNDARY = re.compile(
     r"don't have a preference for\s+([a-z_]+)[^.]*please use your judgment",
     re.I | re.S,
@@ -59,6 +57,10 @@ RE_NEGATED_DESTRUCTIVE = re.compile(
     r"\b(?:do not|don't|never)\s+(?:switch|change|replace|remove|drop)\b",
     re.I,
 )
+RE_NEGATED_EXPLICIT_REJECTION = re.compile(
+    r"\b(?:do not|don't|never)\s+reject\s+(?:the\s+|asin\s+)?B0[A-Z0-9]{8}\b",
+    re.I,
+)
 RE_COMPLEX = re.compile(
     r"\b(?:rather than|instead of|except|not the|previous|former|latter|that sort)\b",
     re.I,
@@ -68,8 +70,14 @@ RE_COMPLEX = re.compile(
 class RuleBasedRecognizer:
     """Pure deterministic parser for official phrases and bounded variants."""
 
-    def __init__(self, max_evidence_length: int = 180) -> None:
+    def __init__(
+        self,
+        max_evidence_length: int = 180,
+        *,
+        transition_guard_enabled: bool = False,
+    ) -> None:
         self.max_evidence_length = max_evidence_length
+        self.transition_guard_enabled = transition_guard_enabled
 
     def recognize(self, request: RecognitionRequest) -> RecognitionResult:
         text = request.user_message or ""
@@ -81,15 +89,34 @@ class RuleBasedRecognizer:
 
         override = RE_OVERRIDE.search(text)
         no_more = RE_NO_MORE.search(text)
+        if no_more is None and self.transition_guard_enabled:
+            no_more = RE_NO_MORE_GENERALIZATION.search(text)
         no_preference = RE_NO_PREFERENCE.search(text)
         not_right = RE_NOT_RIGHT.search(text)
-        replacement = RE_REPLACE_CONSTRAINT.search(text)
-        removal = RE_REMOVE_VALUE_ATTRIBUTE.search(text)
-        negated_rejection = RE_NEGATED_REJECTION.search(text)
-        negated_destructive = RE_NEGATED_DESTRUCTIVE.search(text)
+        replacement = (
+            RE_REPLACE_CONSTRAINT.search(text) if self.transition_guard_enabled else None
+        )
+        removal = (
+            RE_REMOVE_VALUE_ATTRIBUTE.search(text) if self.transition_guard_enabled else None
+        )
+        negated_rejection = (
+            RE_NEGATED_REJECTION.search(text) if self.transition_guard_enabled else None
+        )
+        negated_destructive = (
+            RE_NEGATED_DESTRUCTIVE.search(text) if self.transition_guard_enabled else None
+        )
+        negated_explicit_rejection = (
+            RE_NEGATED_EXPLICIT_REJECTION.search(text)
+            if self.transition_guard_enabled
+            else None
+        )
+        if negated_explicit_rejection:
+            not_right = None
 
         if negated_destructive:
             ambiguities.append("negated_destructive_instruction")
+        elif negated_explicit_rejection:
+            ambiguities.append("negated_explicit_product_rejection")
         elif negated_rejection:
             color = negated_rejection.group("color").lower()
             operations.append(
@@ -176,10 +203,15 @@ class RuleBasedRecognizer:
                 dialogue_act = DialogueAct.REJECT_PRODUCTS
                 confidence = 0.85
 
-        if not negated_destructive and not operations and dialogue_act not in {
+        if (
+            not negated_destructive
+            and not negated_explicit_rejection
+            and not operations
+            and dialogue_act not in {
             DialogueAct.NO_MORE_PREFERENCES,
             DialogueAct.NO_PREFERENCE,
-        }:
+            }
+        ):
             operations.extend(self._generic_operations(text))
             if operations and dialogue_act == DialogueAct.AMBIGUOUS:
                 dialogue_act = DialogueAct.ADD_CONSTRAINT
@@ -189,18 +221,20 @@ class RuleBasedRecognizer:
         # intent_override 首条消息为 "I'm looking for {cat}. {old_value}"，
         # 把 {old_value} 作为 soft 约束立刻获得排序信号；buying/browsing 尾部含
         # "key requirement"/"still exploring" 等标记时自动跳过（避免重复/噪声）。
-        if not negated_destructive:
+        if not negated_destructive and not negated_explicit_rejection:
             operations.extend(self._turn1_tail_operations(text, request.turn))
 
         if RE_COMPLEX.search(text):
             ambiguities.append("complex_reference")
             confidence = min(confidence, 0.60)
 
-        rejected = tuple(
-            asin
-            for asin in dict.fromkeys(match.upper() for match in RE_ASIN.findall(text))
-            if asin in request.recently_shown_asins
-        )
+        rejected = ()
+        if not negated_explicit_rejection:
+            rejected = tuple(
+                asin
+                for asin in dict.fromkeys(match.upper() for match in RE_ASIN.findall(text))
+                if asin in request.recently_shown_asins
+            )
         if rejected:
             dialogue_act = DialogueAct.REJECT_PRODUCTS
             confidence = max(confidence, 0.95)
@@ -214,6 +248,7 @@ class RuleBasedRecognizer:
             source=RecognitionSource.RULE,
             ambiguities=tuple(ambiguities),
             boundary_signal=bool(RE_BOUNDARY.search(text)),
+            explicit_no_more_preferences=bool(no_more),
         )
 
     @staticmethod

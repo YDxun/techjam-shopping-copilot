@@ -11,9 +11,12 @@ from agent.dialogue.models import (
 from agent.dialogue.product_history import ProductHistory
 
 
-def feedback(*asins: str) -> RecognitionResult:
+def feedback(
+    *asins: str,
+    dialogue_act: DialogueAct = DialogueAct.REJECT_PRODUCTS,
+) -> RecognitionResult:
     return RecognitionResult(
-        dialogue_act=DialogueAct.REJECT_PRODUCTS,
+        dialogue_act=dialogue_act,
         category=None,
         constraint_operations=(),
         explicit_rejected_asins=tuple(asins),
@@ -64,6 +67,17 @@ class ProductHistoryTest(unittest.TestCase):
         self.assertEqual(product.shown_turns, (1, 2))
         self.assertEqual(product.shown_count, 2)
         self.assertEqual(history.context_lists(1).soft_demoted_asins, ("A",))
+
+    def test_non_rejection_with_a_named_asin_cannot_hard_reject_it(self) -> None:
+        history = ProductHistory().record_shown(("B012345678",), intent_version=1, turn=1)
+
+        updated = history.settle_previous_turn(1).apply_feedback(
+            1,
+            feedback("B012345678", dialogue_act=DialogueAct.AMBIGUOUS),
+        )
+
+        self.assertEqual(updated.context_lists(1).hard_rejected_asins, ())
+        self.assertEqual(updated.context_lists(1).soft_demoted_asins, ())
 
 
 if __name__ == "__main__":

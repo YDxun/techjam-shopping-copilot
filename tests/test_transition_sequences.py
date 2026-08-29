@@ -150,7 +150,20 @@ class TransitionSequenceTest(unittest.TestCase):
             ),
             1,
         )
-        state = self.apply(state, recognition(DialogueAct.NO_MORE_PREFERENCES), 2)
+        state = self.apply(
+            state,
+            RecognitionResult(
+                dialogue_act=DialogueAct.NO_MORE_PREFERENCES,
+                category=None,
+                constraint_operations=(),
+                explicit_rejected_asins=(),
+                confidence=0.95,
+                source=RecognitionSource.RULE,
+                ambiguities=(),
+                explicit_no_more_preferences=True,
+            ),
+            2,
+        )
         final = self.apply(
             state,
             recognition(

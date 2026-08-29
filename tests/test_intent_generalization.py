@@ -116,7 +116,7 @@ class IntentGeneralizationTest(unittest.TestCase):
         )
 
     def test_rule_recognizer_matches_literal_reviewed_expectations(self) -> None:
-        recognizer = RuleBasedRecognizer()
+        recognizer = RuleBasedRecognizer(transition_guard_enabled=True)
         for row in load_corpus():
             with self.subTest(fixture_id=row["id"]):
                 result = recognizer.recognize(request_from_fixture(row))
@@ -145,13 +145,15 @@ class IntentGeneralizationTest(unittest.TestCase):
 
     def test_live_destructive_metric_counts_explicit_product_rejection(self) -> None:
         row = next(row for row in load_corpus() if row["id"] == "reject_shown_01")
-        result = RuleBasedRecognizer().recognize(request_from_fixture(row))
+        result = RuleBasedRecognizer(transition_guard_enabled=True).recognize(
+            request_from_fixture(row)
+        )
 
         self.assertTrue(live_destructive_match(row["expected"], result))
 
     def test_turn_one_negated_destructive_tail_does_not_mutate_state(self) -> None:
         rows = {row["id"]: row for row in load_corpus()}
-        recognizer = RuleBasedRecognizer()
+        recognizer = RuleBasedRecognizer(transition_guard_enabled=True)
         reducer = StateReducer()
         guard = TransitionGuard(TransitionGuardConfig(enabled=True))
 

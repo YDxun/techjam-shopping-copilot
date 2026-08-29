@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from copy import deepcopy
 
 from agent.dialogue.models import (
@@ -34,6 +35,10 @@ OPERATION_FIELDS = {
     "evidence",
     "confidence",
 }
+RE_EXPLICIT_NO_MORE_PREFERENCES = re.compile(
+    r"\b(?:no more preferences|no additional preferences)\b",
+    re.I,
+)
 
 INTENT_RESPONSE_SCHEMA = {
     "type": "object",
@@ -255,6 +260,9 @@ class LLMIntentRecognizer:
             confidence=confidence,
             source=RecognitionSource.LLM,
             ambiguities=ambiguities,
+            explicit_no_more_preferences=bool(
+                RE_EXPLICIT_NO_MORE_PREFERENCES.search(user_message)
+            ),
         )
 
     def _operations(

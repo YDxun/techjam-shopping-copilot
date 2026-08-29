@@ -121,16 +121,21 @@ class TransitionGuard:
                     min(explicit_attributes) if explicit_attributes else "other",
                 )
 
-        if (
-            act == DialogueAct.NO_MORE_PREFERENCES
-            and confidence < self.config.no_more_preferences_min_confidence
-        ):
-            return self._decision(
-                GuardAction.CLARIFY,
-                recognition,
-                "no_more_preferences_confidence_below_threshold",
-                "other",
-            )
+        if act == DialogueAct.NO_MORE_PREFERENCES:
+            if not recognition.explicit_no_more_preferences:
+                return self._decision(
+                    GuardAction.CLARIFY,
+                    recognition,
+                    "no_more_preferences_not_grounded",
+                    "other",
+                )
+            if confidence < self.config.no_more_preferences_min_confidence:
+                return self._decision(
+                    GuardAction.CLARIFY,
+                    recognition,
+                    "no_more_preferences_confidence_below_threshold",
+                    "other",
+                )
 
         return self._decision(GuardAction.APPLY, recognition, "guard_passed")
 

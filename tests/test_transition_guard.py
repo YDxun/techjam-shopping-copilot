@@ -43,6 +43,7 @@ def recognition(
     confidence: float = 0.95,
     rejected_asins: tuple[str, ...] = (),
     source: RecognitionSource = RecognitionSource.RULE,
+    explicit_no_more_preferences: bool = False,
 ) -> RecognitionResult:
     return RecognitionResult(
         dialogue_act=act,
@@ -52,6 +53,7 @@ def recognition(
         confidence=confidence,
         source=source,
         ambiguities=(),
+        explicit_no_more_preferences=explicit_no_more_preferences,
     )
 
 
@@ -221,7 +223,11 @@ class TransitionGuardTest(unittest.TestCase):
         self.assertEqual(decision.clarify_attribute, "other")
 
     def test_low_confidence_no_more_preferences_requests_clarification(self) -> None:
-        result = recognition(DialogueAct.NO_MORE_PREFERENCES, confidence=0.94)
+        result = recognition(
+            DialogueAct.NO_MORE_PREFERENCES,
+            confidence=0.94,
+            explicit_no_more_preferences=True,
+        )
 
         decision = TransitionGuard(TransitionGuardConfig(enabled=True)).evaluate(
             empty_state(), result
@@ -229,6 +235,17 @@ class TransitionGuardTest(unittest.TestCase):
 
         self.assertEqual(decision.action, GuardAction.CLARIFY)
         self.assertEqual(decision.reason_code, "no_more_preferences_confidence_below_threshold")
+        self.assertEqual(decision.clarify_attribute, "other")
+
+    def test_high_confidence_ungrounded_no_more_preferences_requests_clarification(self) -> None:
+        result = recognition(DialogueAct.NO_MORE_PREFERENCES, confidence=0.99)
+
+        decision = TransitionGuard(TransitionGuardConfig(enabled=True)).evaluate(
+            empty_state(), result
+        )
+
+        self.assertEqual(decision.action, GuardAction.CLARIFY)
+        self.assertEqual(decision.reason_code, "no_more_preferences_not_grounded")
         self.assertEqual(decision.clarify_attribute, "other")
 
     def test_statistics_are_aggregate_sorted_and_exclude_evidence(self) -> None:
@@ -242,6 +259,7 @@ class TransitionGuardTest(unittest.TestCase):
                 DialogueAct.NO_MORE_PREFERENCES,
                 confidence=0.94,
                 source=RecognitionSource.LLM,
+                explicit_no_more_preferences=True,
             ),
         )
 

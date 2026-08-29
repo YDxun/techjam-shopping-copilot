@@ -377,6 +377,51 @@ class RecognizerTest(unittest.TestCase):
         self.assertEqual(result.dialogue_act, DialogueAct.NO_PREFERENCE)
         self.assertTrue(result.boundary_signal)
 
+    def test_transition_guard_switch_controls_task_four_rule_generalizations(self) -> None:
+        legacy = RuleBasedRecognizer()
+        guarded = RuleBasedRecognizer(transition_guard_enabled=True)
+
+        replacement_request = self.request("Switch the material to cotton.")
+        legacy_replacement = legacy.recognize(replacement_request)
+        guarded_replacement = guarded.recognize(replacement_request)
+
+        self.assertEqual(legacy_replacement.dialogue_act, DialogueAct.ADD_CONSTRAINT)
+        self.assertEqual(legacy_replacement.constraint_operations[0].operation.value, "add")
+        self.assertEqual(guarded_replacement.dialogue_act, DialogueAct.REPLACE_CONSTRAINT)
+        self.assertEqual(guarded_replacement.constraint_operations[0].operation.value, "replace")
+
+        noisy_stop_request = self.request("No more prefernces.")
+        self.assertEqual(legacy.recognize(noisy_stop_request).dialogue_act, DialogueAct.AMBIGUOUS)
+        guarded_stop = guarded.recognize(noisy_stop_request)
+        self.assertEqual(guarded_stop.dialogue_act, DialogueAct.NO_MORE_PREFERENCES)
+        self.assertTrue(guarded_stop.explicit_no_more_preferences)
+
+    def test_rule_no_more_signal_requires_an_explicit_user_phrase(self) -> None:
+        result = RuleBasedRecognizer().recognize(self.request("No more preferences."))
+
+        self.assertEqual(result.dialogue_act, DialogueAct.NO_MORE_PREFERENCES)
+        self.assertTrue(result.explicit_no_more_preferences)
+
+    def test_llm_no_more_signal_is_derived_from_the_user_message(self) -> None:
+        recognizer = LLMIntentRecognizer(
+            FakeLLMClient(successful_result("{}")), max_evidence_length=180
+        )
+        response = (
+            '{"dialogue_act":"no_more_preferences","category":null,'
+            '"constraint_operations":[],"explicit_rejected_asins":[],'
+            '"confidence":0.99,"ambiguities":[]}'
+        )
+
+        grounded = recognizer._parse(response, (), "No more preferences.")
+        ungrounded = recognizer._parse(response, (), "Please show me blue options.")
+
+        self.assertIsNotNone(grounded)
+        self.assertIsNotNone(ungrounded)
+        assert grounded is not None
+        assert ungrounded is not None
+        self.assertTrue(grounded.explicit_no_more_preferences)
+        self.assertFalse(ungrounded.explicit_no_more_preferences)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -52,7 +52,10 @@ class DialogueUnderstandingPipeline:
             override_erase=env.override_erase,
         )
         self.recognizer = CascadedIntentRecognizer(
-            rule_recognizer=RuleBasedRecognizer(dialogue_config.max_evidence_length),
+            rule_recognizer=RuleBasedRecognizer(
+                dialogue_config.max_evidence_length,
+                transition_guard_enabled=dialogue_config.transition_guard.enabled,
+            ),
             llm_recognizer=LLMIntentRecognizer(
                 llm_client,
                 max_evidence_length=dialogue_config.max_evidence_length,

@@ -143,6 +143,24 @@ class DialogueFlowTest(unittest.TestCase):
             products=PRODUCTS,
         )
 
+    def build_rule_pipeline(self, *, guard_enabled: bool) -> DialogueUnderstandingPipeline:
+        env = EnvConfig.from_env(
+            overrides={
+                "skip_data_verify": True,
+                "dialogue_understanding": {
+                    "mode": "rule_only",
+                    "transition_guard": {"enabled": guard_enabled},
+                },
+                "llm": {"rerank_enabled": False},
+            },
+            environ={"LLM_PROVIDER": "none"},
+        )
+        return DialogueUnderstandingPipeline(
+            env=env,
+            llm_client=DisabledLLMClient(),
+            products=PRODUCTS,
+        )
+
     def test_offline_response_preserves_existing_ranked_order_and_contract(self) -> None:
         agent = Agent(
             env=self.env(),
@@ -237,6 +255,55 @@ class DialogueFlowTest(unittest.TestCase):
         self.assertEqual(result.guard_decision.action, GuardAction.APPLY)
         self.assertEqual(session.dialogue.turn, 2)
         self.assertEqual(session.products.context_lists(1).hard_rejected_asins, ("A",))
+
+    def test_guard_switch_preserves_legacy_rule_state_but_enables_generalized_stop(self) -> None:
+        disabled = self.build_rule_pipeline(guard_enabled=False)
+        enabled = self.build_rule_pipeline(guard_enabled=True)
+        disabled.reset("disabled", {})
+        enabled.reset("enabled", {})
+
+        disabled_turn = disabled.process_turn("disabled", "No more prefernces.", turn=1)
+        enabled_turn = enabled.process_turn("enabled", "No more prefernces.", turn=1)
+
+        self.assertEqual(disabled_turn.recognition.dialogue_act.value, "ambiguous")
+        self.assertFalse(disabled.session("disabled").dialogue.no_more_preferences)
+        self.assertEqual(enabled_turn.recognition.dialogue_act.value, "no_more_preferences")
+        self.assertTrue(enabled.session("enabled").dialogue.no_more_preferences)
+
+    def test_negated_explicit_asin_is_not_hard_rejected_when_guard_is_enabled(self) -> None:
+        pipeline = self.build_rule_pipeline(guard_enabled=True)
+        pipeline.reset("s", {})
+        pipeline.record_shown("s", ["B012345678"], turn=1)
+
+        result = pipeline.process_turn("s", "Don't reject B012345678.", turn=2)
+        product_lists = pipeline.session("s").products.context_lists(1)
+
+        self.assertEqual(result.recognition.dialogue_act.value, "ambiguous")
+        self.assertEqual(result.recognition.explicit_rejected_asins, ())
+        self.assertEqual(product_lists.hard_rejected_asins, ())
+        self.assertEqual(product_lists.soft_demoted_asins, ())
+
+    def test_ungrounded_llm_stop_is_blocked_without_state_or_history_mutation(self) -> None:
+        pipeline = self.build_pipeline(
+            guard_enabled=True,
+            llm_response={
+                "dialogue_act": "no_more_preferences",
+                "category": None,
+                "constraint_operations": [],
+                "explicit_rejected_asins": [],
+                "confidence": 0.99,
+                "ambiguities": [],
+            },
+        )
+        pipeline.reset("s", {})
+        pipeline.record_shown("s", ["A"], turn=1)
+        before = pipeline.session("s")
+
+        result = pipeline.process_turn("s", "Please show me blue options.", turn=2)
+
+        self.assertEqual(result.guard_decision.action, GuardAction.CLARIFY)
+        self.assertEqual(result.guard_decision.reason_code, "no_more_preferences_not_grounded")
+        self.assertEqual(pipeline.session("s"), before)
 
 
 if __name__ == "__main__":

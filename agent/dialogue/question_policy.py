@@ -1,7 +1,18 @@
 from __future__ import annotations
 
+import math
+from types import MappingProxyType
+from typing import Mapping
+
 from agent.dialogue.catalog_signals import ATTRIBUTE_ORDER, CatalogQuestionSignals
-from agent.dialogue.models import DialogueAct, DialogueState, QuestionDecision, RecognitionResult
+from agent.dialogue.models import (
+    CandidateAttributeSignal,
+    CandidateQuestionSignals,
+    DialogueAct,
+    DialogueState,
+    QuestionDecision,
+    RecognitionResult,
+)
 from config.models import DecisionConfig
 
 QUESTION_MESSAGES = {
@@ -19,13 +30,28 @@ QUESTION_MESSAGES = {
 
 
 class QuestionPolicy:
-    """Deterministic guardrails plus configurable ask/stop utilities."""
+    """Deterministic guardrails plus legacy and candidate-aware ask policies."""
 
     def __init__(self, config: DecisionConfig) -> None:
         self.config = config
-        self.last_components: dict[str, dict[str, float]] = {}
+        self.last_components: Mapping[str, Mapping[str, float]] = {}
 
     def decide(
+        self,
+        state: DialogueState,
+        recognition: RecognitionResult,
+        signals: CatalogQuestionSignals,
+        candidate_signals: CandidateQuestionSignals | None = None,
+    ) -> QuestionDecision:
+        if (
+            candidate_signals is None
+            or not self.config.candidate_question_value.enabled
+            or self.config.question_termination_mode == "legacy"
+        ):
+            return self._decide_legacy(state, recognition, signals)
+        return self._decide_dynamic(state, recognition, signals, candidate_signals)
+
+    def _decide_legacy(
         self,
         state: DialogueState,
         recognition: RecognitionResult,
@@ -85,6 +111,248 @@ class QuestionPolicy:
             return QuestionDecision(False, None, "ask_utility_too_low", best_score, ordered_scores)
         return QuestionDecision(True, best, "highest_ask_utility", best_score, ordered_scores)
 
+    def _decide_dynamic(
+        self,
+        state: DialogueState,
+        recognition: RecognitionResult,
+        signals: CatalogQuestionSignals,
+        candidate_signals: CandidateQuestionSignals,
+    ) -> QuestionDecision:
+        if state.no_more_preferences:
+            return self._stop("user_has_no_more_preferences")
+        if state.turn >= 10:
+            return self._stop("final_turn_no_followup")
+
+        concrete = tuple(
+            attribute
+            for attribute in ATTRIBUTE_ORDER
+            if attribute != "category"
+            and attribute != "other"
+            and attribute in candidate_signals.by_attribute
+            and attribute not in state.no_preference_attributes
+        )
+        other_legal = (
+            candidate_signals.other_signal is not None
+            and candidate_signals.best_other_pair is not None
+            and "other" not in state.no_preference_attributes
+        )
+        candidates = concrete + (("other",) if other_legal else ())
+        if not candidates:
+            return self._stop("all_attributes_exhausted")
+
+        finish_gate = self._finish_gate(state, candidate_signals, candidates)
+        finish_pressure = self._finish_pressure(state, candidate_signals) if finish_gate else 0.0
+        category_signals = signals.for_category(state.category)
+        components = {
+            attribute: self._dynamic_components(
+                attribute,
+                state,
+                category_signals,
+                candidate_signals,
+                finish_gate,
+                finish_pressure,
+            )
+            for attribute in candidates
+        }
+        self.last_components = self._freeze_components(components)
+        scores = {attribute: values["utility"] for attribute, values in components.items()}
+        best_positive = tuple(attribute for attribute in candidates if scores[attribute] > 0.0)
+        if best_positive:
+            best = self._best(best_positive, scores)
+            reason = "highest_dynamic_utility"
+        elif concrete:
+            best = self._best(concrete, scores)
+            reason = "dynamic_concrete_fallback"
+        elif other_legal:
+            best = "other"
+            reason = "dynamic_other_fallback"
+        else:
+            return self._stop("all_attributes_exhausted")
+        ordered_scores = {
+            attribute: round(scores[attribute], 6)
+            for attribute in ATTRIBUTE_ORDER
+            if attribute in scores
+        }
+        return QuestionDecision(True, best, reason, scores[best], ordered_scores)
+
+    def _dynamic_components(
+        self,
+        attribute: str,
+        state: DialogueState,
+        category_signals,
+        candidate_signals: CandidateQuestionSignals,
+        finish_gate: bool,
+        finish_pressure: float,
+    ) -> dict[str, float]:
+        signal = (
+            candidate_signals.other_signal
+            if attribute == "other"
+            else candidate_signals.by_attribute[attribute]
+        )
+        assert signal is not None
+        weights = self.config.candidate_question_value.weights
+        static_signal = category_signals.get(attribute)
+        answer_probability = (
+            self.config.candidate_question_value.other_answer_probability
+            if attribute == "other"
+            else self._clamp(getattr(static_signal, "answer_probability", 0.0))
+        )
+        constrained = {constraint.attribute for constraint in state.active_constraints}
+        complementarity = 0.0 if attribute in constrained else 1.0
+        redundancy = 1.0 if attribute in constrained else 0.0
+        base_exploration = (
+            weights.expected_shrink * self._clamp(signal.expected_shrink)
+            + weights.coverage * self._clamp(signal.coverage)
+            + weights.complementarity * complementarity
+            + weights.answer_probability * answer_probability
+            - weights.missing_penalty * self._clamp(signal.missing_rate)
+            - weights.redundancy_penalty * redundancy
+        )
+        vagueness_penalty = (
+            self.config.candidate_question_value.other_vagueness_penalty
+            if attribute == "other"
+            else 0.0
+        )
+        exploration_gain = (
+            answer_probability * base_exploration - vagueness_penalty
+            if attribute == "other"
+            else base_exploration
+        )
+        base_finish_gain = self._finish_gain(signal, candidate_signals.candidate_count)
+        two_step_finish_gain = (
+            self._clamp_nonnegative(signal.two_step_finish_gain)
+            if finish_gate and self.config.finish_strategy.lookahead_depth == 2
+            else 0.0
+        )
+        finish_gain = (
+            answer_probability * base_finish_gain - vagueness_penalty + two_step_finish_gain
+            if attribute == "other"
+            else base_finish_gain + two_step_finish_gain
+        )
+        repeat_penalty = weights.repeat_penalty * float(attribute in state.asked_attributes)
+        no_preference_penalty = weights.no_preference_penalty * float(
+            attribute in state.no_preference_attributes
+        )
+        turn_cost = weights.turn_cost * self._turn_cost(state)
+        utility = (
+            (1.0 - finish_pressure) * exploration_gain
+            + finish_pressure * finish_gain
+            - repeat_penalty
+            - no_preference_penalty
+            - turn_cost
+        )
+        return {
+            "expected_shrink": self._clamp(signal.expected_shrink),
+            "coverage": self._clamp(signal.coverage),
+            "answer_probability": answer_probability,
+            "complementarity": complementarity,
+            "missing_penalty": weights.missing_penalty * self._clamp(signal.missing_rate),
+            "redundancy_penalty": weights.redundancy_penalty * redundancy,
+            "exploration_gain": exploration_gain,
+            "base_finish_gain": base_finish_gain,
+            "two_step_finish_gain": two_step_finish_gain,
+            "finish_gain": finish_gain,
+            "finish_pressure": finish_pressure,
+            "repeat_penalty": repeat_penalty,
+            "no_preference_penalty": no_preference_penalty,
+            "turn_cost": turn_cost,
+            "utility": utility,
+        }
+
+    def _finish_gate(
+        self,
+        state: DialogueState,
+        signals: CandidateQuestionSignals,
+        attributes: tuple[str, ...],
+    ) -> bool:
+        strategy = self.config.finish_strategy
+        remaining = self._remaining_question_budget(state)
+        phase_ready = (
+            signals.candidate_count > 0
+            and (
+                signals.candidate_count <= strategy.candidate_threshold
+                or remaining <= strategy.remaining_question_threshold
+            )
+        )
+        if not strategy.enabled or not phase_ready:
+            return False
+        gains = [
+            self._finish_gain(
+                signals.other_signal if attribute == "other" else signals.by_attribute[attribute],
+                signals.candidate_count,
+            )
+            for attribute in attributes
+        ]
+        return bool(gains) and max(gains) >= strategy.minimum_finish_gain
+
+    def _finish_pressure(
+        self, state: DialogueState, signals: CandidateQuestionSignals
+    ) -> float:
+        threshold_distance = max(1, self.config.finish_strategy.candidate_threshold - 10)
+        candidate_to_top10 = 1.0 - self._clamp(
+            (signals.candidate_count - 10) / threshold_distance
+        )
+        shrink_progress = 0.0
+        if signals.previous_candidate_count and signals.previous_candidate_count > 0:
+            shrink_progress = self._clamp(
+                (signals.previous_candidate_count - signals.candidate_count)
+                / signals.previous_candidate_count
+            )
+        budget_pressure = 1.0 - self._clamp(
+            self._remaining_question_budget(state) / max(1, self.config.max_questions)
+        )
+        turn_pressure = self._clamp((state.turn - 1) / 9.0)
+        return (candidate_to_top10 + shrink_progress + budget_pressure + turn_pressure) / 4.0
+
+    def _finish_gain(self, signal: CandidateAttributeSignal, candidate_count: int) -> float:
+        if candidate_count <= 0:
+            return 0.0
+        weights = self.config.finish_strategy.weights
+        terminal_progress = self._terminal_progress(signal.expected_remaining, candidate_count)
+        return (
+            weights.resolve_at_10 * self._clamp(signal.resolve_at_10)
+            + weights.resolve_at_3 * self._clamp(signal.resolve_at_3)
+            + weights.resolve_at_1 * self._clamp(signal.resolve_at_1)
+            + weights.terminal_progress * terminal_progress
+            - weights.p90_remaining_penalty
+            * self._clamp(signal.p90_remaining / candidate_count)
+        )
+
+    @staticmethod
+    def _terminal_progress(expected_remaining: float, candidate_count: int) -> float:
+        if candidate_count <= 10:
+            return 0.0
+        initial_distance = math.log1p(candidate_count - 10)
+        remaining_distance = math.log1p(max(expected_remaining - 10.0, 0.0))
+        return 1.0 - remaining_distance / initial_distance
+
+    def _remaining_question_budget(self, state: DialogueState) -> int:
+        return max(0, self.config.max_questions - len(state.asked_attributes))
+
+    def _turn_cost(self, state: DialogueState) -> float:
+        budget_pressure = 1.0 - self._clamp(
+            self._remaining_question_budget(state) / max(1, self.config.max_questions)
+        )
+        return (budget_pressure + self._clamp((state.turn - 1) / 9.0)) / 2.0
+
+    @staticmethod
+    def _best(attributes: tuple[str, ...], scores: Mapping[str, float]) -> str:
+        return min(
+            attributes,
+            key=lambda attribute: (-scores[attribute], ATTRIBUTE_ORDER.index(attribute)),
+        )
+
+    @staticmethod
+    def _freeze_components(
+        components: Mapping[str, Mapping[str, float]]
+    ) -> Mapping[str, Mapping[str, float]]:
+        return MappingProxyType(
+            {
+                attribute: MappingProxyType(dict(values))
+                for attribute, values in components.items()
+            }
+        )
+
     def message_for(self, decision: QuestionDecision, state: DialogueState) -> str:
         if decision.should_ask and decision.ask_attribute:
             return QUESTION_MESSAGES[decision.ask_attribute]
@@ -125,6 +393,9 @@ class QuestionPolicy:
             "no_preference_penalty": (1.0 if attribute in state.no_preference_attributes else 0.0),
             "turn_cost": self._clamp(max(0, state.turn - 1) / 9.0),
         }
+        # Legacy diagnostics intentionally remain behavior-compatible mutable mappings.
+        if not isinstance(self.last_components, dict):
+            self.last_components = {}
         self.last_components[attribute] = components
         return (
             weights.information_gain * components["information_gain"]
@@ -154,6 +425,13 @@ class QuestionPolicy:
     @staticmethod
     def _clamp(value: float) -> float:
         return max(0.0, min(1.0, float(value)))
+
+    @staticmethod
+    def _clamp_nonnegative(value: float) -> float:
+        try:
+            return max(0.0, float(value))
+        except (TypeError, ValueError):
+            return 0.0
 
     @staticmethod
     def _stop(reason_code: str) -> QuestionDecision:

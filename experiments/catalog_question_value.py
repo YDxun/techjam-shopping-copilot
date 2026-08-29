@@ -60,14 +60,22 @@ def run_catalog_experiment(
     CandidateSignalCalculator(cache, candidate_config, finish_config)
 
     categories = _category_buckets(cache)
+    category_by_asin = {
+        asin: category for category, asins in categories.items() for asin in asins
+    }
+    category_mass = {
+        category: len(asins) / len(cache.profiles) for category, asins in categories.items()
+    }
     coverage = _catalog_attribute_coverage(cache.profiles.values())
     measurements: dict[int, list[_PoolMeasurement]] = {pool: [] for pool in normalized_pools}
     randomizer = random.Random(seed)
+    sampler = _StratifiedSampler(categories, random.Random(seed))
+    latency_samples: dict[int, list[float]] = {pool: [] for pool in normalized_pools}
+    latency_indices = _latency_sample_indices(sample_count)
 
-    for _ in range(sample_count):
-        shuffled = _shuffled_category_buckets(categories, randomizer)
+    for sample_index in range(sample_count):
         sampled_for_pool = {
-            pool: tuple(cache.profiles[asin] for asin in _stratified_ids(shuffled, pool))
+            pool: tuple(cache.profiles[asin] for asin in sampler.sample(pool))
             for pool in normalized_pools
         }
         baseline = {
@@ -76,8 +84,24 @@ def run_catalog_experiment(
         }
         largest_choice = baseline[normalized_pools[-1]].choice
         for pool, measurement in baseline.items():
+            represented = {
+                category_by_asin[profile.parent_asin] for profile in sampled_for_pool[pool]
+            }
+            measurement.represented_category_count = len(represented)
+            measurement.catalog_mass_coverage = sum(
+                category_mass[category] for category in represented
+            )
             measurement.largest_pool_choice_match = measurement.choice == largest_choice
             measurements[pool].append(measurement)
+            if sample_index in latency_indices:
+                candidates = [
+                    {"parent_asin": profile.parent_asin} for profile in sampled_for_pool[pool]
+                ]
+                start = time.perf_counter()
+                CandidateSignalCalculator(cache, candidate_config, finish_config).calculate(
+                    candidates
+                )
+                latency_samples[pool].append((time.perf_counter() - start) * 1000.0)
 
     return {
         "schema_version": 1,
@@ -87,7 +111,8 @@ def run_catalog_experiment(
         "sample_count": sample_count,
         "seed": seed,
         "pool_sizes": {
-            str(pool): _aggregate_pool_measurements(measurements[pool]) for pool in normalized_pools
+            str(pool): _aggregate_pool_measurements(measurements[pool], latency_samples[pool])
+            for pool in normalized_pools
         },
         "attribute_coverage": coverage,
         "depth_two_measurement": {
@@ -97,9 +122,16 @@ def run_catalog_experiment(
     }
 
 
-def write_report_atomic(report: Mapping[str, object], output_path: Path | str) -> None:
+def write_report_atomic(
+    report: Mapping[str, object], output_path: Path | str, catalog_path: Path | str
+) -> None:
     """Durably replace an output only after complete JSON has been written."""
     output = Path(output_path)
+    catalog = _validate_catalog_path(catalog_path)
+    if output.resolve() == catalog.resolve() or (
+        output.exists() and os.path.samefile(output, catalog)
+    ):
+        raise ValueError("output path must not resolve to the catalog")
     if not output.parent.exists() or not output.parent.is_dir():
         raise ValueError("output directory does not exist")
     payload = (
@@ -179,39 +211,52 @@ def _category_buckets(cache: CatalogAttributeCache) -> dict[str, tuple[str, ...]
     return {category: tuple(sorted(asins)) for category, asins in sorted(buckets.items())}
 
 
-def _shuffled_category_buckets(
-    buckets: Mapping[str, Sequence[str]], randomizer: random.Random
-) -> dict[str, tuple[str, ...]]:
-    shuffled: dict[str, tuple[str, ...]] = {}
-    for category in sorted(buckets):
-        values = list(buckets[category])
-        randomizer.shuffle(values)
-        shuffled[category] = tuple(values)
-    return shuffled
+class _StratifiedSampler:
+    def __init__(self, buckets: Mapping[str, Sequence[str]], randomizer: random.Random) -> None:
+        self._total = sum(len(values) for values in buckets.values())
+        self._buckets: dict[str, tuple[str, ...]] = {}
+        self._offsets: dict[str, int] = {}
+        self._credits = {category: 0 for category in buckets}
+        self._tie_order = list(sorted(buckets))
+        randomizer.shuffle(self._tie_order)
+        for category, values in buckets.items():
+            ordered = list(values)
+            randomizer.shuffle(ordered)
+            self._buckets[category] = tuple(ordered)
+            self._offsets[category] = 0
+
+    def sample(self, count: int) -> tuple[str, ...]:
+        allocation = {
+            category: count * len(values) // self._total
+            for category, values in self._buckets.items()
+        }
+        remainder = {
+            category: count * len(values) % self._total
+            for category, values in self._buckets.items()
+        }
+        for category in self._buckets:
+            self._credits[category] += remainder[category]
+        for _ in range(count - sum(allocation.values())):
+            winner = max(
+                self._buckets,
+                key=lambda category: (self._credits[category], -self._tie_order.index(category)),
+            )
+            allocation[winner] += 1
+            self._credits[winner] -= self._total
+            self._tie_order = self._tie_order[1:] + self._tie_order[:1]
+        selected: list[str] = []
+        for category in sorted(self._buckets):
+            values = self._buckets[category]
+            amount = allocation[category]
+            offset = self._offsets[category]
+            selected.extend(values[(offset + index) % len(values)] for index in range(amount))
+            self._offsets[category] = (offset + amount) % len(values)
+        return tuple(sorted(selected))
 
 
-def _stratified_ids(buckets: Mapping[str, Sequence[str]], count: int) -> tuple[str, ...]:
-    total = sum(len(values) for values in buckets.values())
-    allocation = {category: count * len(values) // total for category, values in buckets.items()}
-    remaining = count - sum(allocation.values())
-    ranked = sorted(
-        buckets,
-        key=lambda category: (-(count * len(buckets[category]) % total), category),
-    )
-    for category in ranked:
-        if remaining <= 0:
-            break
-        if allocation[category] < len(buckets[category]):
-            allocation[category] += 1
-            remaining -= 1
-    selected = [
-        asin
-        for category in sorted(buckets)
-        for asin in buckets[category][: allocation[category]]
-    ]
-    # CandidateSignalCalculator canonicalizes IDs, so sort here to make every
-    # pool order-independent before profile indexing.
-    return tuple(sorted(selected))
+def _latency_sample_indices(sample_count: int) -> frozenset[int]:
+    count = min(5, sample_count)
+    return frozenset(index * sample_count // count for index in range(count))
 
 
 def _catalog_attribute_coverage(profiles: Iterable[AttributeProfile]) -> dict[str, float]:
@@ -315,14 +360,26 @@ class _PoolMeasurement:
         nself.two_step = two_step
         nself.deletion = deletion
         nself.largest_pool_choice_match = False
+        nself.represented_category_count = 0
+        nself.catalog_mass_coverage = 0.0
 
 
 class _DeletedMeasurement:
-    def __init__(nself, choice: str, signal: _Signal, one_step: float, two_step: float) -> None:
+    def __init__(
+        nself,
+        choice: str,
+        signal: _Signal,
+        one_step: float,
+        two_step: float,
+        original_count: int,
+        deleted_count: int,
+    ) -> None:
         nself.choice = choice
         nself.signal = signal
         nself.one_step = one_step
         nself.two_step = two_step
+        nself.original_count = original_count
+        nself.deleted_count = deleted_count
 
 
 def _measure_pool(
@@ -338,7 +395,7 @@ def _measure_pool(
     choice = _choose_attribute(signals)
     one_step = _finish_gain(signals[choice], index.count, finish_config)
     two_step = _diagnostic_two_step_gain(index, choice, candidate_config, finish_config)
-    deleted_profiles = _delete_candidates(profiles, randomizer)
+    deleted_profiles, deleted_count = _delete_candidates(profiles, randomizer)
     deleted_index = _PoolIndex(deleted_profiles)
     deleted_signals = {
         attribute: deleted_index.signal(attribute) for attribute in CONCRETE_ATTRIBUTES
@@ -361,16 +418,19 @@ def _measure_pool(
             deleted_signals[deleted_choice],
             deleted_one_step,
             deleted_two_step,
+            len(profiles),
+            deleted_count,
         ),
     )
 
 
 def _delete_candidates(
     profiles: Sequence[AttributeProfile], randomizer: random.Random
-) -> tuple[AttributeProfile, ...]:
+) -> tuple[tuple[AttributeProfile, ...], int]:
     delete_count = max(1, round(len(profiles) * 0.10)) if len(profiles) > 1 else 0
     deleted = set(randomizer.sample(range(len(profiles)), delete_count))
-    return tuple(profile for index, profile in enumerate(profiles) if index not in deleted)
+    remaining = tuple(profile for index, profile in enumerate(profiles) if index not in deleted)
+    return remaining, delete_count
 
 
 def _choose_attribute(signals: Mapping[str, _Signal]) -> str:
@@ -431,31 +491,50 @@ def _terminal_progress(expected_remaining: float, count: int) -> float:
     return 1.0 - remaining / initial
 
 
-def _aggregate_pool_measurements(measurements: Sequence[_PoolMeasurement]) -> dict[str, object]:
+def _aggregate_pool_measurements(
+    measurements: Sequence[_PoolMeasurement], production_latency_ms: Sequence[float]
+) -> dict[str, object]:
     chosen_signals = [measurement.signals[measurement.choice] for measurement in measurements]
+    one_step_finish_gain = _round(_mean(item.one_step for item in measurements))
+    two_step_incremental_gain = _round(_mean(item.two_step for item in measurements))
     return {
         "sample_count": len(measurements),
         "latency_ms": {
-            "measurement": "depth_one_signal_calculation_only",
+            "measurement": "production_candidate_signal_calculator_calculate",
+            "sample_count": len(production_latency_ms),
+            "p50": _round(_percentile(production_latency_ms, 0.50)),
+            "p95": _round(_percentile(production_latency_ms, 0.95)),
+        },
+        "analysis_kernel_latency_ms": {
+            "measurement": "diagnostic_optimized_depth_one_analysis_kernel",
+            "sample_count": len(measurements),
             "p50": _round(_percentile([item.latency_ms for item in measurements], 0.50)),
             "p95": _round(_percentile([item.latency_ms for item in measurements], 0.95)),
         },
+        "mean_represented_category_count": _round(
+            _mean(item.represented_category_count for item in measurements)
+        ),
+        "mean_catalog_mass_coverage": _round(
+            _mean(item.catalog_mass_coverage for item in measurements)
+        ),
         "chosen_attribute_agreement_with_largest_pool": _round(
             sum(item.largest_pool_choice_match for item in measurements) / len(measurements)
         ),
         "mean_expected_shrink": _round(_mean(item.expected_shrink for item in chosen_signals)),
         "mean_resolve_at_10": _round(_mean(item.resolve_at_10 for item in chosen_signals)),
-        "one_step_vs_two_step_finish_gain": {
-            "one_step": _round(_mean(item.one_step for item in measurements)),
-            "two_step": _round(_mean(item.two_step for item in measurements)),
-            "depth_two_status": _DEPTH_TWO_STATUS,
-        },
+        "one_step_finish_gain": one_step_finish_gain,
+        "two_step_incremental_gain": two_step_incremental_gain,
+        "two_step_combined_gain": one_step_finish_gain + two_step_incremental_gain,
+        "depth_two_status": _DEPTH_TWO_STATUS,
         "per_attribute_missing_rate": {
             attribute: _round(_mean(item.signals[attribute].missing_rate for item in measurements))
             for attribute in CONCRETE_ATTRIBUTES
         },
         "candidate_deletion_stability": {
-            "deletion_fraction": 0.10,
+            "deleted_count": measurements[0].deletion.deleted_count,
+            "deleted_fraction": _round(
+                measurements[0].deletion.deleted_count / measurements[0].deletion.original_count
+            ),
             "choice_agreement": _round(
                 sum(item.choice == item.deletion.choice for item in measurements)
                 / len(measurements)
@@ -533,7 +612,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             arguments.sample_count,
             arguments.seed,
         )
-        write_report_atomic(report, arguments.output)
+        write_report_atomic(report, arguments.output, arguments.catalog)
     except (FileNotFoundError, OSError, ValueError) as exc:
         parser.error(str(exc))
     return 0

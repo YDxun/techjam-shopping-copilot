@@ -1,0 +1,29 @@
+# Demo 会话（官方评估器，public 会话 public_0002）
+# 场景: intent_override | 目标: B071X54486
+# 用户画像: {'average_prior_rating': 1.0, 'preference_tags': ['fit', 'comfort', 'style'], 'purchase_frequency': '3-4 prior purchases', 'rating_style': 'critical', 'summary': 'Prior purchases emphasize fit, comfor
+
+[turn 1]
+  user_message : I'm looking for Accessories Belts. Buckle closure
+  ask_attribute: other
+  message      : What else matters most for your choice?
+  top-10 asin  : ['B01N44118B', 'B077XJHGR9', 'B08QN272FH', 'B08L13H7SY', 'B078HG9KCY', 'B071X54486', 'B08FLYBP2J', 'B07WTZ3SKR', 'B0BX2RMJ54', 'B07NZ4YQ3F']
+
+[turn 2]
+  user_message : For that, what matters is: leather; 100% Leather.
+  ask_attribute: other
+  message      : What else matters most for your choice?
+  top-10 asin  : ['B08L13LJ5M', 'B07RQSN383', 'B0C4HGYDMF', 'B07DC1DCKX', 'B07SKPJZ2P', 'B07CWP2973', 'B0C2TZXDNP', 'B07RW633ZF', 'B081N5L8JW', 'B07MFD5CXS']
+
+[turn 3]
+  user_message : Actually, ignore my earlier preference. What I need is: leather.
+  ask_attribute: other
+  message      : What else matters most for your choice?
+  top-10 asin  : ['B07RQSN383', 'B08QN272FH', 'B01N44118B', 'B07NZ4YQ3F', 'B08L13LJ5M', 'B08FLYBP2J', 'B0B3HNSP7C', 'B07VXNWQ85', 'B095XM7YYS', 'B077XJHGR9']
+
+[turn 4]
+  user_message : For that, what matters is: Imported; Buckle closure.
+  ask_attribute: other
+  message      : What else matters most for your choice?
+  top-10 asin  : ['B0C4HGYDMF', 'B071X54486', 'B013RTTUC4', 'B016KJE6FE', 'B072M9PJ3H', 'B09Y25MFDR', 'B0C2TZXDNP', 'B0BZCRVCS5', 'B07PQS76MV', 'B083SLWWRN']
+
+# 结果: HIT at rank 2 (target=B071X54486)

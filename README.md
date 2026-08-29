@@ -84,8 +84,10 @@
 # Python >= 3.10（开发验证使用 3.12）；核心离线模式使用 sqlite3 FTS5
 python --version
 
-# 安装项目声明的依赖，其中包含 DeepSeek 所需的 OpenAI Python SDK
+# 安装项目声明的统一依赖清单（离线 + 在线，见 requirements.txt；核心离线仅标准库）
 pip install -r requirements.txt
+# 说明：requirements.txt 已按最新代码更新为"离线+在线"完整清单；全部为可选增强，
+# 未安装自动降级，默认纯离线零 API 即可跑通全部功能。
 
 # 可选的本地检索增强（未安装会自动降级）
 # pip install sentence-transformers numpy torch
@@ -214,8 +216,10 @@ Agent 启动时执行一次**能力探测**（`agent/capability_probe.py`），�
 ## 4. 本地复现测试
 
 ```bash
-# ① 完整本地评估（dev 模式，离线规则，默认 bm25）
+# ① 完整本地评估（dev 模式，离线规则，默认 rrf_k=100）
 python run_local_eval.py
+# Demo 会话（官方评估器跑 1 个 public 会话，逐轮打印并保存 docs/demo_session.log）：
+python scripts/demo_session.py --index 1
 # 输出总体 + 场景指标并写入 results.json
 
 # ② 冒烟测试（前 10 个会话，快速验证）
@@ -549,3 +553,13 @@ count 越小，约束组合越能锁定目标。
 `RETRIEVAL_MODE__EXPLOIT_MIN_CONSTRAINTS`），行为默认不变。
 
 验收：`python -m unittest discover tests` Ran 115 OK；pytest 135 passed；默认公开集 0.8802 保持。
+
+
+---
+
+## 竞赛交付物文档
+- [独立技术报告（四支柱 + 模型 + 团队贡献）](docs/TECHNICAL_REPORT.md)
+- [成本/延迟披露（按模式）](docs/cost_disclosure.md)
+- [Demo 会话逐轮日志](docs/demo_session.log)
+- [Devpost 项目描述](docs/devpost_draft.md)
+- 调参报告与 LUT：`logs/tuning_report.md`、`data/assets/env_config_lut.json`

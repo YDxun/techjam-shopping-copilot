@@ -15,6 +15,8 @@ from config.models import (
     CandidateQuestionWeights,
     CircuitBreakerConfig,
     DecisionConfig,
+    DecisionTraceConfig,
+    DiagnosticsConfig,
     DialogueUnderstandingConfig,
     FinishStrategyConfig,
     FinishWeights,
@@ -239,6 +241,26 @@ def _environment_overrides(
             ("decision", "finish_strategy", "minimum_finish_gain"),
             _parse_float,
         ),
+        "SHOPPING_DIAGNOSTICS__DECISION_TRACE__ENABLED": (
+            ("diagnostics", "decision_trace", "enabled"),
+            _parse_bool,
+        ),
+        "SHOPPING_DIAGNOSTICS__DECISION_TRACE__INCLUDE_ATTRIBUTE_SCORES": (
+            ("diagnostics", "decision_trace", "include_attribute_scores"),
+            _parse_bool,
+        ),
+        "SHOPPING_DIAGNOSTICS__DECISION_TRACE__INCLUDE_STATE_DIFF": (
+            ("diagnostics", "decision_trace", "include_state_diff"),
+            _parse_bool,
+        ),
+        "SHOPPING_DIAGNOSTICS__DECISION_TRACE__MAX_TRACES": (
+            ("diagnostics", "decision_trace", "max_traces"),
+            _parse_int,
+        ),
+        "SHOPPING_DIAGNOSTICS__DECISION_TRACE__OUTPUT_PATH": (
+            ("diagnostics", "decision_trace", "output_path"),
+            _parse_text,
+        ),
         "LLM_RERANK": (("llm", "rerank_enabled"), _parse_bool),
         "LLM_RERANK_CANDIDATES": (("llm", "rerank_candidates"), _parse_int),
         "LLM_HEALTH_CHECK_ENABLED": (("llm", "health_check_enabled"), _parse_bool),
@@ -397,6 +419,10 @@ def _build_and_validate(data: Mapping[str, Any], selected_key: SecretValue) -> A
     )
     finish_weights_data = _mapping(
         finish_strategy_data.get("weights"), "decision.finish_strategy.weights"
+    )
+    diagnostics_data = _mapping(data.get("diagnostics"), "diagnostics")
+    decision_trace_data = _mapping(
+        diagnostics_data.get("decision_trace"), "diagnostics.decision_trace"
     )
     retry_data = _mapping(llm_data.get("retry"), "llm.retry")
     circuit_data = _mapping(llm_data.get("circuit_breaker"), "llm.circuit_breaker")
@@ -624,6 +650,28 @@ def _build_and_validate(data: Mapping[str, Any], selected_key: SecretValue) -> A
                 "decision.question_termination_mode",
             ),
         ),
+        diagnostics=DiagnosticsConfig(
+            decision_trace=DecisionTraceConfig(
+                enabled=_bool_value(
+                    decision_trace_data.get("enabled"), "diagnostics.decision_trace.enabled"
+                ),
+                include_attribute_scores=_bool_value(
+                    decision_trace_data.get("include_attribute_scores"),
+                    "diagnostics.decision_trace.include_attribute_scores",
+                ),
+                include_state_diff=_bool_value(
+                    decision_trace_data.get("include_state_diff"),
+                    "diagnostics.decision_trace.include_state_diff",
+                ),
+                max_traces=_int_value(
+                    decision_trace_data.get("max_traces"), "diagnostics.decision_trace.max_traces"
+                ),
+                output_path=_non_empty_string(
+                    decision_trace_data.get("output_path"),
+                    "diagnostics.decision_trace.output_path",
+                ),
+            )
+        ),
         llm=llm,
     )
     _validate(config)
@@ -682,6 +730,10 @@ def _validate(config: AppConfig) -> None:
         {"clarify"},
     )
     _positive(config.decision.max_questions, "decision.max_questions")
+    _non_negative(
+        config.diagnostics.decision_trace.max_traces,
+        "diagnostics.decision_trace.max_traces",
+    )
     _in(
         config.decision.question_termination_mode,
         "decision.question_termination_mode",

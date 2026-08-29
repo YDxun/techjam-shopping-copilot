@@ -149,6 +149,20 @@ class DecisionConfig:
 
 
 @dataclass(frozen=True)
+class DecisionTraceConfig:
+    enabled: bool = False
+    include_attribute_scores: bool = True
+    include_state_diff: bool = True
+    max_traces: int = 5000
+    output_path: str = "decision_traces.jsonl"
+
+
+@dataclass(frozen=True)
+class DiagnosticsConfig:
+    decision_trace: DecisionTraceConfig = field(default_factory=DecisionTraceConfig)
+
+
+@dataclass(frozen=True)
 class ProviderConfig:
     model: str
     base_url: str
@@ -242,5 +256,6 @@ class AppConfig:
         default_factory=DialogueUnderstandingConfig
     )
     decision: DecisionConfig = field(default_factory=DecisionConfig)
+    diagnostics: DiagnosticsConfig = field(default_factory=DiagnosticsConfig)
 
     llm: LLMConfig = field(default_factory=LLMConfig)

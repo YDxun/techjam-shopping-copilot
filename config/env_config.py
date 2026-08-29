@@ -10,6 +10,7 @@ from config.loader import load_config
 from config.models import (
     AppConfig,
     DecisionConfig,
+    DiagnosticsConfig,
     DialogueUnderstandingConfig,
     LLMConfig,
 )
@@ -45,6 +46,10 @@ class EnvConfig:
     @property
     def decision(self) -> DecisionConfig:
         return self._app_config.decision
+
+    @property
+    def diagnostics(self) -> DiagnosticsConfig:
+        return self._app_config.diagnostics
 
     @property
     def env_mode(self) -> str:

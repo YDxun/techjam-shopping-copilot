@@ -92,6 +92,15 @@
     },
     "question_termination_mode": "legacy"
   },
+  "diagnostics": {
+    "decision_trace": {
+      "enabled": false,
+      "include_attribute_scores": true,
+      "include_state_diff": true,
+      "max_traces": 5000,
+      "output_path": "decision_traces.jsonl"
+    }
+  },
   "llm": {
     "provider": "deepseek",
     "rerank_enabled": false,

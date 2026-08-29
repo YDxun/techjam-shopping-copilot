@@ -232,6 +232,22 @@ class DialogueFlowTest(unittest.TestCase):
             products=PRODUCTS,
         )
 
+    @staticmethod
+    def record_shown_for_test(
+        pipeline: DialogueUnderstandingPipeline,
+        session_id: str,
+        asins: list[str],
+        turn: int,
+    ) -> None:
+        session, fingerprint = pipeline.session_token(session_id)
+        pipeline.record_shown(
+            session_id,
+            asins,
+            turn,
+            expected_session=session,
+            expected_fingerprint=fingerprint,
+        )
+
     def test_offline_response_preserves_existing_ranked_order_and_contract(self) -> None:
         agent = Agent(
             env=self.env(),
@@ -372,7 +388,7 @@ class DialogueFlowTest(unittest.TestCase):
             llm_response=self.low_confidence_rejection("A"),
         )
         agent.reset("s", {})
-        agent.dialogue.record_shown("s", ["A"], turn=1)
+        self.record_shown_for_test(agent.dialogue, "s", ["A"], turn=1)
         before = agent.dialogue.session("s")
 
         response = agent.respond("s", "Reject A", 2, 3)
@@ -385,7 +401,7 @@ class DialogueFlowTest(unittest.TestCase):
         # Accepting an older pending result would replace turn two's state with turn one.
         pipeline = self.build_rule_pipeline(guard_enabled=False)
         pipeline.reset("s", {})
-        pipeline.record_shown("s", ["A"], turn=1)
+        self.record_shown_for_test(pipeline, "s", ["A"], turn=1)
         first = pipeline.interpret_turn("s", "I'm looking for shoes.", turn=1)
         second = pipeline.interpret_turn("s", "I also need them to be blue.", turn=2)
 
@@ -413,7 +429,7 @@ class DialogueFlowTest(unittest.TestCase):
             llm_response=self.low_confidence_rejection("A"),
         )
         pipeline.reset("s", {})
-        pipeline.record_shown("s", ["A"], turn=1)
+        self.record_shown_for_test(pipeline, "s", ["A"], turn=1)
         pending = pipeline.interpret_turn("s", "Reject A", turn=2)
         before = pipeline.session("s")
 
@@ -421,6 +437,79 @@ class DialogueFlowTest(unittest.TestCase):
         replay = pipeline.decide_question(pending, None, candidate_count=3)
 
         self.assertEqual(first.question_decision, replay.question_decision)
+        self.assertEqual(pipeline.session("s"), before)
+
+    def test_equal_value_reset_rejects_pending_by_session_token(self) -> None:
+        # Equality alone would let this reset accept a pending turn from its predecessor.
+        pipeline = self.build_rule_pipeline(guard_enabled=False)
+        pipeline.reset("s", {})
+        pending = pipeline.interpret_turn("s", "I'm looking for shoes.", turn=1)
+        pipeline.reset("s", {})
+        reset_session = pipeline.session("s")
+
+        with self.assertRaises(StalePendingTurnError):
+            pipeline.decide_question(pending, None, candidate_count=3)
+
+        self.assertIs(pipeline.session("s"), reset_session)
+        self.assertEqual(pipeline.session("s").candidate_counts, ())
+        self.assertEqual(pipeline.session("s").dialogue.turn, 0)
+
+    def test_in_place_profile_mutation_rejects_pending_by_fingerprint(self) -> None:
+        # A shared mutable profile must not let a pending decision commit after mutation.
+        pipeline = self.build_rule_pipeline(guard_enabled=False)
+        pipeline.reset("s", {"preferences": {"color": "blue"}})
+        pending = pipeline.interpret_turn("s", "I'm looking for shoes.", turn=1)
+        pipeline.session("s").dialogue.user_profile["preferences"]["color"] = "green"
+
+        with self.assertRaises(StalePendingTurnError):
+            pipeline.decide_question(pending, None, candidate_count=3)
+
+        self.assertEqual(
+            pipeline.session("s").dialogue.user_profile,
+            {"preferences": {"color": "green"}},
+        )
+        self.assertEqual(pipeline.session("s").candidate_counts, ())
+
+    def test_delayed_shown_results_cannot_overwrite_newer_session_history(self) -> None:
+        # A late first response must not record products after a second turn commits.
+        pipeline = self.build_rule_pipeline(guard_enabled=False)
+        pipeline.reset("s", {})
+        first = pipeline.interpret_turn("s", "I'm looking for shoes.", turn=1)
+        first_result = pipeline.decide_question(first, None, candidate_count=3)
+        second = pipeline.interpret_turn("s", "I also need them to be blue.", turn=2)
+        second_result = pipeline.decide_question(second, None, candidate_count=3)
+        newest = pipeline.session("s")
+
+        with self.assertRaises(StalePendingTurnError):
+            pipeline.record_shown(
+                "s",
+                ["A"],
+                turn=1,
+                expected_session=first_result.committed_session,
+                expected_fingerprint=first_result.committed_session_fingerprint,
+            )
+
+        self.assertEqual(pipeline.session("s"), newest)
+        self.assertEqual(pipeline.session("s").products.pending_batch, ())
+        self.assertEqual(pipeline.session("s").products.observations, ())
+        pipeline.record_shown(
+            "s",
+            ["B"],
+            turn=2,
+            expected_session=second_result.committed_session,
+            expected_fingerprint=second_result.committed_session_fingerprint,
+        )
+        self.assertEqual(pipeline.session("s").products.pending_batch, ("B",))
+
+    def test_shown_history_requires_a_committed_session_token(self) -> None:
+        # Allowing untagged shown writes would reintroduce the delayed-response race.
+        pipeline = self.build_rule_pipeline(guard_enabled=False)
+        pipeline.reset("s", {})
+        before = pipeline.session("s")
+
+        with self.assertRaises(StalePendingTurnError):
+            pipeline.record_shown("s", ["A"], turn=1)
+
         self.assertEqual(pipeline.session("s"), before)
 
     def test_unavailable_llm_uses_rule_path_and_keeps_session_valid(self) -> None:
@@ -462,7 +551,7 @@ class DialogueFlowTest(unittest.TestCase):
             llm_response=self.low_confidence_rejection("A"),
         )
         pipeline.reset("s", {})
-        pipeline.record_shown("s", ["A"], turn=1)
+        self.record_shown_for_test(pipeline, "s", ["A"], turn=1)
         before = pipeline.session("s")
 
         result = pipeline.process_turn("s", "Reject A", turn=2)
@@ -480,7 +569,7 @@ class DialogueFlowTest(unittest.TestCase):
             llm_response=self.low_confidence_rejection("A"),
         )
         pipeline.reset("s", {})
-        pipeline.record_shown("s", ["A"], turn=1)
+        self.record_shown_for_test(pipeline, "s", ["A"], turn=1)
 
         result = pipeline.process_turn("s", "Reject A", turn=2)
         session = pipeline.session("s")
@@ -506,7 +595,7 @@ class DialogueFlowTest(unittest.TestCase):
     def test_negated_explicit_asin_is_not_hard_rejected_when_guard_is_enabled(self) -> None:
         pipeline = self.build_rule_pipeline(guard_enabled=True)
         pipeline.reset("s", {})
-        pipeline.record_shown("s", ["B012345678"], turn=1)
+        self.record_shown_for_test(pipeline, "s", ["B012345678"], turn=1)
 
         result = pipeline.process_turn("s", "Don't reject B012345678.", turn=2)
         product_lists = pipeline.session("s").products.context_lists(1)
@@ -529,7 +618,7 @@ class DialogueFlowTest(unittest.TestCase):
             },
         )
         pipeline.reset("s", {})
-        pipeline.record_shown("s", ["A"], turn=1)
+        self.record_shown_for_test(pipeline, "s", ["A"], turn=1)
         before = pipeline.session("s")
 
         result = pipeline.process_turn("s", "Please show me blue options.", turn=2)

@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
-from dataclasses import dataclass, replace
+from collections.abc import Mapping
+from dataclasses import dataclass, fields, is_dataclass, replace
+from enum import Enum
 from typing import Iterable
 
 from agent.dialogue.candidate_signals import CONCRETE_ATTRIBUTES, CandidateSignalCalculator
@@ -37,6 +40,54 @@ class StalePendingTurnError(RuntimeError):
     """Raised when an ordinary pending turn no longer matches its base session."""
 
 
+def _session_fingerprint(session: "SessionState") -> str:
+    payload = json.dumps(
+        _canonical_session_value(session),
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _canonical_session_value(value: object) -> object:
+    if is_dataclass(value) and not isinstance(value, type):
+        return {
+            "dataclass": f"{type(value).__module__}.{type(value).__qualname__}",
+            "fields": [
+                [item.name, _canonical_session_value(getattr(value, item.name))]
+                for item in fields(value)
+            ],
+        }
+    if isinstance(value, Enum):
+        return {
+            "enum": f"{type(value).__module__}.{type(value).__qualname__}",
+            "value": value.value,
+        }
+    if isinstance(value, Mapping):
+        pairs = [
+            [_canonical_session_value(key), _canonical_session_value(item)]
+            for key, item in value.items()
+        ]
+        return {"mapping": sorted(pairs, key=_canonical_sort_key)}
+    if isinstance(value, (list, tuple)):
+        return {"sequence": [_canonical_session_value(item) for item in value]}
+    if isinstance(value, (set, frozenset)):
+        return {
+            "set": sorted(
+                (_canonical_session_value(item) for item in value),
+                key=_canonical_sort_key,
+            )
+        }
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    return {"object": f"{type(value).__module__}.{type(value).__qualname__}", "repr": repr(value)}
+
+
+def _canonical_sort_key(value: object) -> str:
+    return json.dumps(value, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
+
+
 @dataclass(frozen=True)
 class SessionState:
     dialogue: DialogueState
@@ -50,6 +101,7 @@ class PendingDialogueTurn:
 
     session_id: str
     base_session: SessionState
+    base_session_fingerprint: str
     turn: int
     state: DialogueState
     recognition: RecognitionResult
@@ -109,6 +161,11 @@ class DialogueUnderstandingPipeline:
     def session(self, session_id: str) -> SessionState:
         return self._sessions[session_id]
 
+    def session_token(self, session_id: str) -> tuple[SessionState, str]:
+        """Return the current compare-and-set token for explicit shown-result recording."""
+        session = self._sessions[session_id]
+        return session, _session_fingerprint(session)
+
     def process_turn(
         self,
         session_id: str,
@@ -128,6 +185,7 @@ class DialogueUnderstandingPipeline:
         if session_id not in self._sessions:
             self.reset(session_id, {})
         session = self._sessions[session_id]
+        base_session_fingerprint = _session_fingerprint(session)
         version_at_start = session.dialogue.intent_version
         request = RecognitionRequest(
             user_message=user_message,
@@ -157,6 +215,7 @@ class DialogueUnderstandingPipeline:
         return PendingDialogueTurn(
             session_id=session_id,
             base_session=session,
+            base_session_fingerprint=base_session_fingerprint,
             turn=turn,
             state=dialogue,
             recognition=recognition,
@@ -194,7 +253,10 @@ class DialogueUnderstandingPipeline:
                 completion_tokens=pending.completion_tokens,
             )
 
-        if session != pending.base_session:
+        if (
+            session is not pending.base_session
+            or _session_fingerprint(session) != pending.base_session_fingerprint
+        ):
             raise StalePendingTurnError(
                 "pending dialogue turn no longer matches the current session"
             )
@@ -229,11 +291,13 @@ class DialogueUnderstandingPipeline:
         counts = session.candidate_counts
         if candidate_count is not None:
             counts = counts + (candidate_count,)
-        self._sessions[pending.session_id] = SessionState(
+        committed_session = SessionState(
             dialogue=dialogue,
             products=pending.products,
             candidate_counts=counts,
         )
+        self._sessions[pending.session_id] = committed_session
+        committed_session_fingerprint = _session_fingerprint(committed_session)
         logger.info(
             "[dialogue] session=%s turn=%d intent_version=%d source=%s decision=%s score=%.4f",
             hashlib.sha256(pending.session_id.encode("utf-8")).hexdigest()[:12],
@@ -257,6 +321,8 @@ class DialogueUnderstandingPipeline:
             question_decision=decision,
             prompt_tokens=pending.prompt_tokens,
             completion_tokens=pending.completion_tokens,
+            committed_session=committed_session,
+            committed_session_fingerprint=committed_session_fingerprint,
         )
 
     @staticmethod
@@ -272,8 +338,20 @@ class DialogueUnderstandingPipeline:
         session_id: str,
         asins: tuple[str, ...] | list[str],
         turn: int,
+        *,
+        expected_session: SessionState | None = None,
+        expected_fingerprint: str | None = None,
     ) -> None:
         session = self._sessions[session_id]
+        if (
+            expected_session is None
+            or expected_fingerprint is None
+            or session is not expected_session
+            or _session_fingerprint(session) != expected_fingerprint
+        ):
+            raise StalePendingTurnError(
+                "shown results no longer match the committed dialogue session"
+            )
         products = session.products.record_shown(
             asins,
             intent_version=session.dialogue.intent_version,

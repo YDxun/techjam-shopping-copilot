@@ -294,6 +294,8 @@ class DialogueTurnResult:
     question_decision: QuestionDecision
     prompt_tokens: int
     completion_tokens: int
+    committed_session: object | None = field(default=None, repr=False, compare=False)
+    committed_session_fingerprint: str | None = field(default=None, repr=False, compare=False)
 
 
 @dataclass(frozen=True)

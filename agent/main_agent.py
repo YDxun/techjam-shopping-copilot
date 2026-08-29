@@ -163,7 +163,13 @@ class Agent(BaseAgent):
         )
         shown = ranked[:top_k]
         if turn_result.guard_decision.action not in {GuardAction.CLARIFY, GuardAction.REJECT}:
-            self.dialogue.record_shown(session_id, shown, turn)
+            self.dialogue.record_shown(
+                session_id,
+                shown,
+                turn,
+                expected_session=turn_result.committed_session,
+                expected_fingerprint=turn_result.committed_session_fingerprint,
+            )
 
         decision = turn_result.question_decision
         message = self.dialogue.message_for(decision, turn_result.state)

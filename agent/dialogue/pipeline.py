@@ -5,14 +5,19 @@ import logging
 from dataclasses import dataclass, replace
 from typing import Iterable
 
+from agent.dialogue.candidate_signals import CONCRETE_ATTRIBUTES, CandidateSignalCalculator
+from agent.dialogue.catalog_attributes import CatalogAttributeCache, RuleVocabularyExtractor
 from agent.dialogue.catalog_signals import CatalogQuestionSignals
 from agent.dialogue.models import (
+    CandidateQuestionSignals,
     DialogueAct,
     DialogueState,
     DialogueTurnResult,
     GuardAction,
+    GuardDecision,
     QuestionDecision,
     RecognitionRequest,
+    RecognitionResult,
     RecommendationContext,
 )
 from agent.dialogue.product_history import ProductHistory
@@ -32,6 +37,22 @@ logger = logging.getLogger(__name__)
 class SessionState:
     dialogue: DialogueState
     products: ProductHistory = ProductHistory()
+    candidate_counts: tuple[int, ...] = ()
+
+
+@dataclass(frozen=True)
+class PendingDialogueTurn:
+    """Immutable interpretation that waits for one retrieved candidate pool."""
+
+    session_id: str
+    turn: int
+    state: DialogueState
+    recognition: RecognitionResult
+    guard_decision: GuardDecision
+    recommendation_context: RecommendationContext
+    products: ProductHistory
+    prompt_tokens: int
+    completion_tokens: int
 
 
 class DialogueUnderstandingPipeline:
@@ -64,9 +85,15 @@ class DialogueUnderstandingPipeline:
             mode=self._recognition_mode,
             rule_confidence_threshold=dialogue_config.rule_confidence_threshold,
         )
+        product_rows = tuple(products)
         self.question_policy = QuestionPolicy(env.decision)
         self.transition_guard = TransitionGuard(dialogue_config.transition_guard)
-        self.catalog_signals = CatalogQuestionSignals.from_products(products)
+        self.catalog_signals = CatalogQuestionSignals.from_products(product_rows)
+        self.candidate_signal_calculator = CandidateSignalCalculator(
+            CatalogAttributeCache.from_products(product_rows, RuleVocabularyExtractor()),
+            env.decision.candidate_question_value,
+            env.decision.finish_strategy,
+        )
         self._sessions: dict[str, SessionState] = {}
 
     def reset(self, session_id: str, user_profile: dict) -> None:
@@ -83,6 +110,16 @@ class DialogueUnderstandingPipeline:
         user_message: str,
         turn: int,
     ) -> DialogueTurnResult:
+        pending = self.interpret_turn(session_id, user_message, turn)
+        return self.decide_question(pending, None)
+
+    def interpret_turn(
+        self,
+        session_id: str,
+        user_message: str,
+        turn: int,
+    ) -> PendingDialogueTurn:
+        """Interpret a turn once, without recording a follow-up question."""
         if session_id not in self._sessions:
             self.reset(session_id, {})
         session = self._sessions[session_id]
@@ -99,13 +136,6 @@ class DialogueUnderstandingPipeline:
         if guard_decision.action in {GuardAction.CLARIFY, GuardAction.REJECT}:
             dialogue = session.dialogue
             products = session.products
-            decision = QuestionDecision(
-                should_ask=True,
-                ask_attribute=guard_decision.clarify_attribute or "other",
-                reason_code=guard_decision.reason_code,
-                utility_score=0.0,
-                alternative_scores={},
-            )
         else:
             recognition = guard_decision.recognition
             products = session.products.settle_previous_turn(version_at_start)
@@ -114,49 +144,116 @@ class DialogueUnderstandingPipeline:
 
             if reduction.applied:
                 dialogue = reduction.state
-                decision = self.question_policy.decide(
-                    dialogue,
-                    recognition,
-                    self.catalog_signals,
-                )
             else:
                 dialogue = session.dialogue
-                decision = QuestionDecision(
-                    should_ask=True,
-                    ask_attribute="other",
-                    reason_code="state_update_rejected",
-                    utility_score=0.0,
-                    alternative_scores={},
-                )
-            if decision.should_ask:
-                dialogue = self.reducer.record_question(dialogue, decision.ask_attribute)
 
         context = self._build_context(dialogue, recognition, products)
-        self._sessions[session_id] = SessionState(dialogue=dialogue, products=products)
+        usage = self.recognizer.last_usage
+        return PendingDialogueTurn(
+            session_id=session_id,
+            turn=turn,
+            state=dialogue,
+            recognition=recognition,
+            guard_decision=guard_decision,
+            recommendation_context=context,
+            products=products,
+            prompt_tokens=usage.prompt_tokens,
+            completion_tokens=usage.completion_tokens,
+        )
+
+    def decide_question(
+        self,
+        pending: PendingDialogueTurn,
+        candidate_signals: CandidateQuestionSignals | None,
+        *,
+        candidate_count: int | None = None,
+    ) -> DialogueTurnResult:
+        """Choose and commit exactly one ordinary question after candidate retrieval."""
+        session = self._sessions[pending.session_id]
+        if pending.guard_decision.action in {GuardAction.CLARIFY, GuardAction.REJECT}:
+            decision = QuestionDecision(
+                should_ask=True,
+                ask_attribute=pending.guard_decision.clarify_attribute or "other",
+                reason_code=pending.guard_decision.reason_code,
+                utility_score=0.0,
+                alternative_scores={},
+            )
+            return DialogueTurnResult(
+                state=pending.state,
+                recognition=pending.recognition,
+                guard_decision=pending.guard_decision,
+                recommendation_context=pending.recommendation_context,
+                question_decision=decision,
+                prompt_tokens=pending.prompt_tokens,
+                completion_tokens=pending.completion_tokens,
+            )
+
+        if candidate_signals is not None:
+            candidate_signals = replace(
+                candidate_signals,
+                previous_candidate_count=(
+                    session.candidate_counts[-1] if session.candidate_counts else None
+                ),
+            )
+            candidate_count = candidate_signals.candidate_count
+        if pending.state is session.dialogue:
+            decision = QuestionDecision(
+                should_ask=True,
+                ask_attribute="other",
+                reason_code="state_update_rejected",
+                utility_score=0.0,
+                alternative_scores={},
+            )
+        else:
+            decision = self.question_policy.decide(
+                pending.state,
+                pending.recognition,
+                self.catalog_signals,
+                candidate_signals,
+            )
+        dialogue = pending.state
+        if decision.should_ask:
+            dialogue = self.reducer.record_question(dialogue, decision.ask_attribute)
+        context = self._build_context(dialogue, pending.recognition, pending.products)
+        counts = session.candidate_counts
+        if candidate_count is not None:
+            counts = counts + (candidate_count,)
+        self._sessions[pending.session_id] = SessionState(
+            dialogue=dialogue,
+            products=pending.products,
+            candidate_counts=counts,
+        )
         logger.info(
             "[dialogue] session=%s turn=%d intent_version=%d source=%s decision=%s score=%.4f",
-            hashlib.sha256(session_id.encode("utf-8")).hexdigest()[:12],
-            turn,
+            hashlib.sha256(pending.session_id.encode("utf-8")).hexdigest()[:12],
+            pending.turn,
             dialogue.intent_version,
-            recognition.source.value,
+            pending.recognition.source.value,
             decision.reason_code,
             decision.utility_score,
         )
         logger.debug(
             "[dialogue.utility] session=%s turn=%d components=%s",
-            hashlib.sha256(session_id.encode("utf-8")).hexdigest()[:12],
-            turn,
+            hashlib.sha256(pending.session_id.encode("utf-8")).hexdigest()[:12],
+            pending.turn,
             self.question_policy.last_components,
         )
-        usage = self.recognizer.last_usage
         return DialogueTurnResult(
             state=dialogue,
-            recognition=recognition,
-            guard_decision=guard_decision,
+            recognition=pending.recognition,
+            guard_decision=pending.guard_decision,
             recommendation_context=context,
             question_decision=decision,
-            prompt_tokens=usage.prompt_tokens,
-            completion_tokens=usage.completion_tokens,
+            prompt_tokens=pending.prompt_tokens,
+            completion_tokens=pending.completion_tokens,
+        )
+
+    @staticmethod
+    def eligible_candidate_attributes(state: DialogueState) -> tuple[str, ...]:
+        return tuple(
+            attribute
+            for attribute in CONCRETE_ATTRIBUTES
+            if attribute not in state.no_preference_attributes
         )
 
     def record_shown(

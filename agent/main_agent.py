@@ -19,6 +19,7 @@ from pathlib import Path
 
 from agent.base_agent import BaseAgent
 from agent.capability_probe import CapabilityProbe, CapabilityProfile
+from agent.dialogue.models import GuardAction
 from agent.dialogue.pipeline import DialogueUnderstandingPipeline
 from agent.intent_router import IntentRouter
 from agent.reranker import Reranker
@@ -117,15 +118,36 @@ class Agent(BaseAgent):
 
     # ------------------------------------------------------------------
     def _respond_impl(self, session_id: str, user_message: str, turn: int, top_k: int) -> dict:
-        turn_result = self.dialogue.process_turn(session_id, user_message, turn)
-        context = turn_result.recommendation_context
+        pending = self.dialogue.interpret_turn(session_id, user_message, turn)
+        context = pending.recommendation_context
 
         # 1) 对话管线产出推荐上下文；检索/排序链负责 Top10
         route = self.router.route(context, mode=context.retrieval_mode)
 
         # 2) 多路由混合召回 → 候选池（Pillar I；BLaIR 稠密 + BM25 + 硬约束 AND + 品类）
-        candidates = self.retriever.search(
-            route, top_k=RETRIEVAL_POOL_SIZE, mode=context.retrieval_mode
+        candidate_config = self.env.decision.candidate_question_value
+        pool_size = (
+            max(RETRIEVAL_POOL_SIZE, candidate_config.pool_size)
+            if candidate_config.enabled
+            else RETRIEVAL_POOL_SIZE
+        )
+        candidates = self.retriever.search(route, top_k=pool_size, mode=context.retrieval_mode)
+
+        candidate_signals = None
+        if candidate_config.enabled:
+            try:
+                candidate_signals = self.dialogue.candidate_signal_calculator.calculate(
+                    candidates,
+                    eligible_attributes=self.dialogue.eligible_candidate_attributes(pending.state),
+                )
+            except Exception:
+                logger.exception(
+                    "[agent] candidate signal calculation failed; using static question policy"
+                )
+        turn_result = self.dialogue.decide_question(
+            pending,
+            candidate_signals,
+            candidate_count=len(candidates),
         )
 
         # 3) 精排（Pillar I/IV）：规则 + 可选 LLM/bge，目标把目标商品推前
@@ -140,7 +162,8 @@ class Agent(BaseAgent):
             use_llm_rerank=self.decisions.use_llm_rerank,
         )
         shown = ranked[:top_k]
-        self.dialogue.record_shown(session_id, shown, turn)
+        if turn_result.guard_decision.action not in {GuardAction.CLARIFY, GuardAction.REJECT}:
+            self.dialogue.record_shown(session_id, shown, turn)
 
         decision = turn_result.question_decision
         message = self.dialogue.message_for(decision, turn_result.state)

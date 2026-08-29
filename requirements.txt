@@ -20,3 +20,7 @@
 # ---- ????????????retrieval_pipeline/?----
 # rank-bm25>=0.2.2
 # pydantic>=2.0
+
+
+# ---- 开发/质量工具（原 requirements-dev.txt，已统一进本文件）----
+ruff==0.15.1                # 代码质量检查（pyproject.toml 的 [tool.ruff] 配置即针对此版本）

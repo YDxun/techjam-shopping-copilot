@@ -96,10 +96,15 @@ class TransitionGuardTest(unittest.TestCase):
             confidence=0.60,
         )
 
-        decision = TransitionGuard(TransitionGuardConfig(enabled=True)).evaluate(empty_state(), result)
+        decision = TransitionGuard(TransitionGuardConfig(enabled=True)).evaluate(
+            empty_state(), result
+        )
 
         self.assertEqual(decision.action, GuardAction.SOFTEN)
-        self.assertEqual(decision.recognition.constraint_operations[0].strength, ConstraintStrength.SOFT)
+        self.assertEqual(
+            decision.recognition.constraint_operations[0].strength,
+            ConstraintStrength.SOFT,
+        )
         self.assertEqual(result.constraint_operations[0].strength, ConstraintStrength.HARD)
 
     def test_low_confidence_replace_requests_attribute_clarification(self) -> None:
@@ -123,7 +128,9 @@ class TransitionGuardTest(unittest.TestCase):
             operation(OperationKind.REPLACE, "material", "cotton", evidence=""),
         )
 
-        decision = TransitionGuard(TransitionGuardConfig(enabled=True)).evaluate(empty_state(), result)
+        decision = TransitionGuard(TransitionGuardConfig(enabled=True)).evaluate(
+            empty_state(), result
+        )
 
         self.assertEqual(decision.action, GuardAction.CLARIFY)
         self.assertEqual(decision.reason_code, "replace_missing_explicit_evidence")
@@ -175,7 +182,9 @@ class TransitionGuardTest(unittest.TestCase):
             rejected_asins=("B001",),
         )
 
-        decision = TransitionGuard(TransitionGuardConfig(enabled=True)).evaluate(empty_state(), result)
+        decision = TransitionGuard(TransitionGuardConfig(enabled=True)).evaluate(
+            empty_state(), result
+        )
 
         self.assertEqual(decision.action, GuardAction.APPLY)
         self.assertEqual(decision.reason_code, "guard_passed")
@@ -183,7 +192,9 @@ class TransitionGuardTest(unittest.TestCase):
     def test_generic_product_rejection_above_add_threshold_applies_soft_demotion_path(self) -> None:
         result = recognition(DialogueAct.REJECT_PRODUCTS, confidence=0.65)
 
-        decision = TransitionGuard(TransitionGuardConfig(enabled=True)).evaluate(empty_state(), result)
+        decision = TransitionGuard(TransitionGuardConfig(enabled=True)).evaluate(
+            empty_state(), result
+        )
 
         self.assertEqual(decision.action, GuardAction.APPLY)
         self.assertEqual(decision.reason_code, "generic_rejection_soft_demote")
@@ -191,7 +202,9 @@ class TransitionGuardTest(unittest.TestCase):
     def test_low_confidence_generic_product_rejection_uses_destructive_failure_action(self) -> None:
         result = recognition(DialogueAct.REJECT_PRODUCTS, confidence=0.64)
 
-        decision = TransitionGuard(TransitionGuardConfig(enabled=True)).evaluate(empty_state(), result)
+        decision = TransitionGuard(TransitionGuardConfig(enabled=True)).evaluate(
+            empty_state(), result
+        )
 
         self.assertEqual(decision.action, GuardAction.CLARIFY)
         self.assertEqual(decision.reason_code, "generic_rejection_confidence_below_add_threshold")
@@ -199,7 +212,9 @@ class TransitionGuardTest(unittest.TestCase):
     def test_no_preference_without_explicit_attribute_requests_other_clarification(self) -> None:
         result = recognition(DialogueAct.NO_PREFERENCE, confidence=0.95)
 
-        decision = TransitionGuard(TransitionGuardConfig(enabled=True)).evaluate(empty_state(), result)
+        decision = TransitionGuard(TransitionGuardConfig(enabled=True)).evaluate(
+            empty_state(), result
+        )
 
         self.assertEqual(decision.action, GuardAction.CLARIFY)
         self.assertEqual(decision.reason_code, "no_preference_attribute_unclear")
@@ -208,7 +223,9 @@ class TransitionGuardTest(unittest.TestCase):
     def test_low_confidence_no_more_preferences_requests_clarification(self) -> None:
         result = recognition(DialogueAct.NO_MORE_PREFERENCES, confidence=0.94)
 
-        decision = TransitionGuard(TransitionGuardConfig(enabled=True)).evaluate(empty_state(), result)
+        decision = TransitionGuard(TransitionGuardConfig(enabled=True)).evaluate(
+            empty_state(), result
+        )
 
         self.assertEqual(decision.action, GuardAction.CLARIFY)
         self.assertEqual(decision.reason_code, "no_more_preferences_confidence_below_threshold")
@@ -216,10 +233,16 @@ class TransitionGuardTest(unittest.TestCase):
 
     def test_statistics_are_aggregate_sorted_and_exclude_evidence(self) -> None:
         guard = TransitionGuard(TransitionGuardConfig(enabled=True))
-        guard.evaluate(empty_state(), recognition(DialogueAct.ADD_CONSTRAINT, confidence=0.60))
+        guard.evaluate(
+            empty_state(), recognition(DialogueAct.ADD_CONSTRAINT, confidence=0.60)
+        )
         guard.evaluate(
             empty_state(),
-            recognition(DialogueAct.NO_MORE_PREFERENCES, confidence=0.94, source=RecognitionSource.LLM),
+            recognition(
+                DialogueAct.NO_MORE_PREFERENCES,
+                confidence=0.94,
+                source=RecognitionSource.LLM,
+            ),
         )
 
         self.assertEqual(

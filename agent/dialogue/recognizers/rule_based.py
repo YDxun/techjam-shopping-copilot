@@ -189,7 +189,8 @@ class RuleBasedRecognizer:
         # intent_override 首条消息为 "I'm looking for {cat}. {old_value}"，
         # 把 {old_value} 作为 soft 约束立刻获得排序信号；buying/browsing 尾部含
         # "key requirement"/"still exploring" 等标记时自动跳过（避免重复/噪声）。
-        operations.extend(self._turn1_tail_operations(text, request.turn))
+        if not negated_destructive:
+            operations.extend(self._turn1_tail_operations(text, request.turn))
 
         if RE_COMPLEX.search(text):
             ambiguities.append("complex_reference")

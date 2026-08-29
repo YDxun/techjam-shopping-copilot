@@ -9,13 +9,17 @@ from agent.dialogue.models import (
     Constraint,
     ConstraintStrength,
     DialogueState,
+    GuardAction,
     Polarity,
     RecognitionRequest,
     RecognitionResult,
 )
 from agent.dialogue.recognizers.llm import LLMIntentRecognizer
 from agent.dialogue.recognizers.rule_based import RuleBasedRecognizer
+from agent.dialogue.reducer import StateReducer
+from agent.dialogue.transition_guard import TransitionGuard
 from config import load_config
+from config.models import TransitionGuardConfig
 from llm import create_llm_client
 from llm.base import LLMState
 
@@ -144,6 +148,32 @@ class IntentGeneralizationTest(unittest.TestCase):
         result = RuleBasedRecognizer().recognize(request_from_fixture(row))
 
         self.assertTrue(live_destructive_match(row["expected"], result))
+
+    def test_turn_one_negated_destructive_tail_does_not_mutate_state(self) -> None:
+        rows = {row["id"]: row for row in load_corpus()}
+        recognizer = RuleBasedRecognizer()
+        reducer = StateReducer()
+        guard = TransitionGuard(TransitionGuardConfig(enabled=True))
+
+        for fixture_id in ("negated_replace_01", "negated_remove_01"):
+            with self.subTest(fixture_id=fixture_id):
+                row = rows[fixture_id]
+                state = DialogueState(session_id="turn-one", user_profile={})
+                request = RecognitionRequest(
+                    user_message=f"I am looking for shirts. {row['message']}",
+                    turn=1,
+                    state=state,
+                )
+
+                recognition = recognizer.recognize(request)
+                decision = guard.evaluate(state, recognition)
+                reduced = reducer.reduce(state, decision.recognition, turn=1)
+
+                self.assertEqual(recognition.constraint_operations, ())
+                self.assertEqual(decision.action, GuardAction.APPLY)
+                self.assertTrue(reduced.applied)
+                self.assertEqual(reduced.state.category, "shirts")
+                self.assertEqual(reduced.state.active_constraints, ())
 
 
 @unittest.skipUnless(os.environ.get("RUN_LIVE_LLM") == "1", "live LLM disabled")

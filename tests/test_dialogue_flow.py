@@ -47,6 +47,8 @@ class StaticReranker:
     def __init__(self, order: tuple[str, ...]) -> None:
         self.order = order
         self.last_usage = {"prompt_tokens": 5, "completion_tokens": 2}
+        self.last_margin: float = 0.0  # 置信信号（测试桩：不触发高置信提前满仓）
+        self.last_fp_count: int | None = None
 
     def rerank(
         self,
@@ -149,8 +151,21 @@ class DialogueFlowTest(unittest.TestCase):
         self.assertEqual([item.asin for item in observations], ["C", "B"])
 
     def test_emit_gate_limits_low_confidence_recommendations(self) -> None:
+        env = EnvConfig.from_env(
+            overrides={
+                "skip_data_verify": True,
+                "emit_gate": True,
+                "emit_k0": 1,
+                "emit_k1": 2,
+                "emit_k2": 3,
+                "emit_late_turn": 4,
+                "emit_fp_confident": 0,
+                "emit_margin_confident": 99.0,
+            },
+            environ={"LLM_PROVIDER": "none"},
+        )
         agent = Agent(
-            env=self.env(emit_gate=True),
+            env=env,
             llm_client=DisabledLLMClient(),
             retriever=StaticRetriever(),
             reranker=StaticReranker(("B", "A", "C")),
@@ -159,7 +174,7 @@ class DialogueFlowTest(unittest.TestCase):
         # 0 约束 -> 只给 1 个（低置信捂盘）；达到 late turn 前都受门控
         r1 = agent.respond("s1", "I'm looking for shoes, but I'm still exploring.", 1, 3)
         self.assertEqual(len(r1["recommendations"]), 1)
-        # 1 约束 -> 给 2 个
+        # 1 约束 -> 给 K1=2 个
         r2 = agent.respond("s1", "What matters is: cotton.", 2, 3)
         self.assertEqual(len(r2["recommendations"]), 2)
         # late turn -> 满仓

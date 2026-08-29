@@ -235,6 +235,10 @@ class AppConfig:
     emit_late_turn: int = 4  # turn>=该值 满仓
     emit_k0: int = 1  # 0 约束时输出数
     emit_k1: int = 2  # 1 约束时输出数
+    emit_k2: int = 10  # >=2 约束、未到 late turn 时输出数
+    emit_fp_confident: int = 3  # 指纹唯一性计数 <= 该值 -> 高置信，提前满仓
+    emit_margin_confident: float = 0.10  # top-1 与 top-2 分差 >= 该值 -> 高置信，提前满仓
+    emit_commit_constraints: int = 4  # 活动约束 >= 该值 -> 直接满仓（不再捂盘）
     # 必要性线索词提升 hard（Part A）：must/need/require/important/key 等 → 泛化提取升级 HARD
     hard_cue_enabled: bool = True
 

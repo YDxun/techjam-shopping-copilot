@@ -138,6 +138,10 @@ def _environment_overrides(
         "EMIT_LATE_TURN": ("emit_late_turn", _parse_int),
         "EMIT_K0": ("emit_k0", _parse_int),
         "EMIT_K1": ("emit_k1", _parse_int),
+        "EMIT_K2": ("emit_k2", _parse_int),
+        "EMIT_FP_CONFIDENT": ("emit_fp_confident", _parse_int),
+        "EMIT_MARGIN_CONFIDENT": ("emit_margin_confident", _parse_float),
+        "EMIT_COMMIT_CONSTRAINTS": ("emit_commit_constraints", _parse_int),
     }
     for name, (field_name, parser) in flat_fields.items():
         value = _environment_value(env, name)
@@ -425,6 +429,14 @@ def _build_and_validate(data: Mapping[str, Any], selected_key: SecretValue) -> A
         emit_late_turn=_int_value(data.get("emit_late_turn"), "emit_late_turn"),
         emit_k0=_int_value(data.get("emit_k0"), "emit_k0"),
         emit_k1=_int_value(data.get("emit_k1"), "emit_k1"),
+        emit_k2=_int_value(data.get("emit_k2"), "emit_k2"),
+        emit_fp_confident=_int_value(data.get("emit_fp_confident"), "emit_fp_confident"),
+        emit_margin_confident=_number_value(
+            data.get("emit_margin_confident"), "emit_margin_confident"
+        ),
+        emit_commit_constraints=_int_value(
+            data.get("emit_commit_constraints"), "emit_commit_constraints"
+        ),
         hard_cue_enabled=_bool_value(data.get("hard_cue_enabled"), "hard_cue_enabled"),
         clarify_strategy=_string_value(data.get("clarify_strategy"), "clarify_strategy"),
         override_erase=_bool_value(data.get("override_erase"), "override_erase"),

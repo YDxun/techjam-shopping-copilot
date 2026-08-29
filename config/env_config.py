@@ -190,6 +190,22 @@ class EnvConfig:
         return self._app_config.emit_k1
 
     @property
+    def emit_k2(self) -> int:
+        return self._app_config.emit_k2
+
+    @property
+    def emit_fp_confident(self) -> int:
+        return self._app_config.emit_fp_confident
+
+    @property
+    def emit_margin_confident(self) -> float:
+        return self._app_config.emit_margin_confident
+
+    @property
+    def emit_commit_constraints(self) -> int:
+        return self._app_config.emit_commit_constraints
+
+    @property
     def llm_clarify_enabled(self) -> bool:
         return self._app_config.llm_clarify_enabled
 

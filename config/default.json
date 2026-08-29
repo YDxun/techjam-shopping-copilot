@@ -118,14 +118,18 @@
     "profile": 0.05
   },
   "fingerprint": {
-    "enable": false,
+    "enable": true,
     "bonus_unique": 1.0,
     "bonus_ten": 0.5,
     "bonus_fifty": 0.2,
     "max_count": 50
   },
   "emit_gate": true,
-  "emit_late_turn": 4,
+  "emit_late_turn": 5,
   "emit_k0": 1,
-  "emit_k1": 2
+  "emit_k1": 1,
+  "emit_k2": 1,
+  "emit_fp_confident": 3,
+  "emit_margin_confident": 0.1,
+  "emit_commit_constraints": 4
 }

@@ -138,14 +138,27 @@ class Agent(BaseAgent):
         emit_k = top_k
         if self.env.emit_gate:
             n_constraints = context.total_constraints()
-            if turn >= self.env.emit_late_turn or not decision.should_ask:
+            # 置信度门控：指纹唯一性计数小 / top-1 分差大 / 约束已足够 -> 高置信，提前满仓
+            # （避免"一直憋着不发"浪费回合，也降低"选错 2 选 1"的 HR/误锁风险）
+            fp_confident = (
+                self.reranker.last_fp_count is not None
+                and 0 < self.reranker.last_fp_count <= self.env.emit_fp_confident
+            )
+            margin_confident = self.reranker.last_margin >= self.env.emit_margin_confident
+            if (
+                turn >= self.env.emit_late_turn
+                or not decision.should_ask
+                or n_constraints >= self.env.emit_commit_constraints
+                or fp_confident
+                or margin_confident
+            ):
                 emit_k = top_k
             elif n_constraints == 0:
                 emit_k = max(1, min(top_k, self.env.emit_k0))
             elif n_constraints == 1:
                 emit_k = max(1, min(top_k, self.env.emit_k1))
             else:
-                emit_k = top_k
+                emit_k = max(1, min(top_k, self.env.emit_k2))
         shown = ranked[:emit_k]
         self.dialogue.record_shown(session_id, shown, turn)
 

@@ -4,6 +4,7 @@
 - count==1 置顶 / ≤10 / ≤50 分级加成；>50（约束过泛）不加成（置信度门控）；
 - 默认关（FP_ENABLE=False），COMBO_FINGERPRINT_ENABLE=1 开启。
 """
+
 from __future__ import annotations
 
 from agent.dialogue.models import Constraint, ConstraintStrength, Polarity
@@ -26,9 +27,15 @@ class FakeRetriever:
 
 
 def _c(attr: str, value: str, hardness: int) -> Constraint:
-    return Constraint(attr, value, Polarity.INCLUDE,
-                      ConstraintStrength.HARD if hardness == 2 else ConstraintStrength.SOFT,
-                      "", 1, tuple(value.split()))
+    return Constraint(
+        attr,
+        value,
+        Polarity.INCLUDE,
+        ConstraintStrength.HARD if hardness == 2 else ConstraintStrength.SOFT,
+        "",
+        1,
+        tuple(value.split()),
+    )
 
 
 def test_fp_bonus_tiers():
@@ -52,7 +59,9 @@ def test_fingerprint_counts_all_constraint_satisfiers():
     retriever = FakeRetriever(products)
 
     # active=[cotton, black] -> 同时满足 = {p1,p2}，count=2
-    count, sset = reranker._fingerprint(retriever, [_c("material", "cotton", 2), _c("color", "black", 1)])
+    count, sset = reranker._fingerprint(
+        retriever, [_c("material", "cotton", 2), _c("color", "black", 1)]
+    )
     assert count == 2
     assert sset == {"p1", "p2"}
 
@@ -68,5 +77,5 @@ def test_fingerprint_counts_all_constraint_satisfiers():
     assert count3 is None and sset3 is None
 
 
-def test_fingerprint_disabled_by_default():
-    assert EnvConfig.from_env().fingerprint.enable is False  # 默认关
+def test_fingerprint_enabled_by_default():
+    assert EnvConfig.from_env().fingerprint.enable is True  # 默认开（组合指纹经 A/B 提升 MRR）

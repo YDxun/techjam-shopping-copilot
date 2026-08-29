@@ -67,6 +67,8 @@ class Reranker:
         self._fp_satisfy_cache: dict[str, set[str]] = {}  # 约束键->满足该约束的商品集合
         self._weights = dict(getattr(env, "rerank_weights", None) or _DEFAULT_WEIGHTS)
         self._fp = getattr(env, "fingerprint", None) or _DEFAULT_FP
+        self.last_fp_count: int | None = None  # 指纹：全部活跃约束精确满足的商品数（置信信号）
+        self.last_margin: float = 0.0  # top-1 与 top-2 的规则分差（置信信号）
 
     # ------------------------------------------------------------------
     def rerank(
@@ -89,8 +91,10 @@ class Reranker:
         # count 越小组合越稀有 → 匹配者越可能是目标；分级加成（count==1 置顶 / ≤10 / ≤50）。
         fp_count: int | None = None
         fp_set: set[str] | None = None
+        self.last_fp_count = None
         if self._fp.enable:
             fp_count, fp_set = self._fingerprint(retriever, getattr(state, "active", ()))
+            self.last_fp_count = fp_count
 
         scored: list[tuple[float, str, dict]] = []
         for cand in candidates:
@@ -143,6 +147,11 @@ class Reranker:
         excluded.update(getattr(state, "hard_rejected_asins", None) or ())
         if excluded:
             order = [asin for asin in order if asin not in excluded]
+        # 置信信号：top-1 与 top-2 的规则分差（供输出门控做"高置信提前满仓"）
+        if len(scored) >= 2:
+            self.last_margin = scored[0][0] - scored[1][0]
+        else:
+            self.last_margin = 1.0
         return order[:top_k]
 
     # ------------------------------------------------------------------

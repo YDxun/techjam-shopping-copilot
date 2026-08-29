@@ -45,6 +45,7 @@ class DialogueUnderstandingPipeline:
     ) -> None:
         dialogue_config = env.dialogue_understanding
         self._recognition_mode = mode or dialogue_config.mode
+        self._retrieval_mode_cfg = env.retrieval_mode  # Part B：exploit 阈值进配置
         self.reducer = StateReducer(
             dialogue_config.max_evidence_length,
             override_erase=env.override_erase,
@@ -53,6 +54,7 @@ class DialogueUnderstandingPipeline:
             rule_recognizer=RuleBasedRecognizer(
                 dialogue_config.max_evidence_length,
                 paraphrase_enabled=env.asset_paraphrase,
+                hard_cue_enabled=env.hard_cue_enabled,
             ),
             llm_recognizer=LLMIntentRecognizer(
                 llm_client,
@@ -114,7 +116,7 @@ class DialogueUnderstandingPipeline:
         if decision.should_ask:
             dialogue = self.reducer.record_question(dialogue, decision.ask_attribute)
 
-        context = self._build_context(dialogue, recognition, products)
+        context = self._build_context(dialogue, recognition, products, self._retrieval_mode_cfg)
         self._sessions[session_id] = SessionState(dialogue=dialogue, products=products)
         logger.info(
             "[dialogue] session=%s turn=%d intent_version=%d source=%s decision=%s score=%.4f",
@@ -163,6 +165,7 @@ class DialogueUnderstandingPipeline:
         state: DialogueState,
         recognition,
         products: ProductHistory,
+        retrieval_mode_cfg,
     ) -> RecommendationContext:
         product_lists = products.context_lists(state.intent_version)
         track = "buying" if state.hard else "browsing"
@@ -172,7 +175,11 @@ class DialogueUnderstandingPipeline:
             # override 后：用户已明确"ignore my earlier preference"，真实需求=新 hard 约束，
             # 目标商品同时含新旧值文本（30 会话中 28 例）→ exploit 让"全覆盖"目标拿加成推前。
             retrieval_mode = "exploit"
-        elif state.no_more_preferences or len(state.hard) >= 2 or state.total_constraints() >= 4:
+        elif (
+            state.no_more_preferences
+            or len(state.hard) >= retrieval_mode_cfg.exploit_min_hard
+            or state.total_constraints() >= retrieval_mode_cfg.exploit_min_constraints
+        ):
             retrieval_mode = "exploit"
         else:
             retrieval_mode = "probe"

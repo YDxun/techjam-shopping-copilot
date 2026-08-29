@@ -39,13 +39,38 @@ RE_COMPLEX = re.compile(
     re.I,
 )
 
+# Part A（P0）：必要性线索词表——命中任一词 → 泛化 ADD 路径提取的约束升级为 HARD。
+# 官方模板（"A key requirement is"/"what matters is"/override）由更早的分支处理，不经过泛化路径。
+_HARD_CUES = (
+    "must", "need", "needs", "has to", "have to", "require", "requires",
+    "important", "crucial", "essential", "key", "the most important thing",
+)
+_HARD_CUE_PHRASES = ("has to", "have to", "the most important thing")
+_HARD_CUE_WORDS = (
+    "must", "need", "needs", "require", "requires", "important", "crucial", "essential", "key"
+)
+
+# 线索词后的取值捕获："I need waterproof" -> waterproof（覆盖 MATERIALS 之外的属性值）
+RE_CUE_VALUE = re.compile(
+    r"(?:must|need|needs|has to|have to|require|requires|important|crucial|essential|"
+    r"key|the most important thing)\s*(?:is|be|to be|that is)?\s*[:：]?\s*"
+    r"([a-z][a-z0-9%\- ]{2,60}?)(?=[,.;]|$)",
+    re.I | re.S,
+)
+
 
 class RuleBasedRecognizer:
     """Pure deterministic parser for official phrases and bounded variants."""
 
-    def __init__(self, max_evidence_length: int = 180, paraphrase_enabled: bool = False) -> None:
+    def __init__(
+        self,
+        max_evidence_length: int = 180,
+        paraphrase_enabled: bool = False,
+        hard_cue_enabled: bool = True,
+    ) -> None:
         self.max_evidence_length = max_evidence_length
         self.paraphrase_enabled = paraphrase_enabled
+        self.hard_cue_enabled = hard_cue_enabled
         self._paraphrase_patterns: list[tuple[re.Pattern, str]] = []
         if paraphrase_enabled:
             try:
@@ -121,10 +146,12 @@ class RuleBasedRecognizer:
             DialogueAct.NO_MORE_PREFERENCES,
             DialogueAct.NO_PREFERENCE,
         }:
-            operations.extend(self._generic_operations(text))
+            # Part A：必要性线索词 → 泛化 ADD 路径提取升级为 HARD（仅此路径，官方模板分支优先）
+            hard_cue = self.hard_cue_enabled and self._hard_cue_present(text)
+            operations.extend(self._generic_operations(text, hard=hard_cue))
             if operations and dialogue_act == DialogueAct.AMBIGUOUS:
                 dialogue_act = DialogueAct.ADD_CONSTRAINT
-                confidence = 0.75
+                confidence = 0.85 if hard_cue else 0.75
 
         # 评论改写抽取（ASSET_PARAPHRASE）：私有集 paraphrase 鲁棒性
         if self.paraphrase_enabled:
@@ -185,8 +212,20 @@ class RuleBasedRecognizer:
             confidence=0.95,
         )
 
-    def _generic_operations(self, text: str) -> list[ConstraintOperation]:
+    def _hard_cue_present(self, text: str) -> bool:
+        """是否命中必要性线索词（Part A；开关关闭时恒 False）。"""
+        if not self.hard_cue_enabled:
+            return False
         lowered = text.lower()
+        if any(phrase in lowered for phrase in _HARD_CUE_PHRASES):
+            return True
+        return any(
+            re.search(rf"\b{re.escape(word)}\b", lowered) for word in _HARD_CUE_WORDS
+        )
+
+    def _generic_operations(self, text: str, hard: bool = False) -> list[ConstraintOperation]:
+        lowered = text.lower()
+        strength = ConstraintStrength.HARD if hard else ConstraintStrength.SOFT
         values: list[str] = []
         values.extend(material for material in constants.MATERIALS if material in lowered)
         color_match = re.search(
@@ -195,8 +234,15 @@ class RuleBasedRecognizer:
         )
         if color_match:
             values.append(f"color: {color_match.group(1)}")
+        if hard:
+            # 线索词后的取值捕获（"I need waterproof" -> waterproof；覆盖 MATERIALS 之外的属性值）
+            cue_match = RE_CUE_VALUE.search(text)
+            if cue_match:
+                value = re.sub(r"^(?:a|an|the)\s+", "", cue_match.group(1).strip(), flags=re.I)
+                if value and len(value) >= 2 and value not in values:
+                    values.append(value)
         return [
-            self._operation(OperationKind.ADD, value, ConstraintStrength.SOFT)
+            self._operation(OperationKind.ADD, value, strength)
             for value in values[:2]
         ]
 

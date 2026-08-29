@@ -28,17 +28,22 @@ class CascadedIntentRecognizer:
     def recognize(self, request: RecognitionRequest) -> RecognitionResult:
         self.last_usage = LLMUsage()
         rule_result = self.rule_recognizer.recognize(request)
-        if self.mode == "rule_only" or not self._should_consult_llm(rule_result):
+        if self.mode == "rule_only" or not self._should_consult_llm(rule_result, request):
             return rule_result
         llm_result = self.llm_recognizer.recognize(request)
         self.last_usage = self.llm_recognizer.last_usage
         return llm_result if llm_result is not None else rule_result
 
-    def _should_consult_llm(self, result: RecognitionResult) -> bool:
+    def _should_consult_llm(self, result: RecognitionResult, request: RecognitionRequest) -> bool:
         if not self.llm_recognizer.available:
             return False
+        # Part A：命中必要性线索词（must/need/require/key...）或 turn>=2 出现新约束也咨询 LLM
+        hard_cue = self.rule_recognizer._hard_cue_present(request.user_message or "")
+        new_constraints_late = request.turn >= 2 and bool(result.constraint_operations)
         return (
             result.confidence < self.rule_confidence_threshold
             or bool(result.ambiguities)
             or result.dialogue_act in {DialogueAct.AMBIGUOUS, DialogueAct.REPLACE_CONSTRAINT}
+            or hard_cue
+            or new_constraints_late
         )

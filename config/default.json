@@ -86,5 +86,10 @@
   "asset_vocab_expand": false,
   "asset_category_expand": true,
   "asset_paraphrase": true,
-  "asset_field_map": false
+  "asset_field_map": false,
+  "hard_cue_enabled": true,
+  "retrieval_mode": {
+    "exploit_min_hard": 2,
+    "exploit_min_constraints": 4
+  }
 }

@@ -47,6 +47,14 @@ class EnvConfig:
         return self._app_config.decision
 
     @property
+    def retrieval_mode(self):
+        return self._app_config.retrieval_mode
+
+    @property
+    def hard_cue_enabled(self) -> bool:
+        return self._app_config.hard_cue_enabled
+
+    @property
     def env_mode(self) -> str:
         return self._app_config.env_mode
 

@@ -17,6 +17,7 @@ from config.models import (
     LLMConfig,
     ProviderConfig,
     ProviderConfigs,
+    RetrievalModeConfig,
     RetryConfig,
     SecretValue,
     StopUtilityConfig,
@@ -127,6 +128,7 @@ def _environment_overrides(
         "MAX_CONSTRAINT_ASKS": ("max_constraint_asks", _parse_int),
         "LLM_INTENT_ENABLE": ("llm_intent_enabled", _parse_bool),
         "LLM_CLARIFY_ENABLE": ("llm_clarify_enabled", _parse_bool),
+        "HARD_CUE_ENABLE": ("hard_cue_enabled", _parse_bool),
         "BLAIR_OFFLINE_EMBEDDING_PATH": ("blair_offline_embedding_path", _parse_text),
         "BLAIR_QUERY_ENCODER_MODEL": ("blair_query_encoder_model", _parse_text),
         "RERANKER_MODEL_ENABLE": ("reranker_model_enabled", _parse_bool),
@@ -163,6 +165,11 @@ def _environment_overrides(
                 )
 
     nested_fields: dict[str, tuple[tuple[str, ...], Callable[[str, str], Any]]] = {
+        "RETRIEVAL_MODE__EXPLOIT_MIN_HARD": (("retrieval_mode", "exploit_min_hard"), _parse_int),
+        "RETRIEVAL_MODE__EXPLOIT_MIN_CONSTRAINTS": (
+            ("retrieval_mode", "exploit_min_constraints"),
+            _parse_int,
+        ),
         "LLM_RERANK_BACKEND": (("llm", "rerank_backend"), _parse_text),
         "QWEN_RERANK_MODEL": (("llm", "qwen_rerank_model"), _parse_text),
         "DASHSCOPE_WORKSPACE_ID": (("llm", "dashscope_workspace_id"), _parse_text),
@@ -314,6 +321,7 @@ def _build_and_validate(data: Mapping[str, Any], selected_key: SecretValue) -> A
     llm_data = _mapping(data.get("llm"), "llm")
     dialogue_data = _mapping(data.get("dialogue_understanding"), "dialogue_understanding")
     decision_data = _mapping(data.get("decision"), "decision")
+    rm_data = _mapping(data.get("retrieval_mode"), "retrieval_mode")
     ask_data = _mapping(decision_data.get("ask_utility"), "decision.ask_utility")
     ask_weights_data = _mapping(ask_data.get("weights"), "decision.ask_utility.weights")
     stop_data = _mapping(decision_data.get("stop_utility"), "decision.stop_utility")
@@ -392,6 +400,7 @@ def _build_and_validate(data: Mapping[str, Any], selected_key: SecretValue) -> A
         ),
         asset_paraphrase=_bool_value(data.get("asset_paraphrase"), "asset_paraphrase"),
         asset_field_map=_bool_value(data.get("asset_field_map"), "asset_field_map"),
+        hard_cue_enabled=_bool_value(data.get("hard_cue_enabled"), "hard_cue_enabled"),
         clarify_strategy=_string_value(data.get("clarify_strategy"), "clarify_strategy"),
         override_erase=_bool_value(data.get("override_erase"), "override_erase"),
         skip_data_verify=_bool_value(data.get("skip_data_verify"), "skip_data_verify"),
@@ -409,6 +418,14 @@ def _build_and_validate(data: Mapping[str, Any], selected_key: SecretValue) -> A
             max_evidence_length=_int_value(
                 dialogue_data.get("max_evidence_length"),
                 "dialogue_understanding.max_evidence_length",
+            ),
+        ),
+        retrieval_mode=RetrievalModeConfig(
+            exploit_min_hard=_int_value(
+                rm_data.get("exploit_min_hard"), "retrieval_mode.exploit_min_hard"
+            ),
+            exploit_min_constraints=_int_value(
+                rm_data.get("exploit_min_constraints"), "retrieval_mode.exploit_min_constraints"
             ),
         ),
         decision=DecisionConfig(

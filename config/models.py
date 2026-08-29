@@ -161,6 +161,14 @@ class LLMConfig:
 
 
 @dataclass(frozen=True)
+class RetrievalModeConfig:
+    """Pillar III 模式切换阈值（Part B：从 pipeline 硬编码提为配置）。"""
+
+    exploit_min_hard: int = 2  # len(state.hard) >= 该值 → exploit
+    exploit_min_constraints: int = 4  # total_constraints >= 该值 → exploit
+
+
+@dataclass(frozen=True)
 class AppConfig:
     env_mode: str = "dev"
     retrieval_backend: str = "bm25"
@@ -188,10 +196,13 @@ class AppConfig:
     asset_category_expand: bool = False  # category_mapping 品类 token 扩展（首轮路由）
     asset_paraphrase: bool = False  # review_paraphrases 评论改写抽取（私有集鲁棒）
     asset_field_map: bool = False  # field_mapping 字段感知匹配（预留）
+    # 必要性线索词提升 hard（Part A）：must/need/require/important/key 等 → 泛化提取升级 HARD
+    hard_cue_enabled: bool = True
 
     dialogue_understanding: DialogueUnderstandingConfig = field(
         default_factory=DialogueUnderstandingConfig
     )
     decision: DecisionConfig = field(default_factory=DecisionConfig)
+    retrieval_mode: RetrievalModeConfig = field(default_factory=RetrievalModeConfig)
 
     llm: LLMConfig = field(default_factory=LLMConfig)

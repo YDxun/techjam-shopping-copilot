@@ -526,3 +526,26 @@ count 越小，约束组合越能锁定目标。
 - 与 combo_bonus 叠加：MRR 0.6438 → 0.6520、TS 0.8787 → 0.8812（browsing 额外 +0.008）；
 - 加成量级 0.5~1.5 结果相同（饱和、稳健——加成对交集成员等值，只抬升"全满足 vs 部分"边界）；
 - 默认关（尊重"默认关"要求），开启后无公开集损失且提升。
+
+
+---
+
+## 对话/决策修复（P0 + P1）
+
+### Part A（P0）hard 约束提取鲁棒性 + 级联触发放宽
+- **必要性线索词表**（`agent/dialogue/recognizers/rule_based.py`，开关 `hard_cue_enabled` 默认 true）：
+  must / need / needs / has to / have to / require / requires / important / crucial / essential / key /
+  the most important thing。泛化 ADD 路径命中任一线索词 → 本次提取的约束升级为 **HARD**
+  （含线索词后的取值捕获："I need waterproof" → feature·HARD；"The most important thing is cotton" → material·HARD）。
+  分支优先级不变：override / no_preference / no_more / key_requirement / what_matters 等官方分支优先，
+  线索词只作用于泛化 ADD 路径 → **官方模板行为不变**（公开集 0.8802 保持）。
+- **级联触发放宽**（`cascade.py`）：除低置信/歧义/REPLACE 外，命中线索词或 turn≥2 出现新约束也咨询 LLM；
+  LLM 失败/不可用仍回退规则（默认无 key 环境不触发，公开集零变化）。
+
+### Part B（P1）模式切换阈值进配置
+`pipeline.py::_build_context` 的硬编码 exploit 阈值提为配置：
+`retrieval_mode.exploit_min_hard`（默认 2）、`retrieval_mode.exploit_min_constraints`（默认 4），
+经 `config/models.py` + `loader.py` 读取（env：`RETRIEVAL_MODE__EXPLOIT_MIN_HARD` /
+`RETRIEVAL_MODE__EXPLOIT_MIN_CONSTRAINTS`），行为默认不变。
+
+验收：`python -m unittest discover tests` Ran 115 OK；pytest 135 passed；默认公开集 0.8802 保持。

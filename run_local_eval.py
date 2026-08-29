@@ -36,6 +36,28 @@ from evaluator.local_evaluator import (  # noqa: E402
 from llm import create_llm_client  # noqa: E402
 from llm.base import LLMClient  # noqa: E402
 
+logger = logging.getLogger(__name__)
+
+
+def resolve_trace_output_path(
+    output_path: str | Path,
+    catalog_path: str | Path,
+    dataset_path: str | Path,
+    repo_root: Path = ROOT,
+) -> Path:
+    """Resolve a local diagnostics file without permitting protected-input overwrite."""
+    def resolve_from_repo(value: str | Path) -> Path:
+        path = Path(value)
+        if not path.is_absolute():
+            path = repo_root / path
+        return path.resolve()
+
+    output = resolve_from_repo(output_path)
+    protected = {resolve_from_repo(catalog_path), resolve_from_repo(dataset_path)}
+    if output in protected:
+        raise ValueError("decision trace output must not overwrite catalog or dataset")
+    return output
+
 
 def initialize_llm(env: EnvConfig) -> LLMClient:
     """Initialize the optional LLM and report its sanitized availability."""
@@ -103,8 +125,22 @@ def main() -> int:
     # 本地诊断附加在最终评测文件，不改变官方每轮 Agent 响应契约或官方评估器。
     result["intent_recognition_statistics"] = agent.intent_recognition_statistics()
     result["transition_guard_statistics"] = agent.transition_guard_statistics()
+    result["dialogue_decision_statistics"] = agent.dialogue_decision_statistics()
 
     Path(output).write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+
+    if env.diagnostics.decision_trace.enabled:
+        try:
+            trace_output = resolve_trace_output_path(
+                env.diagnostics.decision_trace.output_path,
+                args.catalog,
+                args.dataset,
+            )
+            agent.dialogue.decision_trace_recorder.export_jsonl(trace_output)
+        except Exception as exc:
+            logger.exception("[diagnostics] trace export failed")
+            print(f"    ERROR: decision trace export failed after results were written: {exc}")
+            return 1
 
     summary = {k: v for k, v in result.items() if k != "sessions"}
     print("\n--- 总体指标（官方评估器计算）---")

@@ -10,6 +10,7 @@ import hashlib
 import json
 import math
 import re
+import threading
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import InitVar, dataclass, field
@@ -355,6 +356,7 @@ class DialogueDecisionTrace:
         completion_tokens: int,
         lookahead_depth: int,
         fallback_reason: str = "",
+        candidate_count: int | None = None,
     ) -> "DialogueDecisionTrace":
         """Build a trace from dialogue models without reading their raw text fields."""
         before = _private_state_constraints(before_state, "active_constraints")
@@ -366,7 +368,7 @@ class DialogueDecisionTrace:
             _redact_constraint(item)
             for item in sorted((before - after) | (currently_removed - previously_removed))
         )
-        attribute_scores, missing_rates, candidate_count = _candidate_trace_values(
+        attribute_scores, missing_rates, signal_candidate_count = _candidate_trace_values(
             candidate_signals, attribute_components
         )
         component_scores = getattr(question_decision, "alternative_scores", {})
@@ -392,7 +394,9 @@ class DialogueDecisionTrace:
             intent_version=getattr(after_state, "intent_version", 0),
             added_constraints=added,
             removed_constraints=removed,
-            candidate_count=candidate_count,
+            candidate_count=(
+                signal_candidate_count if candidate_count is None else candidate_count
+            ),
             score_summary=score_summary,
             missing_rates=missing_rates,
             attribute_scores=attribute_scores,
@@ -533,34 +537,40 @@ class DecisionTraceRecorder:
         self._decision_reasons: Counter[str] = Counter()
         self._guard_actions: Counter[str] = Counter()
         self._sanitizations = 0
+        self._lock = threading.Lock()
 
     def record(self, trace: DialogueDecisionTrace) -> None:
         if not self.config.enabled:
             return
-        self._total_seen += 1
-        self._decision_reasons[_text(trace.decision_reason)] += 1
-        self._guard_actions[_text(trace.guard_action)] += 1
-        self._sanitizations += trace.sanitizations
-        if len(self._records) < self.config.max_traces:
-            self._records.append(trace)
+        with self._lock:
+            self._total_seen += 1
+            self._decision_reasons[_text(trace.decision_reason)] += 1
+            self._guard_actions[_text(trace.guard_action)] += 1
+            self._sanitizations += trace.sanitizations
+            if len(self._records) < self.config.max_traces:
+                self._records.append(trace)
 
     def records(self) -> tuple[DialogueDecisionTrace, ...]:
-        return tuple(self._records)
+        with self._lock:
+            return tuple(self._records)
 
     def summary(self) -> dict[str, object]:
-        return {
-            "enabled": self.config.enabled,
-            "recorded": len(self._records),
-            "total_seen": self._total_seen,
-            "decision_reasons": dict(sorted(self._decision_reasons.items())),
-            "guard_actions": dict(sorted(self._guard_actions.items())),
-            "sanitizations": self._sanitizations,
-        }
+        with self._lock:
+            return {
+                "enabled": self.config.enabled,
+                "recorded": len(self._records),
+                "total_seen": self._total_seen,
+                "decision_reasons": dict(sorted(self._decision_reasons.items())),
+                "guard_actions": dict(sorted(self._guard_actions.items())),
+                "sanitizations": self._sanitizations,
+            }
 
     def export_jsonl(self, path: str | Path) -> None:
         if not self.config.enabled:
             return
         output = Path(path)
+        with self._lock:
+            records = tuple(self._records)
         payloads = [
             (
                 trace,
@@ -569,7 +579,7 @@ class DecisionTraceRecorder:
                     include_state_diff=self.config.include_state_diff,
                 ),
             )
-            for trace in self._records
+            for trace in records
         ]
         payloads.sort(
             key=lambda item: (

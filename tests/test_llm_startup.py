@@ -4,11 +4,13 @@ import io
 import json
 import unittest
 from contextlib import redirect_stdout
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import Mock, patch
 
 from config.env_config import EnvConfig
 from llm.base import LLMErrorCategory, LLMState, LLMStatus
-from run_local_eval import initialize_llm, main
+from run_local_eval import ROOT, initialize_llm, main
 
 
 class LLMStartupTest(unittest.TestCase):
@@ -30,6 +32,14 @@ class LLMStartupTest(unittest.TestCase):
             "reasons": {},
             "dialogue_acts": {},
             "recognition_sources": {},
+        }
+        agent.dialogue_decision_statistics.return_value = {
+            "enabled": False,
+            "recorded": 0,
+            "total_seen": 0,
+            "decision_reasons": {},
+            "guard_actions": {},
+            "sanitizations": 0,
         }
         agent_constructor = Mock(return_value=agent)
         output = io.StringIO()
@@ -169,7 +179,15 @@ class LLMStartupTest(unittest.TestCase):
 
     def test_main_writes_intent_recognition_statistics_to_results(self) -> None:
         env = EnvConfig.from_env(
-            environ={"SKIP_DATA_VERIFY": "1", "LLM_PROVIDER": "none"}
+            overrides={
+                "diagnostics": {
+                    "decision_trace": {
+                        "enabled": True,
+                        "output_path": "diagnostics/traces.jsonl",
+                    }
+                }
+            },
+            environ={"SKIP_DATA_VERIFY": "1", "LLM_PROVIDER": "none"},
         )
         client = Mock()
         client.initialize.return_value = LLMStatus(
@@ -194,13 +212,24 @@ class LLMStartupTest(unittest.TestCase):
             "dialogue_acts": {"add_constraint": 2, "replace_constraint": 1},
             "recognition_sources": {"llm": 1, "rule": 2},
         }
+        agent.dialogue_decision_statistics.return_value = {
+            "enabled": True,
+            "recorded": 1,
+            "total_seen": 2,
+            "decision_reasons": {"ask_other_first": 2},
+            "guard_actions": {"apply": 2},
+            "sanitizations": 0,
+        }
         with (
             patch("run_local_eval.EnvConfig.from_env", return_value=env),
             patch("run_local_eval.create_llm_client", return_value=client),
             patch("run_local_eval.Agent", return_value=agent),
             patch("run_local_eval.load_jsonl", return_value=[]),
             patch("run_local_eval.catalog_index", return_value=(set(), set(), {})),
-            patch("run_local_eval.evaluate", return_value={"sample_count": 0}),
+            patch(
+                "run_local_eval.evaluate",
+                return_value={"sample_count": 0, "sessions": [{"turns": []}]},
+            ),
             patch("run_local_eval.Path.write_text") as write_text,
             patch("run_local_eval.sys.argv", ["run_local_eval.py"]),
             redirect_stdout(io.StringIO()),
@@ -217,9 +246,105 @@ class LLMStartupTest(unittest.TestCase):
             agent.transition_guard_statistics.return_value,
         )
         self.assertEqual(
-            set(written_result),
-            {"sample_count", "intent_recognition_statistics", "transition_guard_statistics"},
+            written_result["dialogue_decision_statistics"],
+            agent.dialogue_decision_statistics.return_value,
         )
+        self.assertEqual(
+            set(written_result),
+            {
+                "sample_count",
+                "sessions",
+                "intent_recognition_statistics",
+                "transition_guard_statistics",
+                "dialogue_decision_statistics",
+            },
+        )
+        self.assertNotIn("decision_trace", written_result["sessions"][0])
+        agent.dialogue.decision_trace_recorder.export_jsonl.assert_called_once_with(
+            ROOT / "diagnostics/traces.jsonl"
+        )
+
+    def test_disabled_trace_export_does_not_resolve_or_touch_its_path(self) -> None:
+        # Calling export while disabled could create or truncate a user-selected trace file.
+        env = EnvConfig.from_env(environ={"SKIP_DATA_VERIFY": "1", "LLM_PROVIDER": "none"})
+        client = Mock()
+        client.initialize.return_value = LLMStatus(LLMState.DISABLED, "none", "")
+        agent = Mock()
+        agent.intent_recognition_statistics.return_value = {}
+        agent.transition_guard_statistics.return_value = {}
+        agent.dialogue_decision_statistics.return_value = {"enabled": False}
+        agent.dialogue.decision_trace_recorder.config.enabled = False
+        with (
+            patch("run_local_eval.EnvConfig.from_env", return_value=env),
+            patch("run_local_eval.create_llm_client", return_value=client),
+            patch("run_local_eval.Agent", return_value=agent),
+            patch("run_local_eval.load_jsonl", return_value=[]),
+            patch("run_local_eval.catalog_index", return_value=(set(), set(), {})),
+            patch("run_local_eval.evaluate", return_value={"sessions": [{"turns": []}]}),
+            patch("run_local_eval.Path.write_text"),
+            patch("run_local_eval.sys.argv", ["run_local_eval.py"]),
+            redirect_stdout(io.StringIO()),
+        ):
+            self.assertEqual(main(), 0)
+        agent.dialogue.decision_trace_recorder.export_jsonl.assert_not_called()
+
+    def test_trace_export_path_is_repo_relative_and_protects_inputs(self) -> None:
+        # A relative trace path must be stable, and a symlink must not bypass protected input paths.
+        from run_local_eval import resolve_trace_output_path
+
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            catalog = root / "catalog.jsonl"
+            dataset = root / "dataset.jsonl"
+            catalog.write_text("catalog", encoding="utf-8")
+            dataset.write_text("dataset", encoding="utf-8")
+            self.assertEqual(
+                resolve_trace_output_path("diagnostics/traces.jsonl", catalog, dataset, root),
+                (root / "diagnostics/traces.jsonl").resolve(),
+            )
+            alias = root / "catalog-alias.jsonl"
+            alias.symlink_to(catalog)
+            with self.assertRaisesRegex(ValueError, "catalog or dataset"):
+                resolve_trace_output_path(alias, catalog, dataset, root)
+            with self.assertRaisesRegex(ValueError, "catalog or dataset"):
+                resolve_trace_output_path(catalog, catalog, dataset, root)
+            dataset_alias = root / "dataset-alias.jsonl"
+            dataset_alias.symlink_to(dataset)
+            with self.assertRaisesRegex(ValueError, "catalog or dataset"):
+                resolve_trace_output_path(dataset_alias, catalog, dataset, root)
+            with self.assertRaisesRegex(ValueError, "catalog or dataset"):
+                resolve_trace_output_path(dataset, catalog, dataset, root)
+
+    def test_trace_export_refusal_keeps_completed_evaluation_result(self) -> None:
+        # Failing before serialization would discard a completed evaluation for an optional export.
+        env = EnvConfig.from_env(
+            overrides={
+                "diagnostics": {
+                    "decision_trace": {"enabled": True, "output_path": "data/catalog.jsonl"}
+                }
+            },
+            environ={"SKIP_DATA_VERIFY": "1", "LLM_PROVIDER": "none"},
+        )
+        client = Mock()
+        client.initialize.return_value = LLMStatus(LLMState.DISABLED, "none", "")
+        agent = Mock()
+        agent.intent_recognition_statistics.return_value = {}
+        agent.transition_guard_statistics.return_value = {}
+        agent.dialogue_decision_statistics.return_value = {"enabled": True}
+        with (
+            patch("run_local_eval.EnvConfig.from_env", return_value=env),
+            patch("run_local_eval.create_llm_client", return_value=client),
+            patch("run_local_eval.Agent", return_value=agent),
+            patch("run_local_eval.load_jsonl", return_value=[]),
+            patch("run_local_eval.catalog_index", return_value=(set(), set(), {})),
+            patch("run_local_eval.evaluate", return_value={"sample_count": 0}),
+            patch("run_local_eval.Path.write_text") as write_text,
+            patch("run_local_eval.sys.argv", ["run_local_eval.py"]),
+            redirect_stdout(io.StringIO()),
+        ):
+            self.assertEqual(main(), 1)
+        self.assertTrue(write_text.called)
+        agent.dialogue.decision_trace_recorder.export_jsonl.assert_not_called()
 
 if __name__ == "__main__":
     unittest.main()

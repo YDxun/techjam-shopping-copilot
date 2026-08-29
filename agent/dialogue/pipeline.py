@@ -12,6 +12,7 @@ from typing import Iterable
 from agent.dialogue.candidate_signals import CONCRETE_ATTRIBUTES, CandidateSignalCalculator
 from agent.dialogue.catalog_attributes import CatalogAttributeCache, RuleVocabularyExtractor
 from agent.dialogue.catalog_signals import CatalogQuestionSignals
+from agent.dialogue.diagnostics import DecisionTraceRecorder, DialogueDecisionTrace
 from agent.dialogue.models import (
     CandidateQuestionSignals,
     DialogueAct,
@@ -146,6 +147,7 @@ class DialogueUnderstandingPipeline:
         product_rows = tuple(products)
         self.question_policy = QuestionPolicy(env.decision)
         self.transition_guard = TransitionGuard(dialogue_config.transition_guard)
+        self.decision_trace_recorder = DecisionTraceRecorder(env.diagnostics.decision_trace)
         self.catalog_signals = CatalogQuestionSignals.from_products(product_rows)
         self.candidate_signal_calculator: CandidateSignalCalculator | None = None
         if env.decision.candidate_question_value.enabled:
@@ -265,7 +267,7 @@ class DialogueUnderstandingPipeline:
                 utility_score=0.0,
                 alternative_scores={},
             )
-            return DialogueTurnResult(
+            result = DialogueTurnResult(
                 state=pending.state,
                 recognition=pending.recognition,
                 guard_decision=pending.guard_decision,
@@ -274,6 +276,14 @@ class DialogueUnderstandingPipeline:
                 prompt_tokens=pending.prompt_tokens,
                 completion_tokens=pending.completion_tokens,
             )
+            self._record_decision_trace(
+                pending=pending,
+                after_state=pending.state,
+                candidate_signals=candidate_signals,
+                candidate_count=candidate_count,
+                decision=decision,
+            )
+            return result
 
         with self._session_lock(pending.session_id):
             session = self._sessions[pending.session_id]
@@ -322,6 +332,13 @@ class DialogueUnderstandingPipeline:
             )
             self._sessions[pending.session_id] = committed_session
             committed_session_fingerprint = _session_fingerprint(committed_session)
+            self._record_decision_trace(
+                pending=pending,
+                after_state=dialogue,
+                candidate_signals=candidate_signals,
+                candidate_count=candidate_count,
+                decision=decision,
+            )
         logger.info(
             "[dialogue] session=%s turn=%d intent_version=%d source=%s decision=%s score=%.4f",
             hashlib.sha256(pending.session_id.encode("utf-8")).hexdigest()[:12],
@@ -348,6 +365,46 @@ class DialogueUnderstandingPipeline:
             committed_session=committed_session,
             committed_session_fingerprint=committed_session_fingerprint,
         )
+
+    def dialogue_decision_statistics(self) -> dict[str, object]:
+        """Return local, aggregate decision diagnostics only."""
+        return self.decision_trace_recorder.summary()
+
+    def _record_decision_trace(
+        self,
+        *,
+        pending: PendingDialogueTurn,
+        after_state: DialogueState,
+        candidate_signals: CandidateQuestionSignals | None,
+        candidate_count: int | None,
+        decision: QuestionDecision,
+    ) -> None:
+        """Capture bounded diagnostics after a completed decision, never request text."""
+        try:
+            components = self.question_policy.last_components
+            snapshot = {
+                attribute: dict(values)
+                for attribute, values in components.items()
+                if isinstance(values, Mapping)
+            }
+            trace = DialogueDecisionTrace.from_turn(
+                before_state=pending.base_session.dialogue,
+                after_state=after_state,
+                recognition=pending.recognition,
+                guard_decision=pending.guard_decision,
+                candidate_signals=candidate_signals,
+                question_decision=decision,
+                attribute_components=snapshot,
+                recommendation_count=0,
+                prompt_tokens=pending.prompt_tokens,
+                completion_tokens=pending.completion_tokens,
+                lookahead_depth=self.question_policy.config.finish_strategy.lookahead_depth,
+                fallback_reason=getattr(pending.recognition, "fallback_reason", ""),
+                candidate_count=candidate_count,
+            )
+            self.decision_trace_recorder.record(trace)
+        except Exception:
+            logger.exception("[dialogue] decision diagnostics capture failed")
 
     @staticmethod
     def eligible_candidate_attributes(state: DialogueState) -> tuple[str, ...]:

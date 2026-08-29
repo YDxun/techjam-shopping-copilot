@@ -192,6 +192,8 @@ class DialogueFlowTest(unittest.TestCase):
         *,
         candidate_enabled: bool = False,
         pool_size: int = 300,
+        trace_enabled: bool = False,
+        trace_max_traces: int = 5000,
     ) -> EnvConfig:
         return EnvConfig.from_env(
             overrides={
@@ -205,6 +207,12 @@ class DialogueFlowTest(unittest.TestCase):
                     "question_termination_mode": "explicit_only",
                 },
                 "llm": {"rerank_enabled": False},
+                "diagnostics": {
+                    "decision_trace": {
+                        "enabled": trace_enabled,
+                        "max_traces": trace_max_traces,
+                    }
+                },
             },
             environ={"LLM_PROVIDER": "none"},
         )
@@ -221,7 +229,11 @@ class DialogueFlowTest(unittest.TestCase):
         }
 
     def build_pipeline(
-        self, *, guard_enabled: bool, llm_response: dict[str, object]
+        self,
+        *,
+        guard_enabled: bool,
+        llm_response: dict[str, object],
+        trace_enabled: bool = False,
     ) -> DialogueUnderstandingPipeline:
         env = EnvConfig.from_env(
             overrides={
@@ -229,9 +241,12 @@ class DialogueFlowTest(unittest.TestCase):
                 "dialogue_understanding": {
                     "mode": "cascaded",
                     "rule_confidence_threshold": 0.90,
-                    "transition_guard": {"enabled": guard_enabled},
+                    "transition_guard": {
+                        "enabled": guard_enabled,
+                    },
                 },
                 "llm": {"rerank_enabled": False},
+                "diagnostics": {"decision_trace": {"enabled": trace_enabled}},
             },
             environ={"LLM_PROVIDER": "none"},
         )
@@ -241,7 +256,9 @@ class DialogueFlowTest(unittest.TestCase):
             products=PRODUCTS,
         )
 
-    def build_rule_pipeline(self, *, guard_enabled: bool) -> DialogueUnderstandingPipeline:
+    def build_rule_pipeline(
+        self, *, guard_enabled: bool, trace_enabled: bool = False
+    ) -> DialogueUnderstandingPipeline:
         env = EnvConfig.from_env(
             overrides={
                 "skip_data_verify": True,
@@ -250,6 +267,7 @@ class DialogueFlowTest(unittest.TestCase):
                     "transition_guard": {"enabled": guard_enabled},
                 },
                 "llm": {"rerank_enabled": False},
+                "diagnostics": {"decision_trace": {"enabled": trace_enabled}},
             },
             environ={"LLM_PROVIDER": "none"},
         )
@@ -303,6 +321,57 @@ class DialogueFlowTest(unittest.TestCase):
             ["B", "A", "C"],
         )
         self.assertEqual(response["usage"], {"prompt_tokens": 5, "completion_tokens": 2})
+
+    def test_completed_decisions_record_once_without_raw_text(self) -> None:
+        # Omitting an outcome or retaining the request text would make diagnostics unsafe.
+        static = Agent(
+            env=self.env(trace_enabled=True),
+            llm_client=DisabledLLMClient(),
+            retriever=StaticRetriever(),
+            reranker=StaticReranker(("A", "B", "C")),
+        )
+        dynamic = Agent(
+            env=self.env(candidate_enabled=True, trace_enabled=True),
+            llm_client=DisabledLLMClient(),
+            retriever=StaticRetriever(),
+            reranker=StaticReranker(("A", "B", "C")),
+        )
+        empty = Agent(
+            env=self.env(candidate_enabled=True, trace_enabled=True),
+            llm_client=DisabledLLMClient(),
+            retriever=EmptyRetriever(),
+            reranker=StaticReranker(("A", "B", "C")),
+        )
+        secret = "private decision text"
+
+        for agent in (static, dynamic, empty):
+            agent.reset("private-session", {})
+            response = agent.respond("private-session", secret, 1, 3)
+            self.assertEqual(
+                set(response), {"message", "ask_attribute", "recommendations", "usage"}
+            )
+            summary = agent.dialogue_decision_statistics()
+            self.assertEqual(summary["total_seen"], 1)
+            self.assertEqual(summary["recorded"], 1)
+            encoded = json.dumps(agent.dialogue.decision_trace_recorder.records()[0].to_dict())
+            self.assertNotIn(secret, encoded)
+            self.assertNotIn("private-session", encoded)
+
+    def test_trace_cap_counts_every_completed_decision(self) -> None:
+        # Moving the counter behind the cap would make aggregate tuning rates misleading.
+        agent = Agent(
+            env=self.env(trace_enabled=True, trace_max_traces=1),
+            llm_client=DisabledLLMClient(),
+            retriever=StaticRetriever(),
+            reranker=StaticReranker(("A", "B", "C")),
+        )
+        agent.reset("s", {})
+
+        for turn, message in enumerate(("I need shoes.", "Blue please.", "Leather too."), start=1):
+            agent.respond("s", message, turn, 3)
+
+        self.assertEqual(agent.dialogue_decision_statistics()["recorded"], 1)
+        self.assertEqual(agent.dialogue_decision_statistics()["total_seen"], 3)
 
     def test_dynamic_turn_uses_one_candidate_list_and_commits_once(self) -> None:
         # A second retrieval or pre-retrieval question commit would break identity/count history.
@@ -465,9 +534,35 @@ class DialogueFlowTest(unittest.TestCase):
         self.assertEqual(response["ask_attribute"], "other")
         self.assertEqual(agent.dialogue.session("s"), before)
 
+    def test_guard_blocks_record_exact_state_diff_without_session_mutation(self) -> None:
+        # Recording an applied-state diff for a guard block would fabricate a state transition.
+        for action in ("clarify", "reject"):
+            with self.subTest(action=action):
+                pipeline = self.build_pipeline(
+                    guard_enabled=True,
+                    llm_response=self.low_confidence_rejection("A"),
+                    trace_enabled=True,
+                )
+                pipeline.transition_guard.config = pipeline.transition_guard.config.__class__(
+                    enabled=True, destructive_failure_action=action
+                )
+                pipeline.reset("s", {})
+                self.record_shown_for_test(pipeline, "s", ["A"], turn=1)
+                before = pipeline.session("s")
+
+                pipeline.decide_question(
+                    pipeline.interpret_turn("s", "Reject A", turn=2), None, candidate_count=3
+                )
+
+                trace = pipeline.decision_trace_recorder.records()[0].to_dict()
+                self.assertEqual(pipeline.session("s"), before)
+                self.assertEqual(trace["added_constraints"], [])
+                self.assertEqual(trace["removed_constraints"], [])
+                self.assertEqual(trace["guard_action"], action)
+
     def test_stale_or_replayed_ordinary_pending_cannot_overwrite_newer_session(self) -> None:
         # Accepting an older pending result would replace turn two's state with turn one.
-        pipeline = self.build_rule_pipeline(guard_enabled=False)
+        pipeline = self.build_rule_pipeline(guard_enabled=False, trace_enabled=True)
         pipeline.reset("s", {})
         self.record_shown_for_test(pipeline, "s", ["A"], turn=1)
         first = pipeline.interpret_turn("s", "I'm looking for shoes.", turn=1)
@@ -475,6 +570,7 @@ class DialogueFlowTest(unittest.TestCase):
 
         pipeline.decide_question(second, None, candidate_count=3)
         committed = pipeline.session("s")
+        self.assertEqual(pipeline.decision_trace_recorder.summary()["total_seen"], 1)
 
         with self.assertRaises(StalePendingTurnError):
             pipeline.decide_question(first, None, candidate_count=3)
@@ -489,6 +585,7 @@ class DialogueFlowTest(unittest.TestCase):
         with self.assertRaises(StalePendingTurnError):
             pipeline.decide_question(second, None, candidate_count=3)
         self.assertEqual(pipeline.session("s"), committed)
+        self.assertEqual(pipeline.decision_trace_recorder.summary()["total_seen"], 1)
 
     def test_guard_pending_is_replay_safe_without_committing_session(self) -> None:
         # Guard blocks do not commit, so replay is intentionally an identical no-op response.

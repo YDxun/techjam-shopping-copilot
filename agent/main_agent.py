@@ -102,6 +102,10 @@ class Agent(BaseAgent):
         """Expose aggregate guard diagnostics without changing the response contract."""
         return self.dialogue.transition_guard.statistics()
 
+    def dialogue_decision_statistics(self) -> dict[str, object]:
+        """Expose local decision diagnostics without changing the response contract."""
+        return self.dialogue.dialogue_decision_statistics()
+
     # ------------------------------------------------------------------
     def respond(self, session_id: str, user_message: str, turn: int, top_k: int) -> dict:
         """每轮对话主流程（Pillar I~IV 编排）。"""

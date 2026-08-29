@@ -435,11 +435,13 @@ the legacy baseline, limits depth-one evaluations to eight (plus at most two
 predeclared adjacent refinements), and records—not evaluates—depth-two settings
 with `known_depth_two_gate_mismatch`.
 
-Use the existing production `latency_ms` p95 from the catalog report as the
-budget; `analysis_kernel_latency_ms` is deliberately ignored. The report also
-records paired session-level bootstrap intervals, catalog stability, outer-fold
-audit gates, and the one-standard-error selection rule (simplest, then lowest
-latency, then canonical JSON). It does not change `config/default.json`.
+The fixed production-calculator p95 capacity budget is **3000 ms**;
+`analysis_kernel_latency_ms` is deliberately ignored. A versioned absolute
+catalog-stability minimum of 0.80 is applied before evaluation. Outer folds are
+read-only procedure-audit evidence; once frozen, a separate grouped training-CV
+over all public rows performs the final one-standard-error fit. The report
+records both procedures separately, paired session-level bootstrap intervals,
+and each effective pinned-config hash. It does not change `config/default.json`.
 
 ```bash
 LLM_PROVIDER=none SKIP_DATA_VERIFY=1 \
@@ -450,7 +452,8 @@ python -m experiments.decision_cross_validation \
   --catalog-report /private/tmp/catalog-question-value.json \
   --output /private/tmp/decision-cross-validation.json \
   --recommended-config-output /private/tmp/recommended-decision-config.json \
-  --seed 20260829
+  --seed 20260829 \
+  --recognizer-base-sha 80e1480
 ```
 
 Both outputs use atomic replacement and reject direct/symlink/hardlink input

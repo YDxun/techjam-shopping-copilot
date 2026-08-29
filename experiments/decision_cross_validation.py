@@ -31,6 +31,14 @@ from evaluator.local_evaluator import catalog_index, coarse_category, evaluate, 
 
 LEGACY_ID = "legacy"
 DEPTH_TWO_EXCLUSION = "known_depth_two_gate_mismatch"
+MODERATE_LATENCY_BUDGET_MS = 3000.0
+CATALOG_STABILITY_GATE_VERSION = "catalog_stability_minimum_v1"
+CATALOG_STABILITY_MINIMUM = 0.80
+REPO_ROOT = Path(__file__).resolve().parents[1]
+PINNED_BASE_CONFIG = REPO_ROOT / "config" / "default.json"
+RECOGNIZER_PATH = "agent/dialogue/recognizers"
+EVALUATION_ENV = {"LLM_PROVIDER": "none", "SKIP_DATA_VERIFY": "1"}
+REQUIRED_RECOGNIZER_BASE_SHA = "80e148029c95c55f59d69f3dcc57f582e582b304"
 
 
 def canonical_json(value: object) -> str:
@@ -72,60 +80,90 @@ def grouped_stratified_folds(
         grouped[_target(sample)].append(sample)
     if len(grouped) < fold_count:
         raise ValueError("fold_count cannot exceed unique target ASIN groups")
-    total_strata = Counter(_stratum(sample) for sample in samples)
-    group_records: list[tuple[str, list[dict[str, Any]], Counter[tuple[str, str, str]]]] = [
-        (target, rows, Counter(_stratum(row) for row in rows)) for target, rows in grouped.items()
-    ]
+    marginal_totals = {
+        field: Counter(str(sample[field]) for sample in samples)
+        for field in ("scenario_type", "coarse_category", "initial_candidate_bin")
+    }
+    group_records = [(target, rows) for target, rows in grouped.items()]
     rng = random.Random(seed)
-    tie = {target: rng.random() for target, _, _ in group_records}
+    tie = {target: rng.random() for target, _ in group_records}
     group_records.sort(
         key=lambda item: (
             -len(item[1]),
-            min(total_strata[stratum] for stratum in item[2]),
+            min(
+                marginal_totals[field][str(row[field])]
+                for field in marginal_totals
+                for row in item[1]
+            ),
             tie[item[0]],
             item[0],
         )
     )
     folds: list[list[dict[str, Any]]] = [[] for _ in range(fold_count)]
     fold_sizes = [0] * fold_count
-    fold_strata: list[Counter[tuple[str, str, str]]] = [Counter() for _ in range(fold_count)]
-    for _, rows, strata in group_records:
+    fold_marginals = {field: [Counter() for _ in range(fold_count)] for field in marginal_totals}
+    for _, rows in group_records:
+        group_marginals = {
+            field: Counter(str(row[field]) for row in rows) for field in marginal_totals
+        }
 
         def cost(
             index: int,
             group_rows: Sequence[dict[str, Any]] = rows,
-            group_strata: Counter[tuple[str, str, str]] = strata,
+            group_counts: Mapping[str, Counter[str]] = group_marginals,
         ) -> tuple[float, int]:
             # During greedy construction, penalize already-full folds rather than
             # distance from the final target; the latter ties every empty fold.
             size_cost = (fold_sizes[index] + len(group_rows)) / max(len(samples) / fold_count, 1)
-            stratum_cost = sum(
-                ((fold_strata[index][key] + count) / max(total_strata[key] / fold_count, 1)) ** 2
-                for key, count in group_strata.items()
-            )
-            return (4.0 * stratum_cost + size_cost, index)
+            marginal_cost = 0.0
+            for field, weight in (
+                ("scenario_type", 5.0),
+                ("coarse_category", 2.0),
+                ("initial_candidate_bin", 1.0),
+            ):
+                marginal_cost += weight * sum(
+                    (
+                        (
+                            fold_marginals[field][index][value]
+                            + count
+                            - marginal_totals[field][value] / fold_count
+                        )
+                        / max(marginal_totals[field][value] / fold_count, 1)
+                    )
+                    ** 2
+                    for value, count in group_counts[field].items()
+                )
+            return (marginal_cost + size_cost, index)
 
         chosen = min(range(fold_count), key=cost)
         folds[chosen].extend(rows)
         fold_sizes[chosen] += len(rows)
-        fold_strata[chosen].update(strata)
+        for field, counts in group_marginals.items():
+            fold_marginals[field][chosen].update(counts)
     return folds
 
 
 def annotate_samples(
     samples: Sequence[dict[str, Any]], categories: Mapping[str, list[str]]
 ) -> list[dict[str, Any]]:
-    """Add public grouping proxies without inspecting evaluator outcomes."""
+    """Add catalog-population candidate proxies without inspecting outcomes."""
     category_by_target = {
         _target(row): coarse_category(categories.get(_target(row), [])) for row in samples
     }
-    population = Counter(category_by_target.values())
+    population = Counter(coarse_category(values) for values in categories.values())
     annotated: list[dict[str, Any]] = []
     for sample in samples:
         category = category_by_target[_target(sample)]
         count = population[category]
-        bin_name = "small" if count <= 3 else "medium" if count <= 10 else "large"
-        annotated.append({**sample, "coarse_category": category, "initial_candidate_bin": bin_name})
+        bin_name = "small" if count <= 10 else "medium" if count <= 100 else "large"
+        annotated.append(
+            {
+                **sample,
+                "coarse_category": category,
+                "initial_candidate_population": count,
+                "initial_candidate_bin": bin_name,
+            }
+        )
     return annotated
 
 
@@ -169,12 +207,8 @@ def _expand_overlay(values: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def build_search_manifest(
-    search_space: Mapping[str, Any], seed: int, max_depth_one: int = 8
-) -> dict[str, Any]:
-    """Sample a recorded coarse space; depth two remains recorded, never run."""
-    if max_depth_one < 0:
-        raise ValueError("max_depth_one must be non-negative")
+def build_search_manifest(search_space: Mapping[str, Any], seed: int) -> dict[str, Any]:
+    """Sample the source space and account for every sampled configuration."""
     keys = (
         "transition_guard_profile",
         "candidate_weight_profile",
@@ -203,9 +237,17 @@ def build_search_manifest(
         source if len(source) <= sample_limit else random.Random(seed).sample(source, sample_limit)
     )
     sampled.sort(key=canonical_json)
-    excluded: list[dict[str, Any]] = []
-    runnable: list[dict[str, Any]] = []
-    for values in sampled:
+    configs: list[dict[str, Any]] = [
+        {
+            "id": LEGACY_ID,
+            "kind": "legacy",
+            "overlay": {},
+            "depth": 1,
+            "status": "pending_catalog_gate",
+            "reason": "legacy_baseline",
+        }
+    ]
+    for sampling_rank, values in enumerate(sampled):
         overlay = _expand_overlay(values)
         item = {
             "id": hashlib.sha256(canonical_json(overlay).encode()).hexdigest()[:12],
@@ -213,24 +255,89 @@ def build_search_manifest(
             "overlay": overlay,
             "depth": values["lookahead_depth"],
         }
-        if values["lookahead_depth"] == 2:
-            excluded.append({**item, "exclusion_reason": DEPTH_TWO_EXCLUSION})
-        else:
-            runnable.append(item)
-    rng = random.Random(seed ^ 0xC0FFEE)
-    rng.shuffle(runnable)
-    evaluated = [
-        {"id": LEGACY_ID, "kind": "legacy", "overlay": {}, "depth": 1},
-        *runnable[:max_depth_one],
-    ]
+        configs.append(
+            {
+                **item,
+                "sampling_rank": sampling_rank,
+                "status": (
+                    "excluded_depth_two_known_residual"
+                    if values["lookahead_depth"] == 2
+                    else "pending_catalog_gate"
+                ),
+                "reason": DEPTH_TWO_EXCLUSION if values["lookahead_depth"] == 2 else None,
+            }
+        )
     return {
         "sampling_seed": seed,
         "source_space": dict(search_space),
         "source_combination_count": len(source),
         "coarse_sample_count": len(sampled),
-        "evaluated": evaluated,
-        "excluded": excluded,
+        "configs": configs,
+        "accounted_config_count": len(configs),
     }
+
+
+def _catalog_measurements(catalog_report: Mapping[str, Any], pool_size: int) -> tuple[float, float]:
+    pool = catalog_report.get("pool_sizes", {}).get(str(pool_size), {})
+    return (
+        float(pool.get("latency_ms", {}).get("p95", math.inf)),
+        float(pool.get("candidate_deletion_stability", {}).get("choice_agreement", 0.0)),
+    )
+
+
+def prepare_manifest_for_evaluation(
+    search_space: Mapping[str, Any],
+    catalog_report: Mapping[str, Any],
+    *,
+    seed: int,
+    max_depth_one: int,
+) -> dict[str, Any]:
+    """Apply only predeclared catalog gates and the moderate deterministic cap."""
+    if max_depth_one < 1 or max_depth_one > 8:
+        raise ValueError("max_depth_one must be between 1 and 8 including legacy")
+    manifest = build_search_manifest(search_space, seed)
+    eligible: list[dict[str, Any]] = []
+    for item in manifest["configs"]:
+        if item["id"] == LEGACY_ID:
+            item.update(
+                status="evaluated_legacy",
+                reason="legacy_baseline",
+                latency_p95_ms=0.0,
+                catalog_stability=1.0,
+                complexity=0,
+            )
+            continue
+        if item["status"] != "pending_catalog_gate":
+            continue
+        pool_size = int(item["overlay"]["decision"]["candidate_question_value"]["pool_size"])
+        latency, stability = _catalog_measurements(catalog_report, pool_size)
+        item.update(
+            latency_p95_ms=latency,
+            catalog_stability=stability,
+            complexity=_complexity(item["overlay"]),
+        )
+        if latency > MODERATE_LATENCY_BUDGET_MS:
+            item.update(
+                status="preexcluded_latency_budget",
+                reason="production_latency_p95_exceeds_3000ms",
+            )
+        elif stability < CATALOG_STABILITY_MINIMUM:
+            item.update(
+                status="preexcluded_catalog_stability",
+                reason=f"{CATALOG_STABILITY_GATE_VERSION}_below_0.80",
+            )
+        else:
+            eligible.append(item)
+    eligible.sort(key=lambda item: int(item["sampling_rank"]))
+    for index, item in enumerate(eligible):
+        item.update(
+            status="evaluated_coarse"
+            if index < max_depth_one - 1
+            else "moderate_budget_not_selected",
+            reason="moderate_global_depth_one_cap" if index >= max_depth_one - 1 else "selected",
+        )
+    manifest["accounted_config_count"] = len(manifest["configs"])
+    return manifest
 
 
 def paired_bootstrap_interval(
@@ -259,11 +366,9 @@ def paired_bootstrap_interval(
 
 def eligibility_reasons(
     candidate: Mapping[str, Any],
-    baseline: Mapping[str, Any],
     *,
     hr10_tolerance: float,
     scenario_tolerance: float,
-    catalog_tolerance: float,
     latency_budget_ms: float,
 ) -> list[str]:
     reasons: list[str] = []
@@ -273,8 +378,8 @@ def eligibility_reasons(
         reasons.append("outer_fold_hr10_regression")
     if any(delta < -scenario_tolerance for delta in candidate["scenario_hr10_deltas"].values()):
         reasons.append("scenario_collapse")
-    if float(candidate["catalog_stability_delta"]) < -catalog_tolerance:
-        reasons.append("catalog_stability_regression")
+    if float(candidate["catalog_stability"]) < CATALOG_STABILITY_MINIMUM:
+        reasons.append("catalog_stability_minimum_not_met")
     if float(candidate["latency_p95_ms"]) > latency_budget_ms:
         reasons.append("latency_budget_exceeded")
     return reasons
@@ -283,7 +388,11 @@ def eligibility_reasons(
 def select_one_standard_error(configs: Sequence[Mapping[str, Any]]) -> Mapping[str, Any]:
     if not configs:
         raise ValueError("one-standard-error selection needs an eligible configuration")
-    best = max(configs, key=lambda item: float(item["mean"]))
+    best_mean = max(float(item["mean"]) for item in configs)
+    best = min(
+        (item for item in configs if float(item["mean"]) == best_mean),
+        key=lambda item: str(item["canonical_json"]),
+    )
     cutoff = float(best["mean"]) - float(best["standard_error"])
     within = [item for item in configs if float(item["mean"]) >= cutoff]
     return min(
@@ -346,13 +455,36 @@ def _score_contribution(session: Mapping[str, Any]) -> float:
 
 def _session_summary(sessions: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     if not sessions:
-        return {"mean": 0.0, "hr10": 0.0, "scenario_hr10": {}, "contributions": {}}
+        return {
+            "mean": 0.0,
+            "hr10": 0.0,
+            "scenario_hr10": {},
+            "contributions": {},
+            "official_components": {
+                "hit_rate_at_10": 0.0,
+                "mrr": 0.0,
+                "mttc": None,
+                "efficiency": 0.0,
+                "recommended_technical_score": 0.0,
+            },
+        }
     by_scenario: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
     for session in sessions:
         by_scenario[str(session["scenario_type"])].append(session)
+    hr10 = round(statistics.fmean(float(bool(session["hit"])) for session in sessions), 6)
+    mrr = round(statistics.fmean(float(session["reciprocal_rank"]) for session in sessions), 6)
+    mttc = round(
+        statistics.fmean(
+            float(session["first_hit_turn"] if session["first_hit_turn"] is not None else 11)
+            for session in sessions
+        ),
+        6,
+    )
+    efficiency = round(max(0.0, min(1.0, (11.0 - mttc) / 10.0)), 6)
+    technical = round(0.50 * hr10 + 0.30 * mrr + 0.20 * efficiency, 6)
     return {
-        "mean": statistics.fmean(_score_contribution(session) for session in sessions),
-        "hr10": statistics.fmean(float(bool(session["hit"])) for session in sessions),
+        "mean": technical,
+        "hr10": hr10,
         "scenario_hr10": {
             name: statistics.fmean(float(bool(item["hit"])) for item in rows)
             for name, rows in sorted(by_scenario.items())
@@ -360,16 +492,14 @@ def _session_summary(sessions: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         "contributions": {
             str(session["sample_id"]): _score_contribution(session) for session in sessions
         },
+        "official_components": {
+            "hit_rate_at_10": hr10,
+            "mrr": mrr,
+            "mttc": mttc,
+            "efficiency": efficiency,
+            "recommended_technical_score": technical,
+        },
     }
-
-
-def _catalog_gate(catalog_report: Mapping[str, Any], pool_size: int) -> tuple[float, float, float]:
-    pool = catalog_report.get("pool_sizes", {}).get(str(pool_size), {})
-    latency = float(pool.get("latency_ms", {}).get("p95", math.inf))
-    stability = float(pool.get("candidate_deletion_stability", {}).get("choice_agreement", 0.0))
-    reference_pool = str(min(int(key) for key in catalog_report.get("pool_sizes", {"300": {}})))
-    budget = float(catalog_report["pool_sizes"][reference_pool]["latency_ms"]["p95"])
-    return latency, stability, budget
 
 
 def _complexity(overlay: Mapping[str, Any]) -> int:
@@ -395,8 +525,14 @@ def _evaluate_once(
     products: dict[str, dict],
     overlay: Mapping[str, Any],
 ) -> dict[str, Any]:
+    evaluation_overlay = _deep_merge(
+        {"llm": {"provider": "none"}, "skip_data_verify": True}, overlay
+    )
+    effective_document = complete_config_document(PINNED_BASE_CONFIG, evaluation_overlay)
     env = EnvConfig.from_env(
-        overrides=_deep_merge({"llm": {"provider": "none"}, "skip_data_verify": True}, overlay)
+        path=PINNED_BASE_CONFIG,
+        overrides=evaluation_overlay,
+        environ=EVALUATION_ENV,
     )
     result = evaluate(
         Agent(catalog_path=catalog, env=env), list(samples), catalog_ids, categories, products
@@ -404,10 +540,13 @@ def _evaluate_once(
     return {
         "official": {key: value for key, value in result.items() if key != "sessions"},
         "sessions": result["sessions"],
+        "effective_config_sha256": hashlib.sha256(
+            canonical_json(effective_document).encode("utf-8")
+        ).hexdigest(),
     }
 
 
-def _run_nested(
+def _run_nested_procedure_audit(
     configs: Sequence[dict[str, Any]],
     outcomes: Mapping[str, Mapping[str, Any]],
     folds: Sequence[Sequence[dict[str, Any]]],
@@ -458,25 +597,43 @@ def _run_nested(
                 "legacy_test": legacy_test,
             }
         )
-    final_rows: list[dict[str, Any]] = []
-    all_ids = set(by_id[LEGACY_ID])
+    return outer_reports, {"selected_ids": selected_ids}
+
+
+def _final_training_cv(
+    configs: Sequence[dict[str, Any]],
+    outcomes: Mapping[str, Mapping[str, Any]],
+    samples: Sequence[dict[str, Any]],
+    seed: int,
+) -> tuple[dict[str, Any], list[dict[str, Any]], list[list[dict[str, Any]]]]:
+    """Choose the deployment ID using all public rows, never outer-test outcomes."""
+    folds = grouped_stratified_folds(samples, 3, seed ^ 0xF17)
+    by_id = {
+        identifier: {str(row["sample_id"]): row for row in value["sessions"]}
+        for identifier, value in outcomes.items()
+    }
+    rows: list[dict[str, Any]] = []
     for config in configs:
-        summary = _session_summary([by_id[config["id"]][sample_id] for sample_id in all_ids])
-        fold_means = [
-            _session_summary([by_id[config["id"]][str(row["sample_id"])] for row in fold])["mean"]
+        sessions = list(by_id[config["id"]].values())
+        summary = _session_summary(sessions)
+        fold_summaries = [
+            _session_summary([by_id[config["id"]][str(row["sample_id"])] for row in fold])
             for fold in folds
         ]
-        final_rows.append(
+        fold_means = [summary["mean"] for summary in fold_summaries]
+        rows.append(
             {
                 **config,
                 **summary,
-                "standard_error": statistics.stdev(fold_means) / math.sqrt(len(fold_means))
-                if len(fold_means) > 1
-                else 0.0,
+                "training_cv_fold_metrics": [
+                    {"fold": index, **summary["official_components"]}
+                    for index, summary in enumerate(fold_summaries)
+                ],
+                "standard_error": statistics.stdev(fold_means) / math.sqrt(len(fold_means)),
                 "canonical_json": canonical_json(config["overlay"]),
             }
         )
-    return outer_reports, {"selected_ids": selected_ids, "full_training_candidates": final_rows}
+    return select_one_standard_error(rows), rows, folds
 
 
 def _commit_sha() -> str:
@@ -484,6 +641,26 @@ def _commit_sha() -> str:
         return subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
     except (OSError, subprocess.CalledProcessError):
         return "unavailable"
+
+
+def _is_dirty() -> bool:
+    try:
+        return bool(subprocess.check_output(["git", "status", "--porcelain"], text=True).strip())
+    except (OSError, subprocess.CalledProcessError):
+        return True
+
+
+def resolve_and_verify_recognizer_base_sha(value: str) -> str:
+    try:
+        base = subprocess.check_output(
+            ["git", "rev-parse", "--verify", f"{value}^{{commit}}"], text=True
+        ).strip()
+        if base != REQUIRED_RECOGNIZER_BASE_SHA:
+            raise ValueError("required recognizer base SHA is 80e1480")
+        subprocess.run(["git", "diff", "--quiet", base, "--", RECOGNIZER_PATH], check=True)
+    except (OSError, subprocess.CalledProcessError, ValueError) as error:
+        raise ValueError("recognizer files differ from required recognizer base SHA") from error
+    return base
 
 
 def run_cross_validation(
@@ -497,47 +674,36 @@ def run_cross_validation(
     inner_folds: int = 2,
     max_depth_one: int = 8,
     max_refinements: int = 2,
+    recognizer_base_sha: str,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     if outer_folds != 3 or inner_folds != 2:
         raise ValueError("moderate policy requires exactly 3 outer and 2 inner folds")
     if max_depth_one > 8 or max_refinements > 2:
         raise ValueError("moderate policy allows at most 8 depth-one and 2 refinement evaluations")
+    recognizer_base = resolve_and_verify_recognizer_base_sha(recognizer_base_sha)
+    producer = {"commit": _commit_sha(), "dirty": _is_dirty()}
     space = json.loads(search_space.read_text(encoding="utf-8"))
     report = json.loads(catalog_report.read_text(encoding="utf-8"))
-    manifest = build_search_manifest(space, seed, max_depth_one=max_depth_one - 1)
+    manifest = prepare_manifest_for_evaluation(
+        space, report, seed=seed, max_depth_one=max_depth_one
+    )
     samples = load_jsonl(dataset)
     catalog_ids, categories, products = catalog_index(catalog)
     annotated = annotate_samples(samples, categories)
-    folds = grouped_stratified_folds(annotated, outer_folds, seed)
-    latency_budget = _catalog_gate(report, 300)[2]
-    runnable: list[dict[str, Any]] = []
-    pre_rejected: list[dict[str, Any]] = []
-    for config in manifest["evaluated"]:
-        if config["id"] == LEGACY_ID:
-            runnable.append(
-                {**config, "latency_p95_ms": 0.0, "catalog_stability": 1.0, "complexity": 0}
-            )
-            continue
-        pool_size = int(config["overlay"]["decision"]["candidate_question_value"]["pool_size"])
-        latency, stability, _ = _catalog_gate(report, pool_size)
-        prepared = {
-            **config,
-            "latency_p95_ms": latency,
-            "catalog_stability": stability,
-            "complexity": _complexity(config["overlay"]),
-        }
-        if latency > latency_budget:
-            pre_rejected.append({**prepared, "exclusion_reason": "latency_budget_exceeded"})
-        else:
-            runnable.append(prepared)
+    outer_grouped_folds = grouped_stratified_folds(annotated, outer_folds, seed)
+    runnable = [
+        config
+        for config in manifest["configs"]
+        if config["status"] in {"evaluated_legacy", "evaluated_coarse"}
+    ]
     outcomes: dict[str, dict[str, Any]] = {}
     for config in runnable:
         outcomes[config["id"]] = _evaluate_once(
             catalog, annotated, catalog_ids, categories, products, config["overlay"]
         )
-    # Refinements are intentionally derived from source order, not test metrics;
-    # this preserves the invariant that outer test outcomes cannot grow the sweep.
-    refinements: list[dict[str, Any]] = []
+        config["effective_config_sha256"] = outcomes[config["id"]]["effective_config_sha256"]
+    # Refinements are predeclared from catalog-gated coarse source order, never
+    # derived from outer tests or from their held-out outcomes.
     for config in runnable[1 : 1 + max_refinements]:
         overlay = json.loads(json.dumps(config["overlay"]))
         alpha = float(overlay["decision"]["candidate_question_value"]["prior_alpha"])
@@ -554,76 +720,42 @@ def run_cross_validation(
             "complexity": _complexity(overlay),
         }
         if item["id"] not in outcomes:
-            refinements.append(item)
+            item.update(status="evaluated_refinement", reason="predeclared_adjacent_prior_alpha")
+            manifest["configs"].append(item)
             outcomes[item["id"]] = _evaluate_once(
                 catalog, annotated, catalog_ids, categories, products, overlay
             )
-    all_configs = [*runnable, *refinements]
-    outer_reports, nested = _run_nested(all_configs, outcomes, folds, seed)
+            item["effective_config_sha256"] = outcomes[item["id"]]["effective_config_sha256"]
+            runnable.append(item)
+        else:
+            item.update(status="refinement_duplicate", reason="same_canonical_config_as_coarse")
+            manifest["configs"].append(item)
+    all_configs = runnable
+    outer_reports, nested = _run_nested_procedure_audit(
+        all_configs, outcomes, outer_grouped_folds, seed
+    )
+    final_config, candidate_reports, final_fit_folds = _final_training_cv(
+        all_configs, outcomes, annotated, seed
+    )
     baseline_by_id = {
         str(session["sample_id"]): session for session in outcomes[LEGACY_ID]["sessions"]
     }
-    eligible: list[dict[str, Any]] = []
-    candidate_reports: list[dict[str, Any]] = []
-    for config in nested["full_training_candidates"]:
-        candidate_by_id = {
-            str(session["sample_id"]): session for session in outcomes[config["id"]]["sessions"]
+    baseline_summary = _session_summary(list(baseline_by_id.values()))
+    for candidate_report in candidate_reports:
+        candidate_report["effective_config_sha256"] = outcomes[candidate_report["id"]][
+            "effective_config_sha256"
+        ]
+        candidate_report["scenario_hr10_deltas_session_weighted"] = {
+            name: value - baseline_summary["scenario_hr10"].get(name, 0.0)
+            for name, value in candidate_report["scenario_hr10"].items()
         }
-        outer_deltas = []
-        scenario_deltas: dict[str, float] = {}
-        fold_metrics: list[dict[str, float | int]] = []
-        for fold_index, fold in enumerate(folds):
-            candidate_summary = _session_summary(
-                [candidate_by_id[str(row["sample_id"])] for row in fold]
-            )
-            baseline_summary = _session_summary(
-                [baseline_by_id[str(row["sample_id"])] for row in fold]
-            )
-            outer_deltas.append(candidate_summary["hr10"] - baseline_summary["hr10"])
-            fold_metrics.append(
-                {
-                    "fold": fold_index,
-                    "technical_score": candidate_summary["mean"],
-                    "hit_rate_at_10": candidate_summary["hr10"],
-                    "legacy_technical_score": baseline_summary["mean"],
-                    "legacy_hit_rate_at_10": baseline_summary["hr10"],
-                }
-            )
-            for name, value in candidate_summary["scenario_hr10"].items():
-                scenario_deltas.setdefault(name, 0.0)
-                scenario_deltas[name] += value - baseline_summary["scenario_hr10"].get(name, 0.0)
-        scenario_deltas = {name: value / outer_folds for name, value in scenario_deltas.items()}
-        audit = {
-            "outer_fold_hr10_deltas": outer_deltas,
-            "scenario_hr10_deltas": scenario_deltas,
-            "catalog_stability_delta": float(config["catalog_stability"]) - 0.80,
-            "latency_p95_ms": config["latency_p95_ms"],
-        }
-        reasons = eligibility_reasons(
-            audit,
-            {"latency_p95_ms": 0.0},
-            hr10_tolerance=0.005,
-            scenario_tolerance=0.05,
-            catalog_tolerance=0.0,
-            latency_budget_ms=latency_budget,
-        )
-        candidate_report = {
-            **config,
-            "fold_metrics": fold_metrics,
-            "outer_audit": audit,
-            "eligibility_reasons": reasons,
-        }
-        candidate_reports.append(candidate_report)
-        # The audit is reported but does not affect the full-training selector:
-        # using outer tests for that would violate the nesting promised above.
-        if not reasons or config["id"] == LEGACY_ID:
-            eligible.append(config)
-    recommended = select_one_standard_error(eligible)
-    base_config = Path("config/default.json")
-    complete = complete_config_document(base_config, recommended["overlay"])
+    complete = complete_config_document(PINNED_BASE_CONFIG, final_config["overlay"])
     load_config(
-        path=base_config, overrides=recommended["overlay"], environ={"LLM_PROVIDER": "none"}
+        path=PINNED_BASE_CONFIG,
+        overrides=final_config["overlay"],
+        environ=EVALUATION_ENV,
     )
+    manifest["accounted_config_count"] = len(manifest["configs"])
     report_payload = {
         "methodology": {
             "outer_folds": outer_folds,
@@ -635,17 +767,38 @@ def run_cross_validation(
                 "only partition those outcomes. Inner selection excludes the corresponding "
                 "outer test fold."
             ),
-            "recognizer": {"llm_provider": "none", "version": _commit_sha()},
+            "fixed_production_latency_budget_ms": MODERATE_LATENCY_BUDGET_MS,
+            "catalog_stability_gate": {
+                "version": CATALOG_STABILITY_GATE_VERSION,
+                "minimum": CATALOG_STABILITY_MINIMUM,
+            },
+            "recognizer": {
+                "llm_provider": "none",
+                "base_sha": recognizer_base,
+                "files_unchanged_since_base": True,
+            },
+            "producer": producer,
+            "pinned_base_config": str(PINNED_BASE_CONFIG),
+            "evaluation_environ": EVALUATION_ENV,
         },
-        "fold_manifest": [[str(row["sample_id"]) for row in fold] for fold in folds],
+        "procedure_audit": {
+            "purpose": "nested-procedure held-out evidence only; frozen before final fit",
+            "outer_fold_manifest": [
+                [str(row["sample_id"]) for row in fold] for fold in outer_grouped_folds
+            ],
+            "outer_results": outer_reports,
+            "selected_ids_by_outer_fold": nested["selected_ids"],
+        },
+        "final_fit": {
+            "purpose": "all-public-data deterministic grouped training-CV selection",
+            "fold_manifest": [[str(row["sample_id"]) for row in fold] for fold in final_fit_folds],
+            "configurations": candidate_reports,
+            "selected_config_id": final_config["id"],
+        },
         "search_manifest": {
             **manifest,
-            "pre_rejected": pre_rejected,
-            "refinements": refinements,
             "actually_evaluated_count": len(all_configs),
         },
-        "outer_evaluation": outer_reports,
-        "configurations": candidate_reports,
         "paired_bootstrap": {
             config["id"]: paired_bootstrap_interval(
                 list(config["contributions"].values()),
@@ -659,8 +812,8 @@ def run_cross_validation(
             for config in candidate_reports
         },
         "recommendation": {
-            "config_id": recommended["id"],
-            "overlay": recommended["overlay"],
+            "config_id": final_config["id"],
+            "overlay": final_config["overlay"],
             "selection": "one_standard_error_then_complexity_then_latency_then_canonical_json",
         },
     }
@@ -682,6 +835,7 @@ def main() -> int:
     parser.add_argument("--inner-folds", type=int, default=2)
     parser.add_argument("--max-depth-one", type=int, default=8)
     parser.add_argument("--max-refinements", type=int, default=2)
+    parser.add_argument("--recognizer-base-sha", required=True)
     args = parser.parse_args()
     report, recommended = run_cross_validation(
         catalog=Path(args.catalog),
@@ -693,6 +847,7 @@ def main() -> int:
         inner_folds=args.inner_folds,
         max_depth_one=args.max_depth_one,
         max_refinements=args.max_refinements,
+        recognizer_base_sha=args.recognizer_base_sha,
     )
     protected = (args.catalog, args.dataset, args.search_space, args.catalog_report)
     write_json_atomic(

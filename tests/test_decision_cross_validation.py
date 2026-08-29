@@ -37,9 +37,31 @@ class DecisionCrossValidationTest(unittest.TestCase):
         self.assertEqual(first, grouped_stratified_folds(_samples(), fold_count=3, seed=20260829))
         self.assertLessEqual(max(map(len, first)) - min(map(len, first)), 4)
 
+    def test_catalog_population_proxy_and_marginal_folds_ignore_public_target_frequency(
+        self,
+    ) -> None:
+        # Public-target counts would make a popular catalog category look rare.
+        from experiments.decision_cross_validation import annotate_samples, grouped_stratified_folds
+
+        samples = _samples()
+        categories = {
+            **{f"target-{index}": ["Clothing", "rare"] for index in range(10)},
+            **{f"catalog-{index}": ["Clothing", "rare"] for index in range(20)},
+            **{f"other-{index}": ["Clothing", "common"] for index in range(30)},
+        }
+        annotated = annotate_samples(samples, categories)
+        self.assertTrue(all(row["initial_candidate_population"] == 30 for row in annotated))
+        folds = grouped_stratified_folds(annotated, fold_count=3, seed=20260829)
+        for field in ("scenario_type", "coarse_category", "initial_candidate_bin"):
+            counts = [
+                sum(row[field] == "buying" if field == "scenario_type" else 1 for row in fold)
+                for fold in folds
+            ]
+            self.assertLessEqual(max(counts) - min(counts), 4)
+
     def test_manifest_is_bounded_and_excludes_depth_two_before_evaluation(self) -> None:
         # Evaluating depth-two configs would let the known unsafe gate enter the sweep.
-        from experiments.decision_cross_validation import build_search_manifest
+        from experiments.decision_cross_validation import prepare_manifest_for_evaluation
 
         search_space = {
             "transition_guard_profile": [{"enabled": False}],
@@ -55,15 +77,24 @@ class DecisionCrossValidationTest(unittest.TestCase):
             "lookahead_depth": [1, 2],
             "termination_mode": ["explicit_only"],
         }
-        manifest = build_search_manifest(search_space, seed=11, max_depth_one=2)
-        self.assertLessEqual(len(manifest["evaluated"]), 3)  # two plus legacy
-        self.assertTrue(
-            all(item["kind"] == "legacy" or item["depth"] == 1 for item in manifest["evaluated"])
-        )
+        catalog = {
+            "pool_sizes": {
+                str(pool): {
+                    "latency_ms": {"p95": 1.0},
+                    "candidate_deletion_stability": {"choice_agreement": 1.0},
+                }
+                for pool in (300, 500, 1000)
+            }
+        }
+        manifest = prepare_manifest_for_evaluation(search_space, catalog, seed=11, max_depth_one=2)
+        evaluated = [item for item in manifest["configs"] if item["status"].startswith("evaluated")]
+        self.assertLessEqual(len(evaluated), 2)
+        self.assertTrue(all(item["kind"] == "legacy" or item["depth"] == 1 for item in evaluated))
         self.assertTrue(
             all(
-                item["exclusion_reason"] == "known_depth_two_gate_mismatch"
-                for item in manifest["excluded"]
+                item["reason"] == "known_depth_two_gate_mismatch"
+                for item in manifest["configs"]
+                if item["status"] == "excluded_depth_two_known_residual"
             )
         )
 
@@ -79,20 +110,18 @@ class DecisionCrossValidationTest(unittest.TestCase):
         )
 
     def test_catalog_latency_and_fold_gates_reject_unstable_configuration(self) -> None:
-        # A config exceeding production latency or regressing two of three folds must not promote.
+        # An outer audit can flag regressions but cannot change the separately fit deployment ID.
         from experiments.decision_cross_validation import eligibility_reasons
 
         reasons = eligibility_reasons(
             candidate={
                 "outer_fold_hr10_deltas": [-0.01, -0.02, 0.01],
                 "scenario_hr10_deltas": {"buying": -0.01},
-                "catalog_stability_delta": -0.01,
+                "catalog_stability": 0.79,
                 "latency_p95_ms": 120.0,
             },
-            baseline={"latency_p95_ms": 50.0},
             hr10_tolerance=0.005,
             scenario_tolerance=0.02,
-            catalog_tolerance=0.02,
             latency_budget_ms=100.0,
         )
         self.assertIn("outer_fold_hr10_regression", reasons)
@@ -106,13 +135,11 @@ class DecisionCrossValidationTest(unittest.TestCase):
             candidate={
                 "outer_fold_hr10_deltas": [0.0, -0.001, 0.002],
                 "scenario_hr10_deltas": {"buying": 0.0},
-                "catalog_stability_delta": 0.0,
+                "catalog_stability": 0.80,
                 "latency_p95_ms": 50.0,
             },
-            baseline={"latency_p95_ms": 50.0},
             hr10_tolerance=0.005,
             scenario_tolerance=0.02,
-            catalog_tolerance=0.02,
             latency_budget_ms=100.0,
         )
         self.assertNotIn("outer_fold_hr10_regression", reasons)
@@ -142,6 +169,89 @@ class DecisionCrossValidationTest(unittest.TestCase):
             ]
         )
         self.assertEqual(selected["id"], "simple")
+
+    def test_one_standard_error_uses_canonical_equal_best_reference_independent_of_order(
+        self,
+    ) -> None:
+        # First-arrival tie-breaking changes the one-SE band after a harmless reorder.
+        from experiments.decision_cross_validation import select_one_standard_error
+
+        configs = [
+            {
+                "id": "z-best",
+                "mean": 0.72,
+                "standard_error": 0.001,
+                "complexity": 3,
+                "latency_p95_ms": 1.0,
+                "canonical_json": "z",
+            },
+            {
+                "id": "a-best",
+                "mean": 0.72,
+                "standard_error": 0.03,
+                "complexity": 3,
+                "latency_p95_ms": 1.0,
+                "canonical_json": "a",
+            },
+            {
+                "id": "simple",
+                "mean": 0.70,
+                "standard_error": 0.01,
+                "complexity": 1,
+                "latency_p95_ms": 1.0,
+                "canonical_json": "m",
+            },
+        ]
+        self.assertEqual(select_one_standard_error(configs)["id"], "simple")
+        self.assertEqual(select_one_standard_error(list(reversed(configs)))["id"], "simple")
+
+    def test_predeclared_catalog_gates_use_only_production_latency_and_account_every_sample(
+        self,
+    ) -> None:
+        # A derived budget or dropped non-selected config hides capacity risk.
+        from experiments.decision_cross_validation import prepare_manifest_for_evaluation
+
+        search_space = {
+            "coarse_sample_limit": 4,
+            "transition_guard_profile": [{"enabled": False}],
+            "candidate_weight_profile": [{"expected_shrink": 0.3}],
+            "finish_weight_profile": [{"resolve_at_10": 0.5}],
+            "pool_size": [300, 1000],
+            "prior_alpha": [0.25],
+            "prior_temperature": [1.0],
+            "other_answer_probability": [0.75],
+            "other_vagueness_penalty": [0.1],
+            "finish_candidate_threshold": [100],
+            "remaining_question_threshold": [2],
+            "lookahead_depth": [1],
+            "termination_mode": ["explicit_only"],
+        }
+        catalog = {
+            "pool_sizes": {
+                "300": {
+                    "latency_ms": {"p95": 2999.0},
+                    "analysis_kernel_latency_ms": {"p95": 99999.0},
+                    "candidate_deletion_stability": {"choice_agreement": 0.80},
+                },
+                "1000": {
+                    "latency_ms": {"p95": 3001.0},
+                    "candidate_deletion_stability": {"choice_agreement": 0.99},
+                },
+            }
+        }
+        manifest = prepare_manifest_for_evaluation(search_space, catalog, seed=2, max_depth_one=2)
+        statuses = {item["status"] for item in manifest["configs"]}
+        self.assertIn("evaluated_coarse", statuses)
+        self.assertIn("preexcluded_latency_budget", statuses)
+        self.assertEqual(len(manifest["configs"]), manifest["accounted_config_count"])
+
+    def test_recognizer_base_is_pinned_to_the_reviewed_commit(self) -> None:
+        # Accepting an arbitrary clean base would silently change the frozen recognizer version.
+        from experiments.decision_cross_validation import resolve_and_verify_recognizer_base_sha
+
+        self.assertTrue(resolve_and_verify_recognizer_base_sha("80e1480").startswith("80e1480"))
+        with self.assertRaisesRegex(ValueError, "required"):
+            resolve_and_verify_recognizer_base_sha("HEAD")
 
     def test_complete_recommendation_loads_and_output_collision_is_rejected(self) -> None:
         # A partial overlay or an output alias could fail deployment or replace the public dataset.

@@ -33,6 +33,10 @@ from llm.base import LLMClient
 logger = logging.getLogger(__name__)
 
 
+class StalePendingTurnError(RuntimeError):
+    """Raised when an ordinary pending turn no longer matches its base session."""
+
+
 @dataclass(frozen=True)
 class SessionState:
     dialogue: DialogueState
@@ -45,6 +49,7 @@ class PendingDialogueTurn:
     """Immutable interpretation that waits for one retrieved candidate pool."""
 
     session_id: str
+    base_session: SessionState
     turn: int
     state: DialogueState
     recognition: RecognitionResult
@@ -151,6 +156,7 @@ class DialogueUnderstandingPipeline:
         usage = self.recognizer.last_usage
         return PendingDialogueTurn(
             session_id=session_id,
+            base_session=session,
             turn=turn,
             state=dialogue,
             recognition=recognition,
@@ -186,6 +192,11 @@ class DialogueUnderstandingPipeline:
                 question_decision=decision,
                 prompt_tokens=pending.prompt_tokens,
                 completion_tokens=pending.completion_tokens,
+            )
+
+        if session != pending.base_session:
+            raise StalePendingTurnError(
+                "pending dialogue turn no longer matches the current session"
             )
 
         if candidate_signals is not None:

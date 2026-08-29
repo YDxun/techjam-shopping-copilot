@@ -154,7 +154,7 @@ class Agent(BaseAgent):
         ranked = self.reranker.rerank(
             self.retriever,
             candidates,
-            context,
+            turn_result.recommendation_context,
             route,
             top_k=top_k,
             mode=context.retrieval_mode,

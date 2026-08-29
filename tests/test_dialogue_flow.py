@@ -4,7 +4,7 @@ import json
 import unittest
 
 from agent.dialogue.models import GuardAction
-from agent.dialogue.pipeline import DialogueUnderstandingPipeline
+from agent.dialogue.pipeline import DialogueUnderstandingPipeline, StalePendingTurnError
 from agent.main_agent import Agent
 from config.env_config import EnvConfig
 from evaluator.local_evaluator import ALLOWED_ATTRIBUTES
@@ -66,6 +66,7 @@ class StaticReranker:
         self.order = order
         self.last_usage = {"prompt_tokens": 5, "completion_tokens": 2}
         self.last_candidates: list[dict] | None = None
+        self.last_context = None
 
     def rerank(
         self,
@@ -79,6 +80,7 @@ class StaticReranker:
         use_llm_rerank: bool = False,
     ) -> list[str]:
         self.last_candidates = candidates
+        self.last_context = state
         if not candidates:
             return []
         return list(self.order[:top_k])
@@ -286,6 +288,7 @@ class DialogueFlowTest(unittest.TestCase):
         self.assertEqual(session.dialogue.turn, 1)
         self.assertEqual(session.candidate_counts, (3,))
         self.assertEqual(session.dialogue.asked_attributes, (response["ask_attribute"],))
+        self.assertEqual(reranker.last_context.asked_attributes, session.dialogue.asked_attributes)
 
         policy = RecordingPolicy(agent.dialogue.question_policy)
         agent.dialogue.question_policy = policy
@@ -377,6 +380,48 @@ class DialogueFlowTest(unittest.TestCase):
         self.assertEqual(retriever.search_calls, 1)
         self.assertEqual(response["ask_attribute"], "other")
         self.assertEqual(agent.dialogue.session("s"), before)
+
+    def test_stale_or_replayed_ordinary_pending_cannot_overwrite_newer_session(self) -> None:
+        # Accepting an older pending result would replace turn two's state with turn one.
+        pipeline = self.build_rule_pipeline(guard_enabled=False)
+        pipeline.reset("s", {})
+        pipeline.record_shown("s", ["A"], turn=1)
+        first = pipeline.interpret_turn("s", "I'm looking for shoes.", turn=1)
+        second = pipeline.interpret_turn("s", "I also need them to be blue.", turn=2)
+
+        pipeline.decide_question(second, None, candidate_count=3)
+        committed = pipeline.session("s")
+
+        with self.assertRaises(StalePendingTurnError):
+            pipeline.decide_question(first, None, candidate_count=3)
+        self.assertEqual(pipeline.session("s"), committed)
+        self.assertEqual(pipeline.session("s").dialogue.turn, 2)
+        self.assertEqual(pipeline.session("s").candidate_counts, (3,))
+        self.assertEqual(
+            pipeline.session("s").products.context_lists(1).evaluation_excluded_asins,
+            ("A",),
+        )
+
+        with self.assertRaises(StalePendingTurnError):
+            pipeline.decide_question(second, None, candidate_count=3)
+        self.assertEqual(pipeline.session("s"), committed)
+
+    def test_guard_pending_is_replay_safe_without_committing_session(self) -> None:
+        # Guard blocks do not commit, so replay is intentionally an identical no-op response.
+        pipeline = self.build_pipeline(
+            guard_enabled=True,
+            llm_response=self.low_confidence_rejection("A"),
+        )
+        pipeline.reset("s", {})
+        pipeline.record_shown("s", ["A"], turn=1)
+        pending = pipeline.interpret_turn("s", "Reject A", turn=2)
+        before = pipeline.session("s")
+
+        first = pipeline.decide_question(pending, None, candidate_count=3)
+        replay = pipeline.decide_question(pending, None, candidate_count=3)
+
+        self.assertEqual(first.question_decision, replay.question_decision)
+        self.assertEqual(pipeline.session("s"), before)
 
     def test_unavailable_llm_uses_rule_path_and_keeps_session_valid(self) -> None:
         agent = Agent(

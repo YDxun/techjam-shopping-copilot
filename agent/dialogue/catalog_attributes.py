@@ -38,8 +38,12 @@ SHOE_PATTERN = re.compile(
     r"\b(?:shoe|shoes|sneaker|sneakers|boot|boots|sandal|sandals|heel|heels|flat|flats|"
     r"loafer|loafers|slipper|slippers)\b"
 )
-SIZE_CONTEXT_PATTERN = re.compile(
-    r"\b(?:size|sizing|us(?:\s+size)?)\b\s*[:#-]?\s*\d{1,2}(?:\.5)?\b"
+RAW_SIZE_NUMBER_PATTERN = re.compile(r"(?<![a-z0-9])(\d{1,2}(?:\.5)?)(?![a-z0-9])")
+SIZE_NUMBER_CONTEXT_PATTERN = re.compile(
+    r"\b(?:size|sizing|us|uk|eu)(?:\s+size)?\b\s*[:#-]?\s*"
+    r"(?P<after>\d{1,2}(?:\.5)?)\b"
+    r"|(?<![a-z0-9])(?P<before>\d{1,2}(?:\.5)?)\s*"
+    r"(?:size|sizing|us|uk|eu)(?:\s+size)?\b"
 )
 GENERIC_BRANDS = frozenset(
     {
@@ -242,14 +246,16 @@ class RuleVocabularyExtractor:
         normalized = su.normalize(text)
         if not normalized:
             return None
-        number = re.search(r"(?<![a-z0-9])(?:us\s*)?(\d{1,2}(?:\.5)?)(?![a-z0-9])", normalized)
-        has_size_context = bool(SIZE_CONTEXT_PATTERN.search(normalized))
-        if is_shoe and number and (include_short or has_size_context):
+        number = RAW_SIZE_NUMBER_PATTERN.search(normalized)
+        contextual_number = _size_number_with_context(normalized)
+        if is_shoe and include_short and number:
             return f"shoe_size:{number.group(1)}"
-        if number and not (include_short or has_size_context):
+        if is_shoe and contextual_number:
+            return f"shoe_size:{contextual_number}"
+        if number and not (include_short or contextual_number):
             return None
         matches = self._matches(
-            "size", normalized, include_short=include_short or has_size_context
+            "size", normalized, include_short=include_short or bool(contextual_number)
         )
         apparel = sorted(value for value in matches if value != "shoe_size")
         if apparel:
@@ -390,6 +396,13 @@ def _controlled_matches(text: str) -> frozenset[str]:
         for canonical, terms in CONTROLLED_FEATURES.items()
         if any(_contains(normalized, term, include_short=True) for term in terms)
     )
+
+
+def _size_number_with_context(text: str) -> str | None:
+    match = SIZE_NUMBER_CONTEXT_PATTERN.search(text)
+    if match is None:
+        return None
+    return match.group("after") or match.group("before")
 
 
 def _normalize_brand(value: str) -> str | None:

@@ -196,6 +196,23 @@ class CatalogAttributesTest(unittest.TestCase):
         self.assertEqual(without_context.values["size"], frozenset())
         self.assertEqual(with_context.values["size"], frozenset({"shoe_size:8.5"}))
 
+    def test_size_context_selects_its_bound_number_not_a_pack_count(self) -> None:
+        extractor = RuleVocabularyExtractor(self.vocabulary)
+        for title in (
+            "2 pack running shoes size 8.5",
+            "2 pack running shoes 8.5 size",
+            "2 pack running shoes US 8.5",
+        ):
+            profile = extractor.extract(
+                {
+                    "parent_asin": title,
+                    "title": title,
+                    "categories": ["Shoes"],
+                }
+            )
+
+            self.assertEqual(profile.values["size"], frozenset({"shoe_size:8.5"}))
+
     def test_bootcut_tokens_do_not_imply_footwear(self) -> None:
         profile = RuleVocabularyExtractor(self.vocabulary).extract(
             {

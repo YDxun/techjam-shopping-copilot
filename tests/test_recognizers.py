@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import unittest
 
 from agent.dialogue.models import (
@@ -117,6 +118,210 @@ class RecognizerTest(unittest.TestCase):
         self.assertEqual(result.category, "shoes")
         self.assertEqual(result.constraint_operations[0].value, "cotton")
         self.assertEqual(cascade.last_usage, LLMUsage(prompt_tokens=11, completion_tokens=7))
+
+    def test_llm_prompt_declares_the_complete_response_contract(self) -> None:
+        recognizer = LLMIntentRecognizer(
+            FakeLLMClient(successful_result("{}")),
+            max_evidence_length=180,
+        )
+
+        system_prompt = recognizer._messages(self.request("I want cotton shirts."))[0]["content"]
+
+        schema_text = system_prompt.split(
+            "Return exactly one JSON object matching this JSON Schema:\n",
+            1,
+        )[1].split("\nInclude every required field", 1)[0]
+        schema = json.loads(schema_text)
+        operation_schema = schema["properties"]["constraint_operations"]["items"]
+
+        self.assertEqual(
+            set(schema["required"]),
+            {
+                "dialogue_act",
+                "category",
+                "constraint_operations",
+                "explicit_rejected_asins",
+                "confidence",
+                "ambiguities",
+            },
+        )
+        self.assertEqual(
+            set(operation_schema["required"]),
+            {
+                "operation",
+                "attribute",
+                "value",
+                "polarity",
+                "strength",
+                "evidence",
+                "confidence",
+            },
+        )
+        self.assertEqual(
+            set(schema["properties"]["dialogue_act"]["enum"]),
+            {
+                "new_search",
+                "add_constraint",
+                "replace_constraint",
+                "remove_constraint",
+                "reject_products",
+                "no_preference",
+                "no_more_preferences",
+                "ambiguous",
+            },
+        )
+        self.assertEqual(
+            schema["properties"]["category"],
+            {
+                "anyOf": [
+                    {"type": "string", "minLength": 1},
+                    {"type": "null"},
+                ]
+            },
+        )
+        self.assertEqual(
+            set(operation_schema["properties"]["operation"]["enum"]),
+            {"add", "replace", "remove"},
+        )
+        self.assertEqual(
+            set(operation_schema["properties"]["polarity"]["enum"]),
+            {"include", "exclude"},
+        )
+        self.assertEqual(
+            set(operation_schema["properties"]["strength"]["enum"]),
+            {"hard", "soft"},
+        )
+        self.assertEqual(
+            operation_schema["properties"]["evidence"],
+            {"type": "string", "minLength": 1, "maxLength": 180},
+        )
+        self.assertIn('"operation":"replace"', system_prompt)
+        self.assertIn("shortest exact span", system_prompt)
+
+    def test_cascade_statistics_count_an_accepted_llm_result(self) -> None:
+        client = FakeLLMClient(
+            successful_result(
+                '{"dialogue_act":"add_constraint","category":"shoes",'
+                '"constraint_operations":[{"operation":"add","attribute":"material",'
+                '"value":"cotton","polarity":"include","strength":"hard",'
+                '"evidence":"cotton rather than wool","confidence":0.95}],'
+                '"explicit_rejected_asins":[],"confidence":0.95,"ambiguities":[]}'
+            )
+        )
+        cascade = CascadedIntentRecognizer(
+            rule_recognizer=self.rules,
+            llm_recognizer=LLMIntentRecognizer(client, max_evidence_length=180),
+            mode="cascaded",
+            rule_confidence_threshold=0.75,
+        )
+
+        cascade.recognize(self.request("I want that sort, but cotton rather than wool."))
+
+        self.assertEqual(
+            cascade.statistics(),
+            {
+                "total_turns": 1,
+                "rule_resolutions": 0,
+                "llm_attempts": 1,
+                "llm_accepted": 1,
+                "llm_fallbacks": 0,
+                "fallback_reasons": {},
+            },
+        )
+
+    def test_cascade_statistics_classify_invalid_json_fallback(self) -> None:
+        cascade = CascadedIntentRecognizer(
+            rule_recognizer=self.rules,
+            llm_recognizer=LLMIntentRecognizer(
+                FakeLLMClient(successful_result("not-json")),
+                max_evidence_length=180,
+            ),
+            mode="cascaded",
+            rule_confidence_threshold=0.75,
+        )
+
+        result = cascade.recognize(self.request("I want that sort, but cotton rather than wool."))
+
+        self.assertEqual(result.source, RecognitionSource.RULE)
+        self.assertEqual(cascade.statistics()["llm_fallbacks"], 1)
+        self.assertEqual(cascade.statistics()["fallback_reasons"], {"invalid_json": 1})
+
+    def test_cascade_statistics_classify_evidence_length_fallback(self) -> None:
+        response = (
+            '{"dialogue_act":"replace_constraint","category":null,'
+            '"constraint_operations":[{"operation":"replace","attribute":"feature",'
+            '"value":"cotton","polarity":"include","strength":"hard",'
+            f'"evidence":"{"x" * 181}","confidence":0.95}}],'
+            '"explicit_rejected_asins":[],"confidence":0.95,"ambiguities":[]}'
+        )
+        cascade = CascadedIntentRecognizer(
+            rule_recognizer=self.rules,
+            llm_recognizer=LLMIntentRecognizer(
+                FakeLLMClient(successful_result(response)),
+                max_evidence_length=180,
+            ),
+            mode="cascaded",
+            rule_confidence_threshold=0.75,
+        )
+
+        cascade.recognize(self.request("Actually, ignore my earlier preference."))
+
+        self.assertEqual(
+            cascade.statistics()["fallback_reasons"],
+            {"evidence_too_long": 1},
+        )
+
+    def test_empty_llm_evidence_falls_back_and_is_counted(self) -> None:
+        response = (
+            '{"dialogue_act":"add_constraint","category":null,'
+            '"constraint_operations":[{"operation":"add","attribute":"material",'
+            '"value":"cotton","polarity":"include","strength":"hard",'
+            '"evidence":"","confidence":0.95}],'
+            '"explicit_rejected_asins":[],"confidence":0.95,"ambiguities":[]}'
+        )
+        cascade = CascadedIntentRecognizer(
+            rule_recognizer=self.rules,
+            llm_recognizer=LLMIntentRecognizer(
+                FakeLLMClient(successful_result(response)),
+                max_evidence_length=180,
+            ),
+            mode="cascaded",
+            rule_confidence_threshold=0.75,
+        )
+
+        result = cascade.recognize(self.request("I want that sort, but cotton instead."))
+
+        self.assertEqual(result.source, RecognitionSource.RULE)
+        self.assertEqual(
+            cascade.statistics()["fallback_reasons"],
+            {"invalid_evidence": 1},
+        )
+
+    def test_ungrounded_llm_evidence_falls_back_and_is_counted(self) -> None:
+        response = (
+            '{"dialogue_act":"add_constraint","category":null,'
+            '"constraint_operations":[{"operation":"add","attribute":"material",'
+            '"value":"cotton","polarity":"include","strength":"hard",'
+            '"evidence":"invented span","confidence":0.95}],'
+            '"explicit_rejected_asins":[],"confidence":0.95,"ambiguities":[]}'
+        )
+        cascade = CascadedIntentRecognizer(
+            rule_recognizer=self.rules,
+            llm_recognizer=LLMIntentRecognizer(
+                FakeLLMClient(successful_result(response)),
+                max_evidence_length=180,
+            ),
+            mode="cascaded",
+            rule_confidence_threshold=0.75,
+        )
+
+        result = cascade.recognize(self.request("I want that sort, but cotton instead."))
+
+        self.assertEqual(result.source, RecognitionSource.RULE)
+        self.assertEqual(
+            cascade.statistics()["fallback_reasons"],
+            {"evidence_not_grounded": 1},
+        )
 
     def test_malformed_or_out_of_scope_llm_output_falls_back_to_exact_rule_result(self) -> None:
         request = self.request("The previous sort is not what I meant.", shown=("A",))

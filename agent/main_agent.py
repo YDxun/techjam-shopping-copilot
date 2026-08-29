@@ -93,6 +93,10 @@ class Agent(BaseAgent):
         """新会话开始：初始化独立会话状态（内存态），注入长期用户画像。"""
         self.dialogue.reset(session_id, user_profile)
 
+    def intent_recognition_statistics(self) -> dict[str, object]:
+        """Expose local diagnostics without changing the official turn-response contract."""
+        return self.dialogue.recognizer.statistics()
+
     # ------------------------------------------------------------------
     def respond(self, session_id: str, user_message: str, turn: int, top_k: int) -> dict:
         """每轮对话主流程（Pillar I~IV 编排）。"""

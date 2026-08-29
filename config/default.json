@@ -18,7 +18,18 @@
   "dialogue_understanding": {
     "mode": "cascaded",
     "rule_confidence_threshold": 0.75,
-    "max_evidence_length": 180
+    "max_evidence_length": 180,
+    "transition_guard": {
+      "enabled": false,
+      "add_min_confidence": 0.65,
+      "replace_min_confidence": 0.9,
+      "remove_min_confidence": 0.9,
+      "reject_products_min_confidence": 0.9,
+      "no_preference_min_confidence": 0.85,
+      "no_more_preferences_min_confidence": 0.95,
+      "low_confidence_add_action": "soften",
+      "destructive_failure_action": "clarify"
+    }
   },
   "decision": {
     "max_questions": 3,

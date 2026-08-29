@@ -59,6 +59,13 @@ class ProductFeedback(str, Enum):
     HARD_REJECTED = "hard_rejected"
 
 
+class GuardAction(str, Enum):
+    APPLY = "apply"
+    SOFTEN = "soften"
+    CLARIFY = "clarify"
+    REJECT = "reject"
+
+
 @dataclass(frozen=True)
 class ConstraintOperation:
     operation: OperationKind
@@ -101,6 +108,14 @@ class RecognitionResult:
     # 边界措辞 "I don't have a preference for X; please use your judgment."：
     # 仅表示对 X 无偏好，不表示信息枯竭，policy 据此区分是否停止提问。
     boundary_signal: bool = False
+
+
+@dataclass(frozen=True)
+class GuardDecision:
+    action: GuardAction
+    recognition: RecognitionResult
+    reason_code: str
+    clarify_attribute: str | None = None
 
 
 @dataclass(frozen=True)

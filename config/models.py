@@ -37,10 +37,24 @@ class CircuitBreakerConfig:
 
 
 @dataclass(frozen=True)
+class TransitionGuardConfig:
+    enabled: bool = False
+    add_min_confidence: float = 0.65
+    replace_min_confidence: float = 0.90
+    remove_min_confidence: float = 0.90
+    reject_products_min_confidence: float = 0.90
+    no_preference_min_confidence: float = 0.85
+    no_more_preferences_min_confidence: float = 0.95
+    low_confidence_add_action: str = "soften"
+    destructive_failure_action: str = "clarify"
+
+
+@dataclass(frozen=True)
 class DialogueUnderstandingConfig:
     mode: str = "cascaded"
     rule_confidence_threshold: float = 0.75
     max_evidence_length: int = 180
+    transition_guard: TransitionGuardConfig = field(default_factory=TransitionGuardConfig)
 
 
 @dataclass(frozen=True)

@@ -21,6 +21,7 @@ from config.models import (
     SecretValue,
     StopUtilityConfig,
     StopUtilityWeights,
+    TransitionGuardConfig,
 )
 
 DEFAULT_CONFIG_PATH = Path(__file__).with_name("default.json")
@@ -173,6 +174,10 @@ def _environment_overrides(
             ("dialogue_understanding", "max_evidence_length"),
             _parse_int,
         ),
+        "SHOPPING_DIALOGUE__TRANSITION_GUARD__ENABLED": (
+            ("dialogue_understanding", "transition_guard", "enabled"),
+            _parse_bool,
+        ),
         "SHOPPING_DECISION__MAX_QUESTIONS": (("decision", "max_questions"), _parse_int),
         "SHOPPING_DECISION__ASK_UTILITY__MINIMUM": (
             ("decision", "ask_utility", "minimum_ask_utility"),
@@ -309,6 +314,9 @@ def _parse_bool(value: str, name: str) -> bool:
 def _build_and_validate(data: Mapping[str, Any], selected_key: SecretValue) -> AppConfig:
     llm_data = _mapping(data.get("llm"), "llm")
     dialogue_data = _mapping(data.get("dialogue_understanding"), "dialogue_understanding")
+    transition_guard_data = _mapping(
+        dialogue_data.get("transition_guard"), "dialogue_understanding.transition_guard"
+    )
     decision_data = _mapping(data.get("decision"), "decision")
     ask_data = _mapping(decision_data.get("ask_utility"), "decision.ask_utility")
     ask_weights_data = _mapping(ask_data.get("weights"), "decision.ask_utility.weights")
@@ -391,6 +399,44 @@ def _build_and_validate(data: Mapping[str, Any], selected_key: SecretValue) -> A
             max_evidence_length=_int_value(
                 dialogue_data.get("max_evidence_length"),
                 "dialogue_understanding.max_evidence_length",
+            ),
+            transition_guard=TransitionGuardConfig(
+                enabled=_bool_value(
+                    transition_guard_data.get("enabled"),
+                    "dialogue_understanding.transition_guard.enabled",
+                ),
+                add_min_confidence=_number_value(
+                    transition_guard_data.get("add_min_confidence"),
+                    "dialogue_understanding.transition_guard.add_min_confidence",
+                ),
+                replace_min_confidence=_number_value(
+                    transition_guard_data.get("replace_min_confidence"),
+                    "dialogue_understanding.transition_guard.replace_min_confidence",
+                ),
+                remove_min_confidence=_number_value(
+                    transition_guard_data.get("remove_min_confidence"),
+                    "dialogue_understanding.transition_guard.remove_min_confidence",
+                ),
+                reject_products_min_confidence=_number_value(
+                    transition_guard_data.get("reject_products_min_confidence"),
+                    "dialogue_understanding.transition_guard.reject_products_min_confidence",
+                ),
+                no_preference_min_confidence=_number_value(
+                    transition_guard_data.get("no_preference_min_confidence"),
+                    "dialogue_understanding.transition_guard.no_preference_min_confidence",
+                ),
+                no_more_preferences_min_confidence=_number_value(
+                    transition_guard_data.get("no_more_preferences_min_confidence"),
+                    "dialogue_understanding.transition_guard.no_more_preferences_min_confidence",
+                ),
+                low_confidence_add_action=_string_value(
+                    transition_guard_data.get("low_confidence_add_action"),
+                    "dialogue_understanding.transition_guard.low_confidence_add_action",
+                ),
+                destructive_failure_action=_string_value(
+                    transition_guard_data.get("destructive_failure_action"),
+                    "dialogue_understanding.transition_guard.destructive_failure_action",
+                ),
             ),
         ),
         decision=DecisionConfig(
@@ -476,6 +522,19 @@ def _validate(config: AppConfig) -> None:
     _unit_interval(
         config.dialogue_understanding.rule_confidence_threshold,
         "dialogue_understanding.rule_confidence_threshold",
+    )
+    for name, value in vars(config.dialogue_understanding.transition_guard).items():
+        if name.endswith("_min_confidence"):
+            _unit_interval(value, f"dialogue_understanding.transition_guard.{name}")
+    _in(
+        config.dialogue_understanding.transition_guard.low_confidence_add_action,
+        "dialogue_understanding.transition_guard.low_confidence_add_action",
+        {"soften"},
+    )
+    _in(
+        config.dialogue_understanding.transition_guard.destructive_failure_action,
+        "dialogue_understanding.transition_guard.destructive_failure_action",
+        {"clarify"},
     )
     _positive(config.decision.max_questions, "decision.max_questions")
     _unit_interval(

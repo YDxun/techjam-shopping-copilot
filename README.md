@@ -227,6 +227,30 @@ ENV_MODE=submit LLM_PROVIDER=none python run_local_eval.py
 python -m unittest discover tests -v
 ```
 
+### Intent generalization regression corpus
+
+`tests/fixtures/intent/generalization.jsonl` is a hand-reviewed JSONL corpus.
+Each row has the deterministic schema `{id, tags, message, state, expected}`:
+`state` may declare `category`, `constraints` (with `attribute`, `value`, and
+`strength`), and `recently_shown_asins`; `expected` stores literal dialogue-act
+and operation labels. The offline regression test runs the rule recognizer only
+and never contacts an external API:
+
+```bash
+.conda/bin/python -m pytest -q -p no:cacheprovider \
+  tests/test_intent_generalization.py tests/test_transition_sequences.py
+```
+
+When DeepSeek is configured, the opt-in live class can additionally check the
+strict response schema and print aggregate schema-valid, destructive-precision,
+and fallback rates. It makes no exact-output assertions and never stores raw
+model responses:
+
+```bash
+RUN_LIVE_LLM=1 LLM_PROVIDER=deepseek LLM_INTENT_ENABLE=1 \
+  .conda/bin/python -m pytest -q -p no:cacheprovider tests/test_intent_generalization.py
+```
+
 ---
 
 ## 5. 解决方案局限与迭代方向
@@ -315,4 +339,3 @@ LLM 全部通过**环境变量 + 能力探测 + 运行时控制器**启用，默
   下游 `intent_router -> retriever(BLaIR) -> reranker(规则+bge/LLM)` 负责 Top10。
 
 决策配置见 `config/default.json` 的 `dialogue_understanding` 与 `decision` 段。
-

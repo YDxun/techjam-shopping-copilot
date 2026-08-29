@@ -27,13 +27,34 @@ RE_NO_PREFERENCE = re.compile(
     r"(?:don't|do not) have (?:an additional|a) preference for\s+([a-z_]+)",
     re.I,
 )
-RE_NO_MORE = re.compile(r"(?:no more preferences|no additional preferences)", re.I)
+RE_NO_MORE = re.compile(
+    r"(?:no more prefer(?:e)?nces|no additional preferences)",
+    re.I,
+)
 RE_BOUNDARY = re.compile(
     r"don't have a preference for\s+([a-z_]+)[^.]*please use your judgment",
     re.I | re.S,
 )
 RE_NOT_RIGHT = re.compile(r"(?:not quite right|not what i meant|reject)", re.I)
 RE_ASIN = re.compile(r"\bB0[A-Z0-9]{8}\b", re.I)
+RE_REPLACE_CONSTRAINT = re.compile(
+    r"\b(?:switch|change|replace)\s+(?:the\s+)?"
+    r"(?P<attribute>material|color|size|style|brand|budget|feature|use_case)\s+"
+    r"(?:to|for|with)\s+(?P<value>[a-z][a-z0-9 -]{0,80}?)(?=[.!?;,]|$)",
+    re.I,
+)
+RE_REMOVE_VALUE_ATTRIBUTE = re.compile(
+    r"\b(?:remove|drop)\s+(?:the\s+)?(?P<value>[a-z][a-z0-9 -]{0,80}?)\s+"
+    r"(?P<attribute>material|color|size|style|brand|budget|feature|use_case)\b",
+    re.I,
+)
+RE_NEGATED_REJECTION = re.compile(
+    r"\b(?:don't|do not) mean reject all of (?:them|these)\b.*?"
+    r"\b(?:only\s+)?(?:dislike|don't like)\s+the\s+"
+    r"(?P<color>black|white|blue|red|pink|green|brown|gray|grey|purple|yellow|orange)\s+"
+    r"(?:one|ones)\b",
+    re.I | re.S,
+)
 RE_COMPLEX = re.compile(
     r"\b(?:rather than|instead of|except|not the|previous|former|latter|that sort)\b",
     re.I,
@@ -58,8 +79,48 @@ class RuleBasedRecognizer:
         no_more = RE_NO_MORE.search(text)
         no_preference = RE_NO_PREFERENCE.search(text)
         not_right = RE_NOT_RIGHT.search(text)
+        replacement = RE_REPLACE_CONSTRAINT.search(text)
+        removal = RE_REMOVE_VALUE_ATTRIBUTE.search(text)
+        negated_rejection = RE_NEGATED_REJECTION.search(text)
 
-        if override:
+        if negated_rejection:
+            color = negated_rejection.group("color").lower()
+            operations.append(
+                ConstraintOperation(
+                    operation=OperationKind.ADD,
+                    attribute="color",
+                    value=color,
+                    polarity=Polarity.EXCLUDE,
+                    strength=ConstraintStrength.HARD,
+                    evidence=negated_rejection.group(0)[: self.max_evidence_length],
+                    confidence=0.95,
+                )
+            )
+            dialogue_act = DialogueAct.ADD_CONSTRAINT
+            confidence = 0.95
+        elif replacement:
+            operations.append(
+                self._operation(
+                    OperationKind.REPLACE,
+                    replacement.group("value"),
+                    ConstraintStrength.HARD,
+                    attribute=replacement.group("attribute").lower(),
+                )
+            )
+            dialogue_act = DialogueAct.REPLACE_CONSTRAINT
+            confidence = 0.95
+        elif removal:
+            operations.append(
+                self._operation(
+                    OperationKind.REMOVE,
+                    removal.group("value"),
+                    ConstraintStrength.HARD,
+                    attribute=removal.group("attribute").lower(),
+                )
+            )
+            dialogue_act = DialogueAct.REMOVE_CONSTRAINT
+            confidence = 0.95
+        elif override:
             operations.append(
                 self._operation(
                     OperationKind.REPLACE,
@@ -160,11 +221,12 @@ class RuleBasedRecognizer:
         kind: OperationKind,
         value: str,
         strength: ConstraintStrength,
+        attribute: str | None = None,
     ) -> ConstraintOperation:
         cleaned = value.strip()[: self.max_evidence_length]
         return ConstraintOperation(
             operation=kind,
-            attribute=su.classify_attribute(cleaned),
+            attribute=attribute or su.classify_attribute(cleaned),
             value=cleaned,
             polarity=Polarity.INCLUDE,
             strength=strength,

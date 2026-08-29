@@ -119,9 +119,9 @@ class QuestionPolicy:
         candidate_signals: CandidateQuestionSignals,
     ) -> QuestionDecision:
         if state.no_more_preferences:
-            return self._stop("user_has_no_more_preferences")
+            return self._dynamic_stop("user_has_no_more_preferences")
         if state.turn >= 10:
-            return self._stop("final_turn_no_followup")
+            return self._dynamic_stop("final_turn_no_followup")
 
         concrete = tuple(
             attribute
@@ -138,7 +138,7 @@ class QuestionPolicy:
         )
         candidates = concrete + (("other",) if other_legal else ())
         if not candidates:
-            return self._stop("all_attributes_exhausted")
+            return self._dynamic_stop("all_attributes_exhausted")
 
         finish_gate = self._finish_gate(state, candidate_signals, candidates)
         finish_pressure = self._finish_pressure(state, candidate_signals) if finish_gate else 0.0
@@ -167,7 +167,7 @@ class QuestionPolicy:
             best = "other"
             reason = "dynamic_other_fallback"
         else:
-            return self._stop("all_attributes_exhausted")
+            return self._dynamic_stop("all_attributes_exhausted")
         ordered_scores = {
             attribute: round(scores[attribute], 6)
             for attribute in ATTRIBUTE_ORDER
@@ -203,9 +203,11 @@ class QuestionPolicy:
         base_exploration = (
             weights.expected_shrink * self._clamp(signal.expected_shrink)
             + weights.coverage * self._clamp(signal.coverage)
-            + weights.complementarity * complementarity
             + weights.answer_probability * answer_probability
             - weights.missing_penalty * self._clamp(signal.missing_rate)
+        )
+        state_gain = (
+            weights.complementarity * complementarity
             - weights.redundancy_penalty * redundancy
         )
         vagueness_penalty = (
@@ -237,6 +239,7 @@ class QuestionPolicy:
         utility = (
             (1.0 - finish_pressure) * exploration_gain
             + finish_pressure * finish_gain
+            + state_gain
             - repeat_penalty
             - no_preference_penalty
             - turn_cost
@@ -249,6 +252,7 @@ class QuestionPolicy:
             "missing_penalty": weights.missing_penalty * self._clamp(signal.missing_rate),
             "redundancy_penalty": weights.redundancy_penalty * redundancy,
             "exploration_gain": exploration_gain,
+            "state_gain": state_gain,
             "base_finish_gain": base_finish_gain,
             "two_step_finish_gain": two_step_finish_gain,
             "finish_gain": finish_gain,
@@ -352,6 +356,10 @@ class QuestionPolicy:
                 for attribute, values in components.items()
             }
         )
+
+    def _dynamic_stop(self, reason_code: str) -> QuestionDecision:
+        self.last_components = self._freeze_components({reason_code: {"utility": 0.0}})
+        return self._stop(reason_code)
 
     def message_for(self, decision: QuestionDecision, state: DialogueState) -> str:
         if decision.should_ask and decision.ask_attribute:

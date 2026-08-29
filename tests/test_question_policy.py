@@ -11,12 +11,14 @@ from agent.dialogue.catalog_signals import (
 from agent.dialogue.models import (
     CandidateAttributeSignal,
     CandidateQuestionSignals,
+    Constraint,
     ConstraintOperation,
     ConstraintStrength,
     DialogueAct,
     DialogueState,
     OperationKind,
     Polarity,
+    QuestionDecision,
     RecognitionResult,
     RecognitionSource,
 )
@@ -283,21 +285,27 @@ class QuestionPolicyTest(unittest.TestCase):
 
 
 class DynamicQuestionPolicyTest(unittest.TestCase):
-    def test_disabled_or_missing_dynamic_signals_match_legacy_snapshot(self) -> None:
-        # Removing the legacy routing branch would change this literal legacy decision.
+    def test_all_legacy_routes_return_literal_snapshot(self) -> None:
+        # Sending a legacy route through dynamic selection would change this exact decision.
         state = DialogueState(session_id="s1", user_profile={}, category="shoes", turn=1)
         static = CatalogQuestionSignals(
             by_category={"shoes": {"material": AttributeSignal(1.0, 0.9, 0.9)}}
         )
-        expected = QuestionPolicy(DecisionConfig()).decide(state, parsed(), static)
+        expected = QuestionDecision(True, "other", "ask_other_first", 1.0, {})
         enabled = dynamic_config()
         disabled = replace(
             enabled,
             candidate_question_value=CandidateQuestionValueConfig(enabled=False),
         )
+        termination_legacy = replace(enabled, question_termination_mode="legacy")
+        candidate = dynamic_signals({"material": candidate_signal("material", shrink=1.0)})
 
         self.assertEqual(QuestionPolicy(disabled).decide(state, parsed(), static), expected)
         self.assertEqual(QuestionPolicy(enabled).decide(state, parsed(), static), expected)
+        self.assertEqual(
+            QuestionPolicy(termination_legacy).decide(state, parsed(), static, candidate),
+            expected,
+        )
 
     def test_explicit_only_asks_at_turn_nine_and_stops_at_ten(self) -> None:
         # Moving the explicit-only terminal boundary from ten to nine would fail.
@@ -411,6 +419,111 @@ class DynamicQuestionPolicyTest(unittest.TestCase):
         self.assertIsInstance(policy.last_components, MappingProxyType)
         with self.assertRaises(TypeError):
             policy.last_components["material"]["utility"] = 0.0
+
+    def test_dynamic_early_stops_replace_diagnostics_with_fresh_immutable_zero_score(self) -> None:
+        # Retaining prior components on a stop would leave a stale attribute score in diagnostics.
+        policy = QuestionPolicy(dynamic_config())
+        candidate = dynamic_signals({"material": candidate_signal("material", shrink=0.5)})
+        policy.decide(
+            DialogueState(session_id="s", user_profile={}, category="shoes", turn=2),
+            parsed(),
+            CatalogQuestionSignals.empty(),
+            candidate,
+        )
+        prior = policy.last_components
+        stopped = (
+            ("user_has_no_more_preferences", DialogueState(
+                session_id="s", user_profile={}, category="shoes", turn=2, no_more_preferences=True
+            ), candidate),
+            ("final_turn_no_followup", DialogueState(
+                session_id="s", user_profile={}, category="shoes", turn=10
+            ), candidate),
+            ("all_attributes_exhausted", DialogueState(
+                session_id="s", user_profile={}, category="shoes", turn=2
+            ), dynamic_signals({})),
+        )
+
+        for reason, state, stop_signals in stopped:
+            decision = policy.decide(state, parsed(), CatalogQuestionSignals.empty(), stop_signals)
+
+            self.assertEqual(decision.reason_code, reason)
+            self.assertIsInstance(policy.last_components, MappingProxyType)
+            self.assertIsNot(policy.last_components, prior)
+            self.assertEqual(set(policy.last_components), {reason})
+            self.assertEqual(dict(policy.last_components[reason]), {"utility": 0.0})
+            with self.assertRaises(TypeError):
+                policy.last_components[reason]["utility"] = 1.0
+            prior = policy.last_components
+
+    def test_state_gain_stays_outside_finish_interpolation_and_matches_utility(self) -> None:
+        # Folding complementarity into exploration would scale this 0.4 state gain down late.
+        weights = CandidateQuestionWeights(
+            expected_shrink=0.0,
+            coverage=0.0,
+            complementarity=0.4,
+            answer_probability=0.0,
+            missing_penalty=0.0,
+            redundancy_penalty=0.2,
+            repeat_penalty=0.0,
+            no_preference_penalty=0.0,
+            turn_cost=0.0,
+        )
+        policy = QuestionPolicy(
+            dynamic_config(
+                finish_enabled=True,
+                candidate_threshold=30,
+                weights=weights,
+                finish_weights=FinishWeights(
+                    resolve_at_10=0.0,
+                    resolve_at_3=0.0,
+                    resolve_at_1=0.0,
+                    terminal_progress=0.0,
+                    p90_remaining_penalty=0.0,
+                ),
+            )
+        )
+        state = DialogueState(
+            session_id="s",
+            user_profile={},
+            category="shoes",
+            turn=8,
+            asked_attributes=("feature", "size"),
+            active_constraints=(
+                Constraint(
+                    attribute="material",
+                    value="cotton",
+                    polarity=Polarity.INCLUDE,
+                    strength=ConstraintStrength.HARD,
+                    evidence="cotton",
+                    source_turn=1,
+                    tokens=("cotton",),
+                ),
+            ),
+        )
+        policy.decide(
+            state,
+            parsed(),
+            CatalogQuestionSignals.empty(),
+            dynamic_signals(
+                {
+                    "material": candidate_signal("material"),
+                    "color": candidate_signal("color"),
+                },
+                previous_count=80,
+            ),
+        )
+
+        components = policy.last_components["color"]
+        self.assertAlmostEqual(components["state_gain"], 0.4)
+        self.assertAlmostEqual(
+            components["utility"],
+            (1.0 - components["finish_pressure"]) * components["exploration_gain"]
+            + components["finish_pressure"] * components["finish_gain"]
+            + components["state_gain"]
+            - components["repeat_penalty"]
+            - components["no_preference_penalty"]
+            - components["turn_cost"],
+        )
 
 
 if __name__ == "__main__":

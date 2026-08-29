@@ -122,13 +122,19 @@ class CandidateSignalCalculatorTest(unittest.TestCase):
             calculator(cache, temperature=0.0)
 
     def test_weighted_p90_uses_target_probability_mass(self) -> None:
-        # A rank-based percentile would pick one; P90 must include the highly
-        # likely two-item branch and therefore be two.
+        # An unweighted nearest-rank P90 is one here (nine one-item branches),
+        # while probability mass makes the high-RRF ten-item branch P90.
         cache = cache_for(
             A={"material": {"cotton"}},
             B={"material": {"leather"}},
             C={"material": {"wool"}},
-            D={"material": {"wool"}},
+            D={"material": {"silk"}},
+            E={"material": {"linen"}},
+            F={"material": {"denim"}},
+            G={"material": {"suede"}},
+            H={"material": {"rayon"}},
+            I={"material": {"nylon"}},
+            J={},
         )
 
         material = calculator(cache, alpha=1.0).calculate(
@@ -136,12 +142,19 @@ class CandidateSignalCalculatorTest(unittest.TestCase):
                 {"parent_asin": "A", "rrf": 0.0},
                 {"parent_asin": "B", "rrf": 0.0},
                 {"parent_asin": "C", "rrf": 0.0},
-                {"parent_asin": "D", "rrf": 2.0},
+                {"parent_asin": "D", "rrf": 0.0},
+                {"parent_asin": "E", "rrf": 0.0},
+                {"parent_asin": "F", "rrf": 0.0},
+                {"parent_asin": "G", "rrf": 0.0},
+                {"parent_asin": "H", "rrf": 0.0},
+                {"parent_asin": "I", "rrf": 0.0},
+                {"parent_asin": "J", "rrf": 2.0},
             ]
         ).by_attribute["material"]
 
-        self.assertEqual(material.p90_remaining, 2.0)
-        self.assertEqual(material.worst_case_remaining, 2)
+        self.assertNotEqual(material.p90_remaining, 1.0)
+        self.assertEqual(material.p90_remaining, 10.0)
+        self.assertEqual(material.worst_case_remaining, 10)
 
     def test_multivalue_overlap_keeps_any_shared_value(self) -> None:
         # Requiring exact set equality rather than overlap would make the expected
@@ -160,17 +173,35 @@ class CandidateSignalCalculatorTest(unittest.TestCase):
         self.assertEqual(material.expected_remaining, 3.0)
 
     def test_joint_other_uses_best_concrete_pair_with_stable_tie_order(self) -> None:
+        # Color and size carry the same partition, so all three concrete pairs
+        # tie at one remaining candidate; canonical order must retain this pair.
         cache = cache_for(
-            A={"material": {"cotton"}, "color": {"black"}},
-            B={"material": {"cotton"}, "color": {"red"}},
-            C={"material": {"leather"}, "color": {"black"}},
-            D={"material": {"leather"}, "color": {"red"}},
+            A={"material": {"cotton"}, "color": {"black"}, "size": {"small"}},
+            B={"material": {"cotton"}, "color": {"red"}, "size": {"large"}},
+            C={"material": {"leather"}, "color": {"black"}, "size": {"small"}},
+            D={"material": {"leather"}, "color": {"red"}, "size": {"large"}},
         )
 
         signals = calculator(cache).calculate([{"parent_asin": asin} for asin in "ABCD"])
 
         self.assertEqual(signals.best_other_pair, ("material", "color"))
         self.assertIsNotNone(signals.other_signal)
+        self.assertEqual(signals.other_signal.expected_remaining, 1.0)
+
+    def test_joint_signal_intersects_known_answers_when_one_attribute_is_missing(self) -> None:
+        # Returning the full pool as soon as any target value is missing would
+        # retain B for target A despite B's conflicting known color.
+        cache = cache_for(
+            A={"material": {"cotton"}, "color": {"black"}},
+            B={"color": {"red"}},
+        )
+
+        signals = calculator(cache).calculate(
+            [{"parent_asin": "A"}, {"parent_asin": "B"}],
+            eligible_attributes=("material", "color"),
+        )
+
+        self.assertEqual(signals.best_other_pair, ("material", "color"))
         self.assertEqual(signals.other_signal.expected_remaining, 1.0)
 
     def test_eligible_attributes_limit_attributes_and_joint_pairs(self) -> None:

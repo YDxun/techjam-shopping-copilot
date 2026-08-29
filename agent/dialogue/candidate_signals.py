@@ -90,7 +90,10 @@ class CandidateSignalCalculator:
         return CandidateQuestionSignals(
             candidate_count=len(rows),
             by_attribute=by_attribute,
-            target_probabilities=probabilities,
+            target_probabilities={
+                asin: self._bounded_ratio(probability)
+                for asin, probability in probabilities.items()
+            },
             best_other_pair=best_other_pair,
             other_signal=other_signal,
         )
@@ -163,7 +166,7 @@ class CandidateSignalCalculator:
         softmax = [value / total for value in exponents]
         alpha = self._config.prior_alpha
         return {
-            row.asin: self._bounded_ratio((1.0 - alpha) * uniform + alpha * softmax[index])
+            row.asin: (1.0 - alpha) * uniform + alpha * softmax[index]
             for index, row in enumerate(rows)
         }
 
@@ -301,14 +304,13 @@ class CandidateSignalCalculator:
         attributes: tuple[str, ...],
     ) -> tuple[_Candidate, ...]:
         target_values = {attribute: self._values(target, attribute) for attribute in attributes}
-        if any(not values for values in target_values.values()):
-            return tuple(rows)
         return tuple(
             row
             for row in rows
-            if any(not self._values(row, attribute) for attribute in attributes)
-            or all(
-                self._values(row, attribute) & target_values[attribute]
+            if all(
+                not target_values[attribute]
+                or not self._values(row, attribute)
+                or self._values(row, attribute) & target_values[attribute]
                 for attribute in attributes
             )
         )

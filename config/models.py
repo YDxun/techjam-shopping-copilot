@@ -230,6 +230,11 @@ class AppConfig:
     asset_category_expand: bool = False  # category_mapping 品类 token 扩展（首轮路由）
     asset_paraphrase: bool = False  # review_paraphrases 评论改写抽取（私有集鲁棒）
     asset_field_map: bool = False  # field_mapping 字段感知匹配（预留）
+    # 输出门控（捂盘）：低置信时少给推荐、高置信/临期才满仓（命中即锁名次 -> 提升 MRR）
+    emit_gate: bool = False  # EMIT_GATE=1 启用
+    emit_late_turn: int = 4  # turn>=该值 满仓
+    emit_k0: int = 1  # 0 约束时输出数
+    emit_k1: int = 2  # 1 约束时输出数
     # 必要性线索词提升 hard（Part A）：must/need/require/important/key 等 → 泛化提取升级 HARD
     hard_cue_enabled: bool = True
 

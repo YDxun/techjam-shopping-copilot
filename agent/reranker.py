@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+import re
 
 from agent.dialogue.models import RecommendationContext
 from agent.intent_router import IntentRoute
@@ -38,9 +39,17 @@ _DEFAULT_WEIGHTS = {
     "popularity": 0.05,
     "profile": 0.05,
 }
-_DEFAULT_FP = type("_FP", (), {
-    "enable": False, "bonus_unique": 1.0, "bonus_ten": 0.5, "bonus_fifty": 0.2, "max_count": 50,
-})()
+_DEFAULT_FP = type(
+    "_FP",
+    (),
+    {
+        "enable": False,
+        "bonus_unique": 1.0,
+        "bonus_ten": 0.5,
+        "bonus_fifty": 0.2,
+        "max_count": 50,
+    },
+)()
 
 BGE_RERANK_CANDIDATES = 50  # bge 交叉编码重排候选规模（与检索管线 RERANK_CANDIDATES_NORMAL 一致）
 
@@ -280,6 +289,11 @@ class Reranker:
         # 都会扰动已对齐的规则排序（MRR 0.619→0.597/0.610），故不替换。
         if su.phrase_exists(text, c.value):
             return 1.0
+        # 标点不敏感匹配：details 渲染 "key value" vs 约束 "key: item" 等机械失配
+        loose_text = re.sub(r"[^a-z0-9]+", " ", text)
+        loose_key = re.sub(r"[^a-z0-9]+", " ", su.constraint_key(c.value))
+        if len(loose_key) >= 3 and loose_key in loose_text:
+            return 0.85
         if c.tokens:
             hit = sum(1 for t in c.tokens if t in text)
             return hit / len(c.tokens)
@@ -415,9 +429,7 @@ class Reranker:
             self._rerank_client = None
         return self._rerank_client
 
-    def _text_rerank(
-        self, order: list[str], retriever: HybridRetriever, state, route
-    ) -> list[str]:
+    def _text_rerank(self, order: list[str], retriever: HybridRetriever, state, route) -> list[str]:
         """用 qwen3-rerank 对 Top-rerank_candidates 按 query 相关性重排；异常回退原顺序。"""
         client = self._ensure_text_rerank()
         if client is None or not client.available:

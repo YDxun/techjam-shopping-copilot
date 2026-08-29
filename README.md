@@ -398,3 +398,26 @@ python run_local_eval.py
 `SHOPPING_DECISION__FINISH_STRATEGY__LOOKAHEAD_DEPTH`；各权重也都可以按
 `SHOPPING_DECISION__...__WEIGHTS__<NAME>` 覆写。`config/default.json` 中的所有数值都是可复现的搜索中心，
 不是已经推广的比赛参数；只有经过公开集交叉验证及目录规模稳定性检查后才应考虑改变默认值。
+
+### Catalog question-value diagnostic
+
+The following offline diagnostic reads a JSONL catalog once, builds one immutable
+attribute cache, and writes only aggregate measurements. It never changes runtime
+policy defaults or `config/default.json`:
+
+```bash
+python -m experiments.catalog_question_value \
+  --catalog /Users/zhengce/projects/participate_kit/catalog.jsonl \
+  --output /private/tmp/catalog-question-value.json \
+  --pool-sizes 300,500,1000 \
+  --sample-count 1000 \
+  --seed 20260829
+```
+
+Pool sizes must be positive, unique, and sorted; the command exits nonzero for an
+invalid or malformed catalog. Output is atomically replaced only after complete,
+valid JSON is written. Reports contain coverage, latency percentiles, stability,
+and aggregate value metrics only—never ASINs, titles, descriptions, or other
+product free text. Depth-two measurements are explicitly diagnostic and
+non-promotion data because of the known depth-two gate mismatch; do not promote
+any policy setting from this report.

@@ -421,3 +421,38 @@ and aggregate value metrics only—never ASINs, titles, descriptions, or other
 product free text. Depth-two measurements are explicitly diagnostic and
 non-promotion data because of the known depth-two gate mismatch; do not promote
 any policy setting from this report.
+
+### Bounded dialogue-decision cross-validation
+
+This companion experiment searches only global decision settings. It groups
+public sessions by target ASIN, stratifies the deterministic greedy folds by
+scenario, coarse category, and a public catalog-category candidate proxy, and
+uses three outer / two inner folds. `evaluate()` runs each config/session pair
+once; the stored session outcomes are then partitioned for inner and outer
+aggregates, so an outer test fold never participates in its selection. The
+search manifest records the complete source space and sampling seed, includes
+the legacy baseline, limits depth-one evaluations to eight (plus at most two
+predeclared adjacent refinements), and records—not evaluates—depth-two settings
+with `known_depth_two_gate_mismatch`.
+
+Use the existing production `latency_ms` p95 from the catalog report as the
+budget; `analysis_kernel_latency_ms` is deliberately ignored. The report also
+records paired session-level bootstrap intervals, catalog stability, outer-fold
+audit gates, and the one-standard-error selection rule (simplest, then lowest
+latency, then canonical JSON). It does not change `config/default.json`.
+
+```bash
+LLM_PROVIDER=none SKIP_DATA_VERIFY=1 \
+python -m experiments.decision_cross_validation \
+  --catalog /Users/zhengce/projects/participate_kit/catalog.jsonl \
+  --dataset data/public_set.jsonl \
+  --search-space experiments/decision_search_space.json \
+  --catalog-report /private/tmp/catalog-question-value.json \
+  --output /private/tmp/decision-cross-validation.json \
+  --recommended-config-output /private/tmp/recommended-decision-config.json \
+  --seed 20260829
+```
+
+Both outputs use atomic replacement and reject direct/symlink/hardlink input
+collisions. The recommended-config file is a full `AppConfig` JSON document
+accepted by `APP_CONFIG_PATH`, not a partial overlay.

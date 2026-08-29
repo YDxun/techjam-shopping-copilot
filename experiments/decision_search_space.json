@@ -1,0 +1,27 @@
+{
+  "coarse_sample_limit": 50,
+  "transition_guard_profile": [
+    {"enabled": false},
+    {"enabled": true, "add": 0.60, "replace": 0.85, "remove": 0.85, "reject_products": 0.85, "no_preference": 0.80, "no_more_preferences": 0.90},
+    {"enabled": true, "add": 0.65, "replace": 0.90, "remove": 0.90, "reject_products": 0.90, "no_preference": 0.85, "no_more_preferences": 0.95}
+  ],
+  "candidate_weight_profile": [
+    {"expected_shrink": 0.30, "coverage": 0.15, "complementarity": 0.15, "answer_probability": 0.15, "missing_penalty": 0.20, "redundancy_penalty": 0.20, "repeat_penalty": 0.40, "no_preference_penalty": 0.60, "turn_cost": 0.15},
+    {"expected_shrink": 0.45, "coverage": 0.10, "complementarity": 0.10, "answer_probability": 0.10, "missing_penalty": 0.25, "redundancy_penalty": 0.20, "repeat_penalty": 0.40, "no_preference_penalty": 0.60, "turn_cost": 0.10},
+    {"expected_shrink": 0.25, "coverage": 0.20, "complementarity": 0.10, "answer_probability": 0.25, "missing_penalty": 0.25, "redundancy_penalty": 0.20, "repeat_penalty": 0.50, "no_preference_penalty": 0.70, "turn_cost": 0.15}
+  ],
+  "finish_weight_profile": [
+    {"resolve_at_10": 0.50, "resolve_at_3": 0.20, "resolve_at_1": 0.10, "terminal_progress": 0.30, "p90_remaining_penalty": 0.20},
+    {"resolve_at_10": 0.65, "resolve_at_3": 0.15, "resolve_at_1": 0.05, "terminal_progress": 0.25, "p90_remaining_penalty": 0.20},
+    {"resolve_at_10": 0.40, "resolve_at_3": 0.20, "resolve_at_1": 0.10, "terminal_progress": 0.45, "p90_remaining_penalty": 0.30}
+  ],
+  "pool_size": [300, 500, 1000],
+  "prior_alpha": [0.0, 0.25, 0.5],
+  "prior_temperature": [0.75, 1.0, 1.5],
+  "other_answer_probability": [0.65, 0.75, 0.85],
+  "other_vagueness_penalty": [0.05, 0.10, 0.20],
+  "finish_candidate_threshold": [50, 100, 200],
+  "remaining_question_threshold": [1, 2],
+  "lookahead_depth": [1, 2],
+  "termination_mode": ["explicit_only"]
+}

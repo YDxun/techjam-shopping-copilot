@@ -142,10 +142,70 @@ class CatalogAttributesTest(unittest.TestCase):
         cache = CatalogAttributeCache.from_products((product for product in products), extractor)
         reordered = CatalogAttributeCache.from_products(reversed(products), PreparingExtractor())
 
-        self.assertEqual(extractor.prepared_asins, ("B", "A"))
+        self.assertEqual(extractor.prepared_asins, ("A", "B"))
         self.assertEqual(cache.for_asin("A").parent_asin, "A")
         self.assertIsNone(cache.for_asin("missing"))
         self.assertEqual(cache.catalog_fingerprint, reordered.catalog_fingerprint)
+
+    def test_cache_skips_blank_asins_and_selects_duplicate_row_deterministically(self) -> None:
+        products = [
+            {
+                "parent_asin": "A",
+                "categories": ["Shoes"],
+                "details": {"Material": "Cotton"},
+                "price": 10,
+            },
+            {
+                "parent_asin": "A",
+                "categories": ["Shoes"],
+                "details": {"Material": "Leather"},
+                "price": 1000,
+            },
+            {"parent_asin": "B", "categories": ["Shoes"], "price": 20},
+            {"parent_asin": None, "categories": ["Shoes"], "price": 0},
+            {"parent_asin": "  ", "categories": ["Shoes"], "price": 10000},
+        ]
+
+        cache = CatalogAttributeCache.from_products(
+            products, RuleVocabularyExtractor(self.vocabulary)
+        )
+        reversed_cache = CatalogAttributeCache.from_products(
+            reversed(products), RuleVocabularyExtractor(self.vocabulary)
+        )
+
+        self.assertEqual(set(cache.profiles), {"A", "B"})
+        self.assertEqual(cache.for_asin("A").values["material"], frozenset({"cotton"}))
+        self.assertEqual(cache.for_asin("A").values["budget"], frozenset({"budget_low"}))
+        self.assertEqual(cache.for_asin("B").values["budget"], frozenset({"budget_high"}))
+        self.assertEqual(cache.profiles, reversed_cache.profiles)
+        self.assertEqual(cache.catalog_fingerprint, reversed_cache.catalog_fingerprint)
+
+    def test_numeric_footwear_text_requires_explicit_size_context(self) -> None:
+        extractor = RuleVocabularyExtractor(self.vocabulary)
+        without_context = extractor.extract(
+            {"parent_asin": "pack", "title": "2 pack running shoes", "categories": ["Shoes"]}
+        )
+        with_context = extractor.extract(
+            {
+                "parent_asin": "sized",
+                "title": "Running shoes, size 8.5",
+                "categories": ["Shoes"],
+            }
+        )
+
+        self.assertEqual(without_context.values["size"], frozenset())
+        self.assertEqual(with_context.values["size"], frozenset({"shoe_size:8.5"}))
+
+    def test_bootcut_tokens_do_not_imply_footwear(self) -> None:
+        profile = RuleVocabularyExtractor(self.vocabulary).extract(
+            {
+                "parent_asin": "jeans",
+                "title": "Bootcut jeans size 8",
+                "categories": ["Women", "Jeans"],
+            }
+        )
+
+        self.assertEqual(profile.values["size"], frozenset({"apparel_size:numeric"}))
 
     def test_profiles_and_cache_defensively_freeze_nested_mappings(self) -> None:
         values = {"material": {"cotton"}}

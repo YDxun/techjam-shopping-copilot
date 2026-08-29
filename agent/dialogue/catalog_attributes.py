@@ -34,7 +34,13 @@ DETAIL_KEYWORDS = {
     "feature": ("feature", "features", "benefit", "function"),
     "use_case": ("use", "purpose", "occasion", "activity", "event"),
 }
-SHOE_TERMS = ("shoe", "sneaker", "boot", "sandal", "heel", "flat", "loafer", "slipper")
+SHOE_PATTERN = re.compile(
+    r"\b(?:shoe|shoes|sneaker|sneakers|boot|boots|sandal|sandals|heel|heels|flat|flats|"
+    r"loafer|loafers|slipper|slippers)\b"
+)
+SIZE_CONTEXT_PATTERN = re.compile(
+    r"\b(?:size|sizing|us(?:\s+size)?)\b\s*[:#-]?\s*\d{1,2}(?:\.5)?\b"
+)
 GENERIC_BRANDS = frozenset(
     {
         "",
@@ -237,9 +243,14 @@ class RuleVocabularyExtractor:
         if not normalized:
             return None
         number = re.search(r"(?<![a-z0-9])(?:us\s*)?(\d{1,2}(?:\.5)?)(?![a-z0-9])", normalized)
-        if is_shoe and number:
+        has_size_context = bool(SIZE_CONTEXT_PATTERN.search(normalized))
+        if is_shoe and number and (include_short or has_size_context):
             return f"shoe_size:{number.group(1)}"
-        matches = self._matches("size", normalized, include_short=include_short)
+        if number and not (include_short or has_size_context):
+            return None
+        matches = self._matches(
+            "size", normalized, include_short=include_short or has_size_context
+        )
         apparel = sorted(value for value in matches if value != "shoe_size")
         if apparel:
             return f"apparel_size:{apparel[0]}"
@@ -309,7 +320,7 @@ class CatalogAttributeCache:
         products: Iterable[dict[str, object]],
         extractor: CatalogAttributeExtractor,
     ) -> "CatalogAttributeCache":
-        materialized = tuple(product for product in products if isinstance(product, dict))
+        materialized = _normalized_unique_products(products)
         prepared = extractor.prepare(materialized)
         profiles = {
             profile.parent_asin: profile
@@ -402,7 +413,38 @@ def _is_shoe_product(product: Mapping[str, object]) -> bool:
             _as_text(product.get("title")),
         )
     ).lower()
-    return any(term in text for term in SHOE_TERMS)
+    return bool(SHOE_PATTERN.search(text))
+
+
+def _normalized_unique_products(
+    products: Iterable[dict[str, object]],
+) -> tuple[dict[str, object], ...]:
+    selected: dict[str, tuple[str, dict[str, object]]] = {}
+    for product in products:
+        if not isinstance(product, dict):
+            continue
+        asin = _normalized_asin(product.get("parent_asin"))
+        if asin is None:
+            continue
+        normalized = dict(product)
+        normalized["parent_asin"] = asin
+        canonical = json.dumps(
+            normalized,
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        current = selected.get(asin)
+        if current is None or canonical < current[0]:
+            selected[asin] = (canonical, normalized)
+    return tuple(selected[asin][1] for asin in sorted(selected))
+
+
+def _normalized_asin(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    return normalized or None
 
 
 def _price(value: object) -> float | None:

@@ -339,3 +339,59 @@ LLM 全部通过**环境变量 + 能力探测 + 运行时控制器**启用，默
   下游 `intent_router -> retriever(BLaIR) -> reranker(规则+bge/LLM)` 负责 Top10。
 
 决策配置见 `config/default.json` 的 `dialogue_understanding` 与 `decision` 段。
+
+### 目录感知提问策略：分阶段启用与回退
+
+新策略会从**同一次**宽召回候选池计算属性问题的信息价值；它不修改检索打分、重排序或官方四字段
+响应协议。默认保持既有策略：`candidate_question_value.enabled=false`、`finish_strategy.enabled=false`、
+`question_termination_mode=legacy`，因此不需要为常规离线评估设置任何新变量。
+
+```bash
+# 明确锁定为默认的、已验证的 legacy 行为（也适合快速回退）
+LLM_PROVIDER=none \
+SHOPPING_DECISION__CANDIDATE_QUESTION_VALUE__ENABLED=0 \
+SHOPPING_DECISION__FINISH_STRATEGY__ENABLED=0 \
+SHOPPING_DECISION__QUESTION_TERMINATION_MODE=legacy \
+python run_local_eval.py
+```
+
+目录动态决策仍是实验性开关；只有显式设置以下变量才会启用。`explicit_only` 仅在用户明确表示没有更多偏好、
+第 10 轮，或全部合法属性耗尽时停止提问；它不会把 `max_questions` 当作硬停止条件。
+
+```bash
+# 实验：候选分布驱动的问题选择 + explicit-only 终止（可离线运行）
+LLM_PROVIDER=none \
+SHOPPING_DECISION__CANDIDATE_QUESTION_VALUE__ENABLED=1 \
+SHOPPING_DECISION__QUESTION_TERMINATION_MODE=explicit_only \
+python run_local_eval.py
+
+# 可选：把收尾价值和两步前瞻也纳入实验
+SHOPPING_DECISION__CANDIDATE_QUESTION_VALUE__ENABLED=1 \
+SHOPPING_DECISION__QUESTION_TERMINATION_MODE=explicit_only \
+SHOPPING_DECISION__FINISH_STRATEGY__ENABLED=1 \
+SHOPPING_DECISION__FINISH_STRATEGY__LOOKAHEAD_DEPTH=2 \
+python run_local_eval.py
+```
+
+候选分析池独立于最终 Top10。默认是 300；启用动态策略后可覆写为 500 或 1000。运行时会取
+`max(300, 覆写值)`，并把**同一批**候选同时交给动态问题计算和既有 reranker，绝不为问题分析发起第二次检索：
+
+```bash
+SHOPPING_DECISION__CANDIDATE_QUESTION_VALUE__ENABLED=1 \
+SHOPPING_DECISION__QUESTION_TERMINATION_MODE=explicit_only \
+SHOPPING_DECISION__CANDIDATE_QUESTION_VALUE__POOL_SIZE=500 \
+python run_local_eval.py
+```
+
+若候选信号计算失败或没有可用候选，系统自动退回静态目录信号和原有安全响应路径；要完整回退到 legacy，
+使用上面的三项 legacy 设置即可。`transition_guard` 也是独立的安全开关，默认关闭，可用
+`SHOPPING_DIALOGUE__TRANSITION_GUARD__ENABLED=1` 单独实验，不会自动随动态问题策略开启。
+
+常用变量包括 `SHOPPING_DECISION__CANDIDATE_QUESTION_VALUE__PRIOR_ALPHA`、
+`SHOPPING_DECISION__CANDIDATE_QUESTION_VALUE__PRIOR_TEMPERATURE`、
+`SHOPPING_DECISION__CANDIDATE_QUESTION_VALUE__OTHER_ANSWER_PROBABILITY`、
+`SHOPPING_DECISION__FINISH_STRATEGY__CANDIDATE_THRESHOLD`、
+`SHOPPING_DECISION__FINISH_STRATEGY__REMAINING_QUESTION_THRESHOLD` 和
+`SHOPPING_DECISION__FINISH_STRATEGY__LOOKAHEAD_DEPTH`；各权重也都可以按
+`SHOPPING_DECISION__...__WEIGHTS__<NAME>` 覆写。`config/default.json` 中的所有数值都是可复现的搜索中心，
+不是已经推广的比赛参数；只有经过公开集交叉验证及目录规模稳定性检查后才应考虑改变默认值。

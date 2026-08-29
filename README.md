@@ -29,7 +29,9 @@
   - **BLaIR 稠密向量路由**（`RETRIEVAL_BACKEND=dense/hybrid`，推荐）：商品向量由
     `scripts/encode_catalog_blair.py` **离线预计算**（`hyp1231/blair-roberta-large`，CLS pooling + L2，
     产物 `data/offline_blair_embeds.npy`，维度 1024）；推理阶段只编码用户查询文本
-    （`utils/blair.py`），与全目录向量做点积召回。编码器（transformers）或离线 npy 任一缺失 → 自动回退 BM25。
+    （`utils/blair.py`），与全目录向量做点积召回。**模式自适应**：仅在 `recover`（连 miss 需扩召回）
+    启用 + 硬约束覆盖回验 + 0.5 权重——probe/exploit 下语义候选会扰动已对齐的规则排序（A/B 验证）；
+    编码器（transformers）或离线 npy 任一缺失 → 自动回退 BM25。
   - 融合：Reciprocal Rank Fusion（RRF）。
 - **结构化过滤字段感知** `data/analysis/field_mapping.json`（`scripts/build_field_mapping.py` 生成）：
   属性→去哪找（lookup_fields+权重）+ 过滤严格度（tolerance/missing_policy）。material 查
@@ -445,3 +447,29 @@ capability_probe 按模型类型探测可用性，失败一律回退规则排序
 且生成式模型更慢（56min vs 30min）——**保留 bge-reranker-v2-m3 为默认重排模型，不删除**；
 两者均可经 `RERANKER_MODEL` 环境变量切换。语义重排整体仍低于纯规则基线（同 bge/qwen3 三方一致），
 默认关闭，由自动化控制按环境决定。
+
+
+---
+
+## 默认策略：环境自适应最优（非永远纯规则）
+
+`run_local_eval.py` 默认不再写死纯规则，而是由 **capability_probe（环境探测）+ runtime_controller（策略决策）**
+自动选择当前环境最优配置（启动打印 `strategy=...`）：
+
+| 环境特征 | 选中的默认策略 | 公开集 200 会话 |
+|---|---|---|
+| 任意（含队友数据资产默认开） | `strategy=bm25` 或 `hybrid`（auto 按 BLaIR 可用性选） | **1.0 HR / 0.6438 MRR / 1.72 MTTC / 0.8787 TS** |
+| 无队友资产（纯规则） | `strategy=bm25` | 1.0 HR / 0.6335 MRR / 1.715 MTTC / 0.8757 TS |
+| LLM 可用（key）且 `llm_intent_enabled=true`（默认） | 级联意图识别兜底（规则高置信不改变结果） | 同左（安全） |
+| 重排模型（bge/Rex）开启 | 仅 `recover` 模式作第二意见精排 | 略降（默认关，可选） |
+
+关键设计（全部公开集 A/B 验证）：
+1. **0.8787 的提升主要来自队友数据资产**（category 扩展 / review paraphrase / refined vocab，
+   `ASSET_*` 默认开）：bm25+资产 = hybrid+资产 = 0.8787（六位小数一致）。
+2. **BLaIR dense 只在 recover 模式启用**（`retrieval_backend=auto` 时）：公开集上 recover 几乎不触发
+   → dense 休眠、零损失（与 bm25 完全同分）；hard 约束回验 + 0.5 权重使其在私有集连 miss 时
+   可作语义召回安全网，而不扰动公开集已对齐排序（全量启用 dense 会掉到 0.870）。
+3. **重排模型（bge-reranker-v2-m3 / RexReranker）默认关**：全量/ recover 用法均略降
+   （A/B：bge-recover 0.8759 < 0.8787），保留为 `RERANKER_MODEL_ENABLE=1` 可选，已门控 recover 变安全。
+4. **LLM 意图识别默认开**（`llm_intent_enabled=true`）：级联（规则先行，低置信才咨询 LLM），
+   无 key 环境自动回退规则——零成本兜底，公开集不变。

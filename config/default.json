@@ -1,6 +1,6 @@
 {
   "env_mode": "dev",
-  "retrieval_backend": "bm25",
+  "retrieval_backend": "auto",
   "top_k": 10,
   "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
   "reranker_model": "BAAI/bge-reranker-v2-m3",
@@ -12,7 +12,7 @@
   "sample_limit": null,
   "output_path": "results.json",
   "max_constraint_asks": 3,
-  "llm_intent_enabled": false,
+  "llm_intent_enabled": true,
   "llm_clarify_enabled": false,
   "reranker_model_enabled": false,
   "dialogue_understanding": {

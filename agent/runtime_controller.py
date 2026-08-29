@@ -29,6 +29,7 @@ class RuntimeDecisions:
     use_llm_rerank: bool = False  # 重排是否启用（qwen3-rerank text / chat LLM）
     text_rerank_active: bool = False  # 是否走 qwen3-rerank 文本重排
     use_reranker_model: bool = False  # 是否可用 bge 交叉编码重排（FlagEmbedding）
+    strategy: str = "bm25_rule"  # 选中的策略标签（环境自适应，见 decide()）
     reasons: list[str] = field(default_factory=list)
 
     def summary(self) -> str:
@@ -36,6 +37,7 @@ class RuntimeDecisions:
             "qwen3" if self.text_rerank_active else "llm" if self.use_llm_rerank else "rule"
         )
         return (
+            f"strategy={self.strategy} "
             f"retrieval={self.retrieval_backend} "
             f"intent={'llm' if self.use_llm_intent else 'rule'} "
             f"clarify={'llm' if self.use_llm_clarify else 'rule'} "
@@ -100,10 +102,26 @@ class RuntimeController:
         ) and not llm_ok:
             d.reasons.append(f"LLM 已配置但不可用（state={self.profile.llm_state}）→ 回退规则")
 
-        # ---- 交叉编码重排模型（bge-reranker-v2-m3）：配置开启 && 探测可用才启用 ----
+        # ---- 交叉编码重排模型（bge-reranker-v2-m3 / RexReranker）：配置开启 && 探测可用才启用 ----
         d.use_reranker_model = self.env.reranker_model_enabled and self.profile.reranker_available
         if self.env.reranker_model_enabled and not self.profile.reranker_available:
-            d.reasons.append("RERANKER_MODEL_ENABLE=1 但 bge-reranker 不可用 → 回退规则排序")
+            d.reasons.append(
+                f"RERANKER_MODEL_ENABLE=1 但 {self.env.reranker_model} 不可用 → 回退规则排序"
+            )
+
+        # ---- 策略标签：环境自适应选出"当前环境最优"配置（默认非永远纯规则）----
+        # 公开集 A/B：BLaIR 可用时 hybrid+dense(recover) 0.879 > 纯规则 0.876；
+        # 无 BLaIR 时 bm25 规则 0.8757 为环境最优。LLM 可用且开启时级联兜底（安全）。
+        parts = [d.retrieval_backend]
+        if d.use_llm_intent:
+            parts.append("llm_intent")
+        if d.use_reranker_model:
+            parts.append("rerank_model")
+        d.strategy = "_".join(parts) if parts else "rule"
+        d.reasons.append(
+            f"strategy={d.strategy}（dense={'yes' if d.use_dense else 'no'} "
+            f"llm={'yes' if d.use_llm_intent else 'no'}）"
+        )
 
         logger.info("[runtime] %s", d.summary())
         return d

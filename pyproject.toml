@@ -5,3 +5,7 @@ extend-exclude = ["config/constants.py"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+# few-shot prompt 内长 JSON 示例行（物理行超长但属合理例外；改行会改 prompt 内容）
+"agent/dialogue/recognizers/llm.py" = ["E501"]

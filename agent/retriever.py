@@ -125,7 +125,7 @@ class HybridRetriever:
         self._route_category(route, pool, top_k=top_k)
         self._route_constraints(route, pool, top_k=top_k)  # 硬约束 AND（保命中）
         if self.backend in ("dense", "hybrid"):
-            self._route_dense(route, pool, top_k=top_k)
+            self._route_dense(route, pool, top_k=top_k, mode=mode)
 
         ranked = sorted(pool.values(), key=lambda x: x["rrf"], reverse=True)
         return ranked[:top_k]
@@ -214,7 +214,16 @@ class HybridRetriever:
                 self._accumulate(pool, str(asin), 1.0 / (60.0 + rank) + 0.02, "constraint_recall")
 
     # -- 路由 4：稠密向量（可选，离线本地 embedding） -----------------------
-    def _route_dense(self, route: IntentRoute, pool: dict, top_k: int) -> None:
+    def _route_dense(self, route: IntentRoute, pool: dict, top_k: int, mode: str = "probe") -> None:
+        """BLaIR 稠密语义召回（模式自适应 + 硬约束回验）。
+
+        - 仅 recover（连续 miss≥2，需扩召回）启用：probe/exploit 下语义候选会扰动
+          已对齐的规则排序（A/B：dense-on 时 boundary/browsing MRR 掉）；
+        - 硬约束覆盖回验：违反任一 hard 组的 dense 候选跳过（防语义噪音注入）；
+        - 权重 0.5x 降为纯"召回补充"，不反客为主。
+        """
+        if mode != "recover":
+            return
         encoder, store = self._ensure_dense()
         if encoder is None or store is None:
             return
@@ -228,11 +237,21 @@ class HybridRetriever:
             sims = store.matrix @ qv
             order = np.argsort(-sims)[:top_k]
             for rank, idx in enumerate(order, start=1):
+                asin = store.asins[int(idx)]
+                if route.hard_groups and not self._dense_passes_hard(route.hard_groups, asin):
+                    continue  # 硬约束回验：不满足则跳过
                 self._accumulate(
-                    pool, store.asins[int(idx)], float(sims[idx]) / (60.0 + rank), "dense"
+                    pool, asin, 0.5 * float(sims[idx]) / (60.0 + rank), "dense"
                 )
         except Exception as exc:  # 稠密路由任何异常都不影响主流程（环境自感知回退）
             logger.warning("[retriever] dense route failed, fallback to bm25: %s", exc)
+
+    def _dense_passes_hard(self, hard_groups: list[tuple[str, ...]], asin: str) -> bool:
+        """dense 候选硬约束覆盖回验：每个 hard 组（组内 AND）全部命中才放行。"""
+        text = self._text_lower.get(asin, "")
+        if not text:
+            return False
+        return all(all(tok in text for tok in group) for group in hard_groups)
 
     def _ensure_dense(self):
         """惰性加载 BLaIR 查询编码器 + 离线商品向量 npy；失败返回 (None,None)。

@@ -94,8 +94,10 @@ class Reranker:
                     llm_order = self._llm_rerank(order, retriever, state)
                     if llm_order:
                         order = llm_order
-        # 可选 bge-reranker-v2-m3 交叉编码重排（本地模型，环境自感知；失败自动回退）
-        if use_reranker_model and len(order) >= 2:
+        # 可选重排模型（RexReranker/bge，本地；环境自感知；失败自动回退）。
+        # 仅 recover 模式启用：全量启用会把语义排序强加于已对齐的规则排序（A/B 掉 MRR），
+        # recover（连 miss 需扩召回）时作"第二意见"精排 Top-50 最安全。
+        if use_reranker_model and mode == "recover" and len(order) >= 2:
             bge_order = self._bge_rerank(order, retriever, state, route)
             if bge_order:
                 order = bge_order

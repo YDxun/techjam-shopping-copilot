@@ -213,6 +213,19 @@ class CatalogAttributesTest(unittest.TestCase):
 
             self.assertEqual(profile.values["size"], frozenset({"shoe_size:8.5"}))
 
+    def test_structured_compact_regional_shoe_sizes_remain_valid(self) -> None:
+        extractor = RuleVocabularyExtractor(self.vocabulary)
+        for compact_size, expected in (("US8", "8"), ("UK8", "8"), ("EU42", "42")):
+            profile = extractor.extract(
+                {
+                    "parent_asin": compact_size,
+                    "categories": ["Shoes"],
+                    "details": {"Size": compact_size},
+                }
+            )
+
+            self.assertEqual(profile.values["size"], frozenset({f"shoe_size:{expected}"}))
+
     def test_bootcut_tokens_do_not_imply_footwear(self) -> None:
         profile = RuleVocabularyExtractor(self.vocabulary).extract(
             {

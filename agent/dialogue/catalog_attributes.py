@@ -39,6 +39,7 @@ SHOE_PATTERN = re.compile(
     r"loafer|loafers|slipper|slippers)\b"
 )
 RAW_SIZE_NUMBER_PATTERN = re.compile(r"(?<![a-z0-9])(\d{1,2}(?:\.5)?)(?![a-z0-9])")
+STRUCTURED_COMPACT_REGION_SIZE_PATTERN = re.compile(r"\b(?:us|uk|eu)(\d{1,2}(?:\.5)?)\b")
 SIZE_NUMBER_CONTEXT_PATTERN = re.compile(
     r"\b(?:size|sizing|us|uk|eu)(?:\s+size)?\b\s*[:#-]?\s*"
     r"(?P<after>\d{1,2}(?:\.5)?)\b"
@@ -247,9 +248,12 @@ class RuleVocabularyExtractor:
         if not normalized:
             return None
         number = RAW_SIZE_NUMBER_PATTERN.search(normalized)
+        compact_structured_number = (
+            _compact_structured_size_number(normalized) if include_short else None
+        )
         contextual_number = _size_number_with_context(normalized)
-        if is_shoe and include_short and number:
-            return f"shoe_size:{number.group(1)}"
+        if is_shoe and include_short and (compact_structured_number or number):
+            return f"shoe_size:{compact_structured_number or number.group(1)}"
         if is_shoe and contextual_number:
             return f"shoe_size:{contextual_number}"
         if number and not (include_short or contextual_number):
@@ -403,6 +407,11 @@ def _size_number_with_context(text: str) -> str | None:
     if match is None:
         return None
     return match.group("after") or match.group("before")
+
+
+def _compact_structured_size_number(text: str) -> str | None:
+    match = STRUCTURED_COMPACT_REGION_SIZE_PATTERN.search(text)
+    return match.group(1) if match else None
 
 
 def _normalize_brand(value: str) -> str | None:

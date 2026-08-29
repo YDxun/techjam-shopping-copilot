@@ -14,9 +14,11 @@ from config.models import (
     CircuitBreakerConfig,
     DecisionConfig,
     DialogueUnderstandingConfig,
+    FingerprintConfig,
     LLMConfig,
     ProviderConfig,
     ProviderConfigs,
+    RetrievalConfig,
     RetrievalModeConfig,
     RetryConfig,
     SecretValue,
@@ -165,6 +167,7 @@ def _environment_overrides(
                 )
 
     nested_fields: dict[str, tuple[tuple[str, ...], Callable[[str, str], Any]]] = {
+        "COMBO_FINGERPRINT_ENABLE": (("fingerprint", "enable"), _parse_bool),
         "RETRIEVAL_MODE__EXPLOIT_MIN_HARD": (("retrieval_mode", "exploit_min_hard"), _parse_int),
         "RETRIEVAL_MODE__EXPLOIT_MIN_CONSTRAINTS": (
             ("retrieval_mode", "exploit_min_constraints"),
@@ -322,6 +325,8 @@ def _build_and_validate(data: Mapping[str, Any], selected_key: SecretValue) -> A
     dialogue_data = _mapping(data.get("dialogue_understanding"), "dialogue_understanding")
     decision_data = _mapping(data.get("decision"), "decision")
     rm_data = _mapping(data.get("retrieval_mode"), "retrieval_mode")
+    retrieval_data = _mapping(data.get("retrieval"), "retrieval")
+    fingerprint_data = _mapping(data.get("fingerprint"), "fingerprint")
     ask_data = _mapping(decision_data.get("ask_utility"), "decision.ask_utility")
     ask_weights_data = _mapping(ask_data.get("weights"), "decision.ask_utility.weights")
     stop_data = _mapping(decision_data.get("stop_utility"), "decision.stop_utility")
@@ -419,6 +424,35 @@ def _build_and_validate(data: Mapping[str, Any], selected_key: SecretValue) -> A
                 dialogue_data.get("max_evidence_length"),
                 "dialogue_understanding.max_evidence_length",
             ),
+        ),
+        retrieval_pool_size=_int_value(data.get("retrieval_pool_size"), "retrieval_pool_size"),
+        retrieval=RetrievalConfig(
+            bm25_field_weights=_tuple_number_value(
+                retrieval_data.get("bm25_field_weights"), "retrieval.bm25_field_weights"
+            ),
+            rrf_k=_number_value(retrieval_data.get("rrf_k"), "retrieval.rrf_k"),
+            rrf_constraint_k=_number_value(
+                retrieval_data.get("rrf_constraint_k"), "retrieval.rrf_constraint_k"
+            ),
+            dense_weight=_number_value(retrieval_data.get("dense_weight"), "retrieval.dense_weight"),
+            bm25_limit_mult=_int_value(
+                retrieval_data.get("bm25_limit_mult"), "retrieval.bm25_limit_mult"
+            ),
+            recall_limit_mult=_int_value(
+                retrieval_data.get("recall_limit_mult"), "retrieval.recall_limit_mult"
+            ),
+        ),
+        rerank_weights=_number_dict_value(data.get("rerank_weights"), "rerank_weights"),
+        fingerprint=FingerprintConfig(
+            enable=_bool_value(fingerprint_data.get("enable"), "fingerprint.enable"),
+            bonus_unique=_number_value(
+                fingerprint_data.get("bonus_unique"), "fingerprint.bonus_unique"
+            ),
+            bonus_ten=_number_value(fingerprint_data.get("bonus_ten"), "fingerprint.bonus_ten"),
+            bonus_fifty=_number_value(
+                fingerprint_data.get("bonus_fifty"), "fingerprint.bonus_fifty"
+            ),
+            max_count=_int_value(fingerprint_data.get("max_count"), "fingerprint.max_count"),
         ),
         retrieval_mode=RetrievalModeConfig(
             exploit_min_hard=_int_value(
@@ -576,6 +610,18 @@ def _int_value(value: Any, field: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise ConfigError(f"{field} must be an integer")
     return value
+
+
+def _tuple_number_value(value: Any, field: str) -> tuple[float, ...]:
+    if not isinstance(value, (list, tuple)):
+        raise ConfigError(f"{field} must be a list of numbers")
+    return tuple(_number_value(item, field) for item in value)
+
+
+def _number_dict_value(value: Any, field: str) -> dict[str, float]:
+    if not isinstance(value, Mapping):
+        raise ConfigError(f"{field} must be an object of numbers")
+    return {str(k): _number_value(v, f"{field}.{k}") for k, v in value.items()}
 
 
 def _optional_int_value(value: Any, field: str) -> int | None:

@@ -14,7 +14,6 @@ from __future__ import annotations
 import json
 import logging
 import math
-import os
 
 from agent.dialogue.models import RecommendationContext
 from agent.intent_router import IntentRoute
@@ -28,25 +27,21 @@ from utils.rex_reranker import RexRerankerScorer, is_generation_reranker
 
 logger = logging.getLogger(__name__)
 
-# 规则打分权重（可用环境变量微调，默认经验值）
-W_COVERAGE = 0.50
-W_CATEGORY = 0.25
-W_RRF = 0.15
-W_POPULARITY = 0.05
-W_PROFILE = 0.05
-# combo_bonus：全约束命中超线性加成（隐藏目标"同时满足全部披露约束"，用它把目标推第 1 名提升 MRR）
-W_COMBO = float(__import__("os").environ.get("COMBO_BONUS_WEIGHT", "0.10"))
-
-# 约束组合指纹（默认关，COMBO_FINGERPRINT_ENABLE=1 开启）：
-# 全目录精确计数"同时满足全部活跃约束的商品数"；count 越小 → 组合越稀有 → 匹配者越可能是目标。
-# 分级加成：count==1 置顶 / ≤10 中加成 / ≤50 小加成；count>50（约束过泛）不加成。
-FP_ENABLE = os.environ.get("COMBO_FINGERPRINT_ENABLE", "0").strip().lower() in {
-    "1", "true", "yes", "on"
+# 规则打分权重 / combo / 指纹阈值已全部移入 config（env.rerank_weights / env.fingerprint，
+# Step1 暴露：默认=现值，行为不变；tune harness 用 overrides 调参）。
+# 兜底默认（SimpleNamespace 测试环境 / 旧调用方）：与 config 默认严格一致。
+_DEFAULT_WEIGHTS = {
+    "coverage": 0.50,
+    "combo": 0.10,
+    "category": 0.25,
+    "rrf": 0.15,
+    "popularity": 0.05,
+    "profile": 0.05,
 }
-FP_BONUS_UNIQUE = float(os.environ.get("COMBO_FINGERPRINT_BONUS_UNIQUE", "1.0"))
-FP_BONUS_TEN = float(os.environ.get("COMBO_FINGERPRINT_BONUS_TEN", "0.5"))
-FP_BONUS_FIFTY = float(os.environ.get("COMBO_FINGERPRINT_BONUS_FIFTY", "0.2"))
-FP_MAX_COUNT = 50  # 置信度门控：count 超过该值（约束太泛）不加成
+_DEFAULT_FP = type("_FP", (), {
+    "enable": False, "bonus_unique": 1.0, "bonus_ten": 0.5, "bonus_fifty": 0.2, "max_count": 50,
+})()
+
 BGE_RERANK_CANDIDATES = 50  # bge 交叉编码重排候选规模（与检索管线 RERANK_CANDIDATES_NORMAL 一致）
 
 
@@ -61,6 +56,8 @@ class Reranker:
         self._rerank_client = None  # 惰性加载的 qwen3-rerank MaaS 客户端
         self._fp_texts: dict[str, str] | None = None  # 全目录 asin->text_lower（约束指纹索引）
         self._fp_satisfy_cache: dict[str, set[str]] = {}  # 约束键->满足该约束的商品集合
+        self._weights = dict(getattr(env, "rerank_weights", None) or _DEFAULT_WEIGHTS)
+        self._fp = getattr(env, "fingerprint", None) or _DEFAULT_FP
 
     # ------------------------------------------------------------------
     def rerank(
@@ -83,7 +80,7 @@ class Reranker:
         # count 越小组合越稀有 → 匹配者越可能是目标；分级加成（count==1 置顶 / ≤10 / ≤50）。
         fp_count: int | None = None
         fp_set: set[str] | None = None
-        if FP_ENABLE:
+        if self._fp.enable:
             fp_count, fp_set = self._fingerprint(retriever, getattr(state, "active", ()))
 
         scored: list[tuple[float, str, dict]] = []
@@ -168,7 +165,7 @@ class Reranker:
 
         返回 (count, satisfied_set)；无活跃约束或开关关 → (None, None)。
         """
-        if not active or not FP_ENABLE:
+        if not active or not self._fp.enable:
             return None, None
         self._ensure_fp_index(retriever)
         sset: set[str] | None = None
@@ -180,17 +177,16 @@ class Reranker:
         count = len(sset) if sset is not None else 0
         return count, (sset or set())
 
-    @staticmethod
-    def _fp_bonus(count: int) -> float:
-        """按全局稀有度给置信度门控加成：count==1 置顶 / ≤10 / ≤50；>50 不加。"""
+    def _fp_bonus(self, count: int) -> float:
+        """按全局稀有度给置信度门控加成：count==1 置顶 / ≤10 / ≤50；>max_count 不加。"""
         if count <= 0:
             return 0.0
         if count == 1:
-            return FP_BONUS_UNIQUE
+            return self._fp.bonus_unique
         if count <= 10:
-            return FP_BONUS_TEN
-        if count <= FP_MAX_COUNT:
-            return FP_BONUS_FIFTY
+            return self._fp.bonus_ten
+        if count <= self._fp.max_count:
+            return self._fp.bonus_fifty
         return 0.0
 
     # ------------------------------------------------------------------
@@ -254,12 +250,12 @@ class Reranker:
         profile = self._profile_match(state, text)
 
         score = (
-            W_COVERAGE * coverage
-            + W_COMBO * combo_norm
-            + W_CATEGORY * cat_frac
-            + W_RRF * rrf_norm
-            + W_POPULARITY * popularity
-            + W_PROFILE * profile
+            self._weights.get("coverage", 0.5) * coverage
+            + self._weights.get("combo", 0.1) * combo_norm
+            + self._weights.get("category", 0.25) * cat_frac
+            + self._weights.get("rrf", 0.15) * rrf_norm
+            + self._weights.get("popularity", 0.05) * popularity
+            + self._weights.get("profile", 0.05) * profile
         )
 
         # EXPLOIT 模式：只有"全部活跃约束全覆盖"的商品才给强加成（提升 MRR：把唯一必中项推前）。

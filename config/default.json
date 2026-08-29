@@ -91,5 +91,37 @@
   "retrieval_mode": {
     "exploit_min_hard": 2,
     "exploit_min_constraints": 4
+  },
+  "retrieval_pool_size": 300,
+  "retrieval": {
+    "bm25_field_weights": [
+      0.0,
+      6.0,
+      4.0,
+      2.5,
+      2.5,
+      1.5,
+      1.0
+    ],
+    "rrf_k": 60.0,
+    "rrf_constraint_k": 10.0,
+    "dense_weight": 0.5,
+    "bm25_limit_mult": 2,
+    "recall_limit_mult": 3
+  },
+  "rerank_weights": {
+    "coverage": 0.5,
+    "combo": 0.1,
+    "category": 0.25,
+    "rrf": 0.15,
+    "popularity": 0.05,
+    "profile": 0.05
+  },
+  "fingerprint": {
+    "enable": false,
+    "bonus_unique": 1.0,
+    "bonus_ten": 0.5,
+    "bonus_fifty": 0.2,
+    "max_count": 50
   }
 }

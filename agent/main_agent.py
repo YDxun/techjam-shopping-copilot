@@ -30,10 +30,7 @@ from utils import data_verify
 
 logger = logging.getLogger(__name__)
 
-# 检索候选池规模：与 LLM 重排提交数 llm.rerank_candidates 解耦。
-# 队友分支曾把 rerank_candidates 语义改为 LLM 提交数（默认 12），若继续用它当候选池会把池子
-# 缩到 30，导致高频约束下目标商品被挤出候选池（HR@10 0.995 -> 0.855）。
-RETRIEVAL_POOL_SIZE = 300
+# 检索候选池规模现由 config.retrieval_pool_size 控制（Step1 暴露，默认 300）。
 
 
 class Agent(BaseAgent):
@@ -117,7 +114,7 @@ class Agent(BaseAgent):
 
         # 2) 多路由混合召回 → 候选池（Pillar I；BLaIR 稠密 + BM25 + 硬约束 AND + 品类）
         candidates = self.retriever.search(
-            route, top_k=RETRIEVAL_POOL_SIZE, mode=context.retrieval_mode
+            route, top_k=self.env.retrieval_pool_size, mode=context.retrieval_mode
         )
 
         # 3) 精排（Pillar I/IV）：规则 + 可选 LLM/bge，目标把目标商品推前

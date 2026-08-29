@@ -8,7 +8,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from agent.dialogue.models import Constraint, ConstraintStrength, Polarity
-from agent.reranker import Reranker, W_COMBO, W_COVERAGE
+from agent.reranker import Reranker
 from config.env_config import EnvConfig
 
 
@@ -53,7 +53,8 @@ def test_combo_bonus_full_satisfier_beats_partial_match():
     score_b = _score_for(text_b, values, hardness)
 
     # 全命中商品应显著高于部分命中（至少含 combo 加成）
-    assert score_a > score_b + 0.5 * W_COMBO
+    combo_w = EnvConfig.from_env().rerank_weights["combo"]
+    assert score_a > score_b + 0.5 * combo_w
 
 
 def test_combo_bonus_requires_two_full_hits():

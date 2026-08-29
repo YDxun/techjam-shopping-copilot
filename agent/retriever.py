@@ -47,6 +47,12 @@ class HybridRetriever:
         self._cat_lower: dict[str, str] = {}
         self._dense = None  # 惰性加载的稠密模型
         self._dense_matrix = None
+        self._retrieval_cfg = self.env.retrieval  # Step1：检索旋钮进 config
+        self._bm25_weights_sql = (
+            "bm25(products, "
+            + ", ".join(str(float(w)) for w in self._retrieval_cfg.bm25_field_weights)
+            + ")"
+        )
         self._build_index()
 
     # ------------------------------------------------------------------
@@ -121,7 +127,7 @@ class HybridRetriever:
     def search(self, route: IntentRoute, top_k: int = 300, mode: str = "probe") -> list[dict]:
         """多路由召回 + RRF 融合，返回候选（parent_asin + 融合分 + 路由命中标记）。"""
         pool: dict[str, dict] = {}
-        self._route_bm25(route, pool, top_k=top_k * 2)
+        self._route_bm25(route, pool, top_k=top_k * self._retrieval_cfg.bm25_limit_mult)
         self._route_category(route, pool, top_k=top_k)
         self._route_constraints(route, pool, top_k=top_k)  # 硬约束 AND（保命中）
         if self.backend in ("dense", "hybrid"):
@@ -139,13 +145,13 @@ class HybridRetriever:
         try:
             rows = self._conn.execute(
                 "SELECT parent_asin FROM products WHERE products MATCH ? "
-                "ORDER BY bm25(products, 0.0, 6.0, 4.0, 2.5, 2.5, 1.5, 1.0) LIMIT ?",
+                f"ORDER BY {self._bm25_weights_sql} LIMIT ?",
                 (expr, top_k),
             ).fetchall()
         except sqlite3.OperationalError:
             return
         for rank, (asin,) in enumerate(rows, start=1):
-            self._accumulate(pool, str(asin), 1.0 / (60.0 + rank), "bm25")
+            self._accumulate(pool, str(asin), 1.0 / (self._retrieval_cfg.rrf_k + rank), "bm25")
 
     # -- 路由 2：类别过滤（品类域命中） ------------------------------------
     def _route_category(self, route: IntentRoute, pool: dict, top_k: int) -> None:
@@ -159,7 +165,7 @@ class HybridRetriever:
                 hits.append((asin, frac + math.log1p(rating) * 0.01))
         hits.sort(key=lambda x: x[1], reverse=True)
         for rank, (asin, _) in enumerate(hits[:top_k], start=1):
-            self._accumulate(pool, asin, 1.0 / (60.0 + rank), "category")
+            self._accumulate(pool, asin, 1.0 / (self._retrieval_cfg.rrf_k + rank), "category")
 
     # -- 路由 3：硬约束 AND（保证必中候选进池，Pillar I 高精度过滤） ----------
     def _route_constraints(self, route: IntentRoute, pool: dict, top_k: int) -> None:
@@ -170,7 +176,7 @@ class HybridRetriever:
             try:
                 rows = self._conn.execute(
                     "SELECT parent_asin FROM products WHERE products MATCH ? LIMIT ?",
-                    (expr, top_k * 2),
+                    (expr, top_k * self._retrieval_cfg.bm25_limit_mult),
                 ).fetchall()
             except sqlite3.OperationalError:
                 continue
@@ -183,7 +189,12 @@ class HybridRetriever:
                     )
                     if frac / len(route.category_tokens) <= 0.5:
                         continue
-                self._accumulate(pool, asin, 1.0 / (10.0 + rank) + 0.1, "constraint")
+                self._accumulate(
+                    pool,
+                    asin,
+                    1.0 / (self._retrieval_cfg.rrf_constraint_k + rank) + 0.1,
+                    "constraint",
+                )
         # 轻权重"召回补齐"路由：'（group）AND （cat1 OR cat2）'，低 RRF 权重，
         # 只把此前被挤出 LIMIT 的强相关候选补进池（Pillar I 召回保障），不扰动主流排序
         self._route_constraint_recall(route, pool, top_k)
@@ -205,13 +216,18 @@ class HybridRetriever:
             try:
                 rows = self._conn.execute(
                     "SELECT parent_asin FROM products WHERE products MATCH ? "
-                    "ORDER BY bm25(products, 0.0, 6.0, 4.0, 2.5, 2.5, 1.5, 1.0) LIMIT ?",
-                    (expr, top_k * 3),
+                    f"ORDER BY {self._bm25_weights_sql} LIMIT ?",
+                    (expr, top_k * self._retrieval_cfg.recall_limit_mult),
                 ).fetchall()
             except sqlite3.OperationalError:
                 continue
             for rank, (asin,) in enumerate(rows, start=1):
-                self._accumulate(pool, str(asin), 1.0 / (60.0 + rank) + 0.02, "constraint_recall")
+                self._accumulate(
+                    pool,
+                    str(asin),
+                    1.0 / (self._retrieval_cfg.rrf_k + rank) + 0.02,
+                    "constraint_recall",
+                )
 
     # -- 路由 4：稠密向量（可选，离线本地 embedding） -----------------------
     def _route_dense(self, route: IntentRoute, pool: dict, top_k: int, mode: str = "probe") -> None:
@@ -241,7 +257,12 @@ class HybridRetriever:
                 if route.hard_groups and not self._dense_passes_hard(route.hard_groups, asin):
                     continue  # 硬约束回验：不满足则跳过
                 self._accumulate(
-                    pool, asin, 0.5 * float(sims[idx]) / (60.0 + rank), "dense"
+                    pool,
+                    asin,
+                    self._retrieval_cfg.dense_weight
+                    * float(sims[idx])
+                    / (self._retrieval_cfg.rrf_k + rank),
+                    "dense",
                 )
         except Exception as exc:  # 稠密路由任何异常都不影响主流程（环境自感知回退）
             logger.warning("[retriever] dense route failed, fallback to bm25: %s", exc)

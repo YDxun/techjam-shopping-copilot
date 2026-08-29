@@ -55,6 +55,22 @@ class EnvConfig:
         return self._app_config.hard_cue_enabled
 
     @property
+    def retrieval(self):
+        return self._app_config.retrieval
+
+    @property
+    def rerank_weights(self) -> dict[str, float]:
+        return self._app_config.rerank_weights
+
+    @property
+    def fingerprint(self):
+        return self._app_config.fingerprint
+
+    @property
+    def retrieval_pool_size(self) -> int:
+        return self._app_config.retrieval_pool_size
+
+    @property
     def env_mode(self) -> str:
         return self._app_config.env_mode
 

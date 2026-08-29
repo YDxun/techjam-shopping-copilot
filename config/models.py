@@ -161,6 +161,40 @@ class LLMConfig:
 
 
 @dataclass(frozen=True)
+class RetrievalConfig:
+    """检索旋钮（Step 1：硬编码暴露为 config，默认=现值）。"""
+
+    bm25_field_weights: tuple[float, ...] = (0.0, 6.0, 4.0, 2.5, 2.5, 1.5, 1.0)
+    rrf_k: float = 60.0
+    rrf_constraint_k: float = 10.0
+    dense_weight: float = 0.5
+    bm25_limit_mult: int = 2
+    recall_limit_mult: int = 3
+
+
+@dataclass(frozen=True)
+class FingerprintConfig:
+    """约束组合指纹旋钮（默认关；count 越小组合越稀有）。"""
+
+    enable: bool = False
+    bonus_unique: float = 1.0
+    bonus_ten: float = 0.5
+    bonus_fifty: float = 0.2
+    max_count: int = 50
+
+
+def _default_rerank_weights() -> dict[str, float]:
+    return {
+        "coverage": 0.50,
+        "combo": 0.10,
+        "category": 0.25,
+        "rrf": 0.15,
+        "popularity": 0.05,
+        "profile": 0.05,
+    }
+
+
+@dataclass(frozen=True)
 class RetrievalModeConfig:
     """Pillar III 模式切换阈值（Part B：从 pipeline 硬编码提为配置）。"""
 
@@ -198,6 +232,12 @@ class AppConfig:
     asset_field_map: bool = False  # field_mapping 字段感知匹配（预留）
     # 必要性线索词提升 hard（Part A）：must/need/require/important/key 等 → 泛化提取升级 HARD
     hard_cue_enabled: bool = True
+
+    # 检索/重排旋钮（Step 1 暴露，默认=现值，行为不变；tune harness 用 overrides 调参）
+    retrieval_pool_size: int = 300
+    retrieval: RetrievalConfig = field(default_factory=RetrievalConfig)
+    rerank_weights: dict[str, float] = field(default_factory=_default_rerank_weights)
+    fingerprint: FingerprintConfig = field(default_factory=FingerprintConfig)
 
     dialogue_understanding: DialogueUnderstandingConfig = field(
         default_factory=DialogueUnderstandingConfig

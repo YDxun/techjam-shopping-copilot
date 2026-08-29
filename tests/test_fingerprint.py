@@ -6,7 +6,6 @@
 """
 from __future__ import annotations
 
-import agent.reranker as rr_mod
 from agent.dialogue.models import Constraint, ConstraintStrength, Polarity
 from agent.reranker import Reranker
 from config.env_config import EnvConfig
@@ -33,21 +32,23 @@ def _c(attr: str, value: str, hardness: int) -> Constraint:
 
 
 def test_fp_bonus_tiers():
-    assert rr_mod.Reranker._fp_bonus(0) == 0.0
-    assert rr_mod.Reranker._fp_bonus(1) == rr_mod.FP_BONUS_UNIQUE
-    assert rr_mod.Reranker._fp_bonus(5) == rr_mod.FP_BONUS_TEN
-    assert rr_mod.Reranker._fp_bonus(30) == rr_mod.FP_BONUS_FIFTY
-    assert rr_mod.Reranker._fp_bonus(200) == 0.0  # 约束过泛 → 置信度门控不加成
+    r = Reranker(env=EnvConfig.from_env())
+    fp = r._fp
+    assert r._fp_bonus(0) == 0.0
+    assert r._fp_bonus(1) == fp.bonus_unique
+    assert r._fp_bonus(5) == fp.bonus_ten
+    assert r._fp_bonus(30) == fp.bonus_fifty
+    assert r._fp_bonus(200) == 0.0  # 约束过泛 → 置信度门控不加成
 
 
-def test_fingerprint_counts_all_constraint_satisfiers(monkeypatch):
-    monkeypatch.setattr(rr_mod, "FP_ENABLE", True)
+def test_fingerprint_counts_all_constraint_satisfiers():
+    env = EnvConfig.from_env(overrides={"fingerprint": {"enable": True}})
     products = {
         "p1": {"parent_asin": "p1", "title": "cotton black shirt", "_text": "cotton black shirt"},
         "p2": {"parent_asin": "p2", "title": "cotton black dress", "_text": "cotton black dress"},
         "p3": {"parent_asin": "p3", "title": "cotton white shirt", "_text": "cotton white shirt"},
     }
-    reranker = Reranker(env=EnvConfig.from_env())
+    reranker = Reranker(env=env)
     retriever = FakeRetriever(products)
 
     # active=[cotton, black] -> 同时满足 = {p1,p2}，count=2
@@ -68,4 +69,4 @@ def test_fingerprint_counts_all_constraint_satisfiers(monkeypatch):
 
 
 def test_fingerprint_disabled_by_default():
-    assert rr_mod.FP_ENABLE is False  # 默认关（COMBO_FINGERPRINT_ENABLE 未设）
+    assert EnvConfig.from_env().fingerprint.enable is False  # 默认关

@@ -383,8 +383,9 @@ SHOPPING_DECISION__CANDIDATE_QUESTION_VALUE__POOL_SIZE=500 \
 python run_local_eval.py
 ```
 
-若候选信号计算失败或没有可用候选，系统自动退回静态目录信号和原有安全响应路径；要完整回退到 legacy，
-使用上面的三项 legacy 设置即可。`transition_guard` 也是独立的安全开关，默认关闭，可用
+若候选信号**计算异常**，系统自动退回静态目录信号和原有安全响应路径。空候选池或没有可用候选
+则仍会产生合法的动态决策：没有可问属性时返回 `all_attributes_exhausted`，不再追问，并保持官方响应契约有效。
+要完整回退到 legacy，使用上面的三项 legacy 设置即可。`transition_guard` 也是独立的安全开关，默认关闭，可用
 `SHOPPING_DIALOGUE__TRANSITION_GUARD__ENABLED=1` 单独实验，不会自动随动态问题策略开启。
 
 常用变量包括 `SHOPPING_DECISION__CANDIDATE_QUESTION_VALUE__PRIOR_ALPHA`、

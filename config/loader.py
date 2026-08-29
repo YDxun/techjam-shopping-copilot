@@ -11,9 +11,13 @@ from config.models import (
     AppConfig,
     AskUtilityConfig,
     AskUtilityWeights,
+    CandidateQuestionValueConfig,
+    CandidateQuestionWeights,
     CircuitBreakerConfig,
     DecisionConfig,
     DialogueUnderstandingConfig,
+    FinishStrategyConfig,
+    FinishWeights,
     LLMConfig,
     ProviderConfig,
     ProviderConfigs,
@@ -187,6 +191,54 @@ def _environment_overrides(
             ("decision", "stop_utility", "minimum_stop_utility"),
             _parse_float,
         ),
+        "SHOPPING_DECISION__QUESTION_TERMINATION_MODE": (
+            ("decision", "question_termination_mode"),
+            _parse_text,
+        ),
+        "SHOPPING_DECISION__CANDIDATE_QUESTION_VALUE__ENABLED": (
+            ("decision", "candidate_question_value", "enabled"),
+            _parse_bool,
+        ),
+        "SHOPPING_DECISION__CANDIDATE_QUESTION_VALUE__POOL_SIZE": (
+            ("decision", "candidate_question_value", "pool_size"),
+            _parse_int,
+        ),
+        "SHOPPING_DECISION__CANDIDATE_QUESTION_VALUE__PRIOR_ALPHA": (
+            ("decision", "candidate_question_value", "prior_alpha"),
+            _parse_float,
+        ),
+        "SHOPPING_DECISION__CANDIDATE_QUESTION_VALUE__PRIOR_TEMPERATURE": (
+            ("decision", "candidate_question_value", "prior_temperature"),
+            _parse_float,
+        ),
+        "SHOPPING_DECISION__CANDIDATE_QUESTION_VALUE__OTHER_ANSWER_PROBABILITY": (
+            ("decision", "candidate_question_value", "other_answer_probability"),
+            _parse_float,
+        ),
+        "SHOPPING_DECISION__CANDIDATE_QUESTION_VALUE__OTHER_VAGUENESS_PENALTY": (
+            ("decision", "candidate_question_value", "other_vagueness_penalty"),
+            _parse_float,
+        ),
+        "SHOPPING_DECISION__FINISH_STRATEGY__ENABLED": (
+            ("decision", "finish_strategy", "enabled"),
+            _parse_bool,
+        ),
+        "SHOPPING_DECISION__FINISH_STRATEGY__CANDIDATE_THRESHOLD": (
+            ("decision", "finish_strategy", "candidate_threshold"),
+            _parse_int,
+        ),
+        "SHOPPING_DECISION__FINISH_STRATEGY__REMAINING_QUESTION_THRESHOLD": (
+            ("decision", "finish_strategy", "remaining_question_threshold"),
+            _parse_int,
+        ),
+        "SHOPPING_DECISION__FINISH_STRATEGY__LOOKAHEAD_DEPTH": (
+            ("decision", "finish_strategy", "lookahead_depth"),
+            _parse_int,
+        ),
+        "SHOPPING_DECISION__FINISH_STRATEGY__MINIMUM_FINISH_GAIN": (
+            ("decision", "finish_strategy", "minimum_finish_gain"),
+            _parse_float,
+        ),
         "LLM_RERANK": (("llm", "rerank_enabled"), _parse_bool),
         "LLM_RERANK_CANDIDATES": (("llm", "rerank_candidates"), _parse_int),
         "LLM_HEALTH_CHECK_ENABLED": (("llm", "health_check_enabled"), _parse_bool),
@@ -224,6 +276,18 @@ def _environment_overrides(
         name = f"SHOPPING_DECISION__STOP_UTILITY__WEIGHTS__{field.upper()}"
         nested_fields[name] = (
             ("decision", "stop_utility", "weights", field),
+            _parse_float,
+        )
+    for field in CandidateQuestionWeights.__dataclass_fields__:
+        name = f"SHOPPING_DECISION__CANDIDATE_QUESTION_VALUE__WEIGHTS__{field.upper()}"
+        nested_fields[name] = (
+            ("decision", "candidate_question_value", "weights", field),
+            _parse_float,
+        )
+    for field in FinishWeights.__dataclass_fields__:
+        name = f"SHOPPING_DECISION__FINISH_STRATEGY__WEIGHTS__{field.upper()}"
+        nested_fields[name] = (
+            ("decision", "finish_strategy", "weights", field),
             _parse_float,
         )
     for name, (field_path, parser) in nested_fields.items():
@@ -322,6 +386,18 @@ def _build_and_validate(data: Mapping[str, Any], selected_key: SecretValue) -> A
     ask_weights_data = _mapping(ask_data.get("weights"), "decision.ask_utility.weights")
     stop_data = _mapping(decision_data.get("stop_utility"), "decision.stop_utility")
     stop_weights_data = _mapping(stop_data.get("weights"), "decision.stop_utility.weights")
+    candidate_question_value_data = _mapping(
+        decision_data.get("candidate_question_value"), "decision.candidate_question_value"
+    )
+    candidate_question_weights_data = _mapping(
+        candidate_question_value_data.get("weights"), "decision.candidate_question_value.weights"
+    )
+    finish_strategy_data = _mapping(
+        decision_data.get("finish_strategy"), "decision.finish_strategy"
+    )
+    finish_weights_data = _mapping(
+        finish_strategy_data.get("weights"), "decision.finish_strategy.weights"
+    )
     retry_data = _mapping(llm_data.get("retry"), "llm.retry")
     circuit_data = _mapping(llm_data.get("circuit_breaker"), "llm.circuit_breaker")
     providers_data = _mapping(llm_data.get("providers"), "llm.providers")
@@ -478,6 +554,75 @@ def _build_and_validate(data: Mapping[str, Any], selected_key: SecretValue) -> A
                     "decision.stop_utility.minimum_stop_utility",
                 ),
             ),
+            candidate_question_value=CandidateQuestionValueConfig(
+                enabled=_bool_value(
+                    candidate_question_value_data.get("enabled"),
+                    "decision.candidate_question_value.enabled",
+                ),
+                pool_size=_int_value(
+                    candidate_question_value_data.get("pool_size"),
+                    "decision.candidate_question_value.pool_size",
+                ),
+                prior_alpha=_number_value(
+                    candidate_question_value_data.get("prior_alpha"),
+                    "decision.candidate_question_value.prior_alpha",
+                ),
+                prior_temperature=_number_value(
+                    candidate_question_value_data.get("prior_temperature"),
+                    "decision.candidate_question_value.prior_temperature",
+                ),
+                other_answer_probability=_number_value(
+                    candidate_question_value_data.get("other_answer_probability"),
+                    "decision.candidate_question_value.other_answer_probability",
+                ),
+                other_vagueness_penalty=_number_value(
+                    candidate_question_value_data.get("other_vagueness_penalty"),
+                    "decision.candidate_question_value.other_vagueness_penalty",
+                ),
+                weights=CandidateQuestionWeights(
+                    **{
+                        field: _number_value(
+                            candidate_question_weights_data.get(field),
+                            f"decision.candidate_question_value.weights.{field}",
+                        )
+                        for field in CandidateQuestionWeights.__dataclass_fields__
+                    }
+                ),
+            ),
+            finish_strategy=FinishStrategyConfig(
+                enabled=_bool_value(
+                    finish_strategy_data.get("enabled"), "decision.finish_strategy.enabled"
+                ),
+                candidate_threshold=_int_value(
+                    finish_strategy_data.get("candidate_threshold"),
+                    "decision.finish_strategy.candidate_threshold",
+                ),
+                remaining_question_threshold=_int_value(
+                    finish_strategy_data.get("remaining_question_threshold"),
+                    "decision.finish_strategy.remaining_question_threshold",
+                ),
+                lookahead_depth=_int_value(
+                    finish_strategy_data.get("lookahead_depth"),
+                    "decision.finish_strategy.lookahead_depth",
+                ),
+                minimum_finish_gain=_number_value(
+                    finish_strategy_data.get("minimum_finish_gain"),
+                    "decision.finish_strategy.minimum_finish_gain",
+                ),
+                weights=FinishWeights(
+                    **{
+                        field: _number_value(
+                            finish_weights_data.get(field),
+                            f"decision.finish_strategy.weights.{field}",
+                        )
+                        for field in FinishWeights.__dataclass_fields__
+                    }
+                ),
+            ),
+            question_termination_mode=_string_value(
+                decision_data.get("question_termination_mode"),
+                "decision.question_termination_mode",
+            ),
         ),
         llm=llm,
     )
@@ -537,6 +682,42 @@ def _validate(config: AppConfig) -> None:
         {"clarify"},
     )
     _positive(config.decision.max_questions, "decision.max_questions")
+    _in(
+        config.decision.question_termination_mode,
+        "decision.question_termination_mode",
+        {"legacy", "explicit_only"},
+    )
+    candidate_question_value = config.decision.candidate_question_value
+    _positive(candidate_question_value.pool_size, "decision.candidate_question_value.pool_size")
+    _unit_interval(
+        candidate_question_value.prior_alpha, "decision.candidate_question_value.prior_alpha"
+    )
+    _positive(
+        candidate_question_value.prior_temperature,
+        "decision.candidate_question_value.prior_temperature",
+    )
+    _unit_interval(
+        candidate_question_value.other_answer_probability,
+        "decision.candidate_question_value.other_answer_probability",
+    )
+    _unit_interval(
+        candidate_question_value.other_vagueness_penalty,
+        "decision.candidate_question_value.other_vagueness_penalty",
+    )
+    for name, value in vars(candidate_question_value.weights).items():
+        _non_negative(value, f"decision.candidate_question_value.weights.{name}")
+    finish_strategy = config.decision.finish_strategy
+    _positive(finish_strategy.candidate_threshold, "decision.finish_strategy.candidate_threshold")
+    _positive(
+        finish_strategy.remaining_question_threshold,
+        "decision.finish_strategy.remaining_question_threshold",
+    )
+    _in(finish_strategy.lookahead_depth, "decision.finish_strategy.lookahead_depth", {1, 2})
+    _non_negative(
+        finish_strategy.minimum_finish_gain, "decision.finish_strategy.minimum_finish_gain"
+    )
+    for name, value in vars(finish_strategy.weights).items():
+        _non_negative(value, f"decision.finish_strategy.weights.{name}")
     _unit_interval(
         config.decision.ask_utility.minimum_ask_utility,
         "decision.ask_utility.minimum_ask_utility",
@@ -615,9 +796,9 @@ def _number_value(value: Any, field: str) -> float:
     return float(value)
 
 
-def _in(value: str, field: str, allowed: set[str]) -> None:
+def _in(value: object, field: str, allowed: set[object]) -> None:
     if value not in allowed:
-        choices = ", ".join(sorted(allowed))
+        choices = ", ".join(str(choice) for choice in sorted(allowed, key=str))
         raise ConfigError(f"{field} must be one of: {choices}")
 
 

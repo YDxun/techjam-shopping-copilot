@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
+from types import MappingProxyType
+from typing import Mapping
 
 from utils import session_utils as su
 
@@ -187,6 +189,39 @@ class QuestionDecision:
     reason_code: str
     utility_score: float
     alternative_scores: dict[str, float]
+
+
+@dataclass(frozen=True)
+class CandidateAttributeSignal:
+    attribute: str
+    coverage: float
+    expected_remaining: float
+    expected_shrink: float
+    resolve_at_10: float
+    resolve_at_3: float
+    resolve_at_1: float
+    p90_remaining: float
+    worst_case_remaining: int
+    missing_rate: float
+    extraction_confidence: float
+    two_step_finish_gain: float = 0.0
+
+
+@dataclass(frozen=True)
+class CandidateQuestionSignals:
+    candidate_count: int
+    by_attribute: Mapping[str, CandidateAttributeSignal]
+    target_probabilities: Mapping[str, float]
+    best_other_pair: tuple[str, str] | None = None
+    other_signal: CandidateAttributeSignal | None = None
+    previous_candidate_count: int | None = None
+    source: str = "dynamic"
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "by_attribute", MappingProxyType(dict(self.by_attribute)))
+        object.__setattr__(
+            self, "target_probabilities", MappingProxyType(dict(self.target_probabilities))
+        )
 
 
 @dataclass(frozen=True)

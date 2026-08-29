@@ -91,6 +91,49 @@ class StopUtilityConfig:
 
 
 @dataclass(frozen=True)
+class CandidateQuestionWeights:
+    expected_shrink: float = 0.30
+    coverage: float = 0.15
+    complementarity: float = 0.15
+    answer_probability: float = 0.15
+    missing_penalty: float = 0.20
+    redundancy_penalty: float = 0.20
+    repeat_penalty: float = 0.40
+    no_preference_penalty: float = 0.60
+    turn_cost: float = 0.15
+
+
+@dataclass(frozen=True)
+class CandidateQuestionValueConfig:
+    enabled: bool = False
+    pool_size: int = 300
+    prior_alpha: float = 0.25
+    prior_temperature: float = 1.0
+    other_answer_probability: float = 0.75
+    other_vagueness_penalty: float = 0.10
+    weights: CandidateQuestionWeights = field(default_factory=CandidateQuestionWeights)
+
+
+@dataclass(frozen=True)
+class FinishWeights:
+    resolve_at_10: float = 0.50
+    resolve_at_3: float = 0.20
+    resolve_at_1: float = 0.10
+    terminal_progress: float = 0.30
+    p90_remaining_penalty: float = 0.20
+
+
+@dataclass(frozen=True)
+class FinishStrategyConfig:
+    enabled: bool = False
+    candidate_threshold: int = 100
+    remaining_question_threshold: int = 2
+    lookahead_depth: int = 1
+    minimum_finish_gain: float = 0.0
+    weights: FinishWeights = field(default_factory=FinishWeights)
+
+
+@dataclass(frozen=True)
 class DecisionConfig:
     max_questions: int = 3
     # 数据验证结论：先问 other 平均每轮把候选从 4930 缩到 307、命中保持 0.99
@@ -98,6 +141,11 @@ class DecisionConfig:
     ask_other_first: bool = True
     ask_utility: AskUtilityConfig = field(default_factory=AskUtilityConfig)
     stop_utility: StopUtilityConfig = field(default_factory=StopUtilityConfig)
+    candidate_question_value: CandidateQuestionValueConfig = field(
+        default_factory=CandidateQuestionValueConfig
+    )
+    finish_strategy: FinishStrategyConfig = field(default_factory=FinishStrategyConfig)
+    question_termination_mode: str = "legacy"
 
 
 @dataclass(frozen=True)

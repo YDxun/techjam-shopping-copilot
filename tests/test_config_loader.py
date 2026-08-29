@@ -21,6 +21,55 @@ def contains_string(value: object, expected: str) -> bool:
 
 
 class ConfigLoaderTest(unittest.TestCase):
+    def test_dynamic_question_configuration_rejects_invalid_domains(self) -> None:
+        cases = (
+            (
+                {"candidate_question_value": {"pool_size": 0}},
+                "candidate_question_value.pool_size",
+            ),
+            (
+                {"candidate_question_value": {"prior_alpha": -0.1}},
+                "candidate_question_value.prior_alpha",
+            ),
+            (
+                {"candidate_question_value": {"prior_temperature": 0}},
+                "candidate_question_value.prior_temperature",
+            ),
+            (
+                {"candidate_question_value": {"other_answer_probability": 1.1}},
+                "candidate_question_value.other_answer_probability",
+            ),
+            (
+                {"candidate_question_value": {"other_vagueness_penalty": -0.1}},
+                "candidate_question_value.other_vagueness_penalty",
+            ),
+            (
+                {"candidate_question_value": {"weights": {"coverage": -0.1}}},
+                "candidate_question_value.weights.coverage",
+            ),
+            (
+                {"finish_strategy": {"candidate_threshold": 0}},
+                "finish_strategy.candidate_threshold",
+            ),
+            (
+                {"finish_strategy": {"remaining_question_threshold": 0}},
+                "finish_strategy.remaining_question_threshold",
+            ),
+            ({"finish_strategy": {"lookahead_depth": 3}}, "finish_strategy.lookahead_depth"),
+            (
+                {"finish_strategy": {"minimum_finish_gain": -0.1}},
+                "finish_strategy.minimum_finish_gain",
+            ),
+            (
+                {"finish_strategy": {"weights": {"resolve_at_10": -0.1}}},
+                "finish_strategy.weights.resolve_at_10",
+            ),
+            ({"question_termination_mode": "utility"}, "question_termination_mode"),
+        )
+        for decision, field in cases:
+            with self.subTest(field=field), self.assertRaisesRegex(ConfigError, field):
+                load_config(overrides={"decision": decision}, environ={})
+
     def write_config(self, root: Path, payload: dict) -> Path:
         path = root / "settings.json"
         path.write_text(json.dumps(payload), encoding="utf-8")
@@ -88,7 +137,9 @@ class ConfigLoaderTest(unittest.TestCase):
     def test_legacy_backend_maps_to_provider_when_provider_is_absent(self) -> None:
         for backend, provider in (("openai", "openai"), ("none", "none"), ("local", "none")):
             with self.subTest(backend=backend):
-                self.assertEqual(load_config(environ={"LLM_BACKEND": backend}).llm.provider, provider)
+                self.assertEqual(
+                    load_config(environ={"LLM_BACKEND": backend}).llm.provider, provider
+                )
 
     def test_selected_base_url_override_does_not_change_inactive_profile(self) -> None:
         config = load_config(environ={
@@ -186,7 +237,10 @@ class ConfigLoaderTest(unittest.TestCase):
             direct_path = self.write_config(root, {"top_k": 14})
             env_path = root / "environment.json"
             env_path.write_text(json.dumps({"top_k": 15}), encoding="utf-8")
-            self.assertEqual(load_config(path=direct_path, environ={"APP_CONFIG_PATH": str(env_path)}).top_k, 14)
+            self.assertEqual(
+                load_config(path=direct_path, environ={"APP_CONFIG_PATH": str(env_path)}).top_k,
+                14,
+            )
 
     def test_rejects_invalid_json_and_missing_path(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -212,7 +266,9 @@ class ConfigLoaderTest(unittest.TestCase):
         with self.assertRaisesRegex(ConfigError, "llm.circuit_breaker.failure_threshold"):
             load_config(environ={"LLM_CIRCUIT_BREAKER_FAILURE_THRESHOLD": "0"})
         for value in ("nan", "inf", "-inf"):
-            with self.subTest(value=value), self.assertRaisesRegex(ConfigError, "llm.timeout_seconds"):
+            with self.subTest(value=value), self.assertRaisesRegex(
+                ConfigError, "llm.timeout_seconds"
+            ):
                 load_config(environ={"LLM_TIMEOUT_SECONDS": value})
 
     def test_models_are_immutable(self) -> None:
@@ -223,9 +279,14 @@ class ConfigLoaderTest(unittest.TestCase):
 
 class EnvConfigCompatibilityTest(unittest.TestCase):
     def test_exposes_existing_flat_fields_and_nested_llm(self) -> None:
-        env = EnvConfig.from_env(environ={
-            "TOP_K": "8", "SAMPLE_LIMIT": "4", "LLM_MODEL": "deepseek-reasoner", "DEEPSEEK_API_KEY": "secret-value",
-        })
+        env = EnvConfig.from_env(
+            environ={
+                "TOP_K": "8",
+                "SAMPLE_LIMIT": "4",
+                "LLM_MODEL": "deepseek-reasoner",
+                "DEEPSEEK_API_KEY": "secret-value",
+            }
+        )
         self.assertEqual(env.top_k, 8)
         self.assertEqual(env.sample_limit, 4)
         self.assertEqual(env.llm.model, "deepseek-reasoner")
@@ -246,8 +307,18 @@ class EnvConfigCompatibilityTest(unittest.TestCase):
         self.assertNotIn("legacy-secret", repr(env))
 
     def test_submit_mode_requires_the_selected_provider_key(self) -> None:
-        self.assertTrue(EnvConfig.from_env(environ={"ENV_MODE": "submit", "LLM_PROVIDER": "openai"}).offline)
-        self.assertFalse(EnvConfig.from_env(environ={"ENV_MODE": "submit", "LLM_BACKEND": "openai", "OPENAI_API_KEY": "selected-secret"}).offline)
+        self.assertTrue(
+            EnvConfig.from_env(environ={"ENV_MODE": "submit", "LLM_PROVIDER": "openai"}).offline
+        )
+        self.assertFalse(
+            EnvConfig.from_env(
+                environ={
+                    "ENV_MODE": "submit",
+                    "LLM_BACKEND": "openai",
+                    "OPENAI_API_KEY": "selected-secret",
+                }
+            ).offline
+        )
 
     def test_inactive_provider_key_does_not_make_selected_provider_online(self) -> None:
         for environ in (

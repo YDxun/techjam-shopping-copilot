@@ -55,6 +55,10 @@ RE_NEGATED_REJECTION = re.compile(
     r"(?:one|ones)\b",
     re.I | re.S,
 )
+RE_NEGATED_DESTRUCTIVE = re.compile(
+    r"\b(?:do not|don't|never)\s+(?:switch|change|replace|remove|drop)\b",
+    re.I,
+)
 RE_COMPLEX = re.compile(
     r"\b(?:rather than|instead of|except|not the|previous|former|latter|that sort)\b",
     re.I,
@@ -82,8 +86,11 @@ class RuleBasedRecognizer:
         replacement = RE_REPLACE_CONSTRAINT.search(text)
         removal = RE_REMOVE_VALUE_ATTRIBUTE.search(text)
         negated_rejection = RE_NEGATED_REJECTION.search(text)
+        negated_destructive = RE_NEGATED_DESTRUCTIVE.search(text)
 
-        if negated_rejection:
+        if negated_destructive:
+            ambiguities.append("negated_destructive_instruction")
+        elif negated_rejection:
             color = negated_rejection.group("color").lower()
             operations.append(
                 ConstraintOperation(
@@ -169,7 +176,7 @@ class RuleBasedRecognizer:
                 dialogue_act = DialogueAct.REJECT_PRODUCTS
                 confidence = 0.85
 
-        if not operations and dialogue_act not in {
+        if not negated_destructive and not operations and dialogue_act not in {
             DialogueAct.NO_MORE_PREFERENCES,
             DialogueAct.NO_PREFERENCE,
         }:

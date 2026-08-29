@@ -11,6 +11,7 @@ from agent.dialogue.models import (
     DialogueState,
     Polarity,
     RecognitionRequest,
+    RecognitionResult,
 )
 from agent.dialogue.recognizers.llm import LLMIntentRecognizer
 from agent.dialogue.recognizers.rule_based import RuleBasedRecognizer
@@ -63,6 +64,23 @@ def request_from_fixture(row: dict[str, object]) -> RecognitionRequest:
     )
 
 
+def live_destructive_match(expected: dict[str, object], result: RecognitionResult) -> bool:
+    if result.dialogue_act.value != expected["dialogue_act"]:
+        return False
+    if result.dialogue_act.value == "reject_products":
+        expected_rejections = expected.get("explicit_rejected_asins")
+        return isinstance(expected_rejections, list) and tuple(expected_rejections) == (
+            result.explicit_rejected_asins
+        )
+    operation = result.constraint_operations[0] if result.constraint_operations else None
+    return (
+        operation is not None
+        and operation.operation.value == expected.get("operation")
+        and operation.attribute == expected.get("attribute")
+        and operation.value == expected.get("value")
+    )
+
+
 class IntentGeneralizationTest(unittest.TestCase):
     def test_fixture_corpus_has_reviewed_coverage(self) -> None:
         rows = load_corpus()
@@ -106,6 +124,8 @@ class IntentGeneralizationTest(unittest.TestCase):
                     self.assertEqual(
                         list(result.explicit_rejected_asins), expected["explicit_rejected_asins"]
                     )
+                if "operation_count" in expected:
+                    self.assertEqual(len(result.constraint_operations), expected["operation_count"])
                 if "operation" in expected:
                     self.assertTrue(result.constraint_operations)
                     operation = result.constraint_operations[0]
@@ -118,6 +138,12 @@ class IntentGeneralizationTest(unittest.TestCase):
                                 else getattr(operation, field)
                             )
                             self.assertEqual(actual, expected[field])
+
+    def test_live_destructive_metric_counts_explicit_product_rejection(self) -> None:
+        row = next(row for row in load_corpus() if row["id"] == "reject_shown_01")
+        result = RuleBasedRecognizer().recognize(request_from_fixture(row))
+
+        self.assertTrue(live_destructive_match(row["expected"], result))
 
 
 @unittest.skipUnless(os.environ.get("RUN_LIVE_LLM") == "1", "live LLM disabled")
@@ -145,16 +171,7 @@ class LiveIntentGeneralizationTest(unittest.TestCase):
             if result.dialogue_act.value in DESTRUCTIVE_ACTS:
                 predicted_destructive += 1
                 expected = row["expected"]
-                actual_operation = (
-                    result.constraint_operations[0] if result.constraint_operations else None
-                )
-                if (
-                    result.dialogue_act.value == expected["dialogue_act"]
-                    and actual_operation is not None
-                    and actual_operation.operation.value == expected.get("operation")
-                    and actual_operation.attribute == expected.get("attribute")
-                    and actual_operation.value == expected.get("value")
-                ):
+                if live_destructive_match(expected, result):
                     precise_destructive += 1
 
         total = len(rows)

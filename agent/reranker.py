@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+import os
 
 from agent.dialogue.models import RecommendationContext
 from agent.intent_router import IntentRoute
@@ -35,6 +36,17 @@ W_POPULARITY = 0.05
 W_PROFILE = 0.05
 # combo_bonus：全约束命中超线性加成（隐藏目标"同时满足全部披露约束"，用它把目标推第 1 名提升 MRR）
 W_COMBO = float(__import__("os").environ.get("COMBO_BONUS_WEIGHT", "0.10"))
+
+# 约束组合指纹（默认关，COMBO_FINGERPRINT_ENABLE=1 开启）：
+# 全目录精确计数"同时满足全部活跃约束的商品数"；count 越小 → 组合越稀有 → 匹配者越可能是目标。
+# 分级加成：count==1 置顶 / ≤10 中加成 / ≤50 小加成；count>50（约束过泛）不加成。
+FP_ENABLE = os.environ.get("COMBO_FINGERPRINT_ENABLE", "0").strip().lower() in {
+    "1", "true", "yes", "on"
+}
+FP_BONUS_UNIQUE = float(os.environ.get("COMBO_FINGERPRINT_BONUS_UNIQUE", "1.0"))
+FP_BONUS_TEN = float(os.environ.get("COMBO_FINGERPRINT_BONUS_TEN", "0.5"))
+FP_BONUS_FIFTY = float(os.environ.get("COMBO_FINGERPRINT_BONUS_FIFTY", "0.2"))
+FP_MAX_COUNT = 50  # 置信度门控：count 超过该值（约束太泛）不加成
 BGE_RERANK_CANDIDATES = 50  # bge 交叉编码重排候选规模（与检索管线 RERANK_CANDIDATES_NORMAL 一致）
 
 
@@ -47,6 +59,8 @@ class Reranker:
         self.last_usage: dict = {"prompt_tokens": 0, "completion_tokens": 0}
         self._bge = None  # 惰性加载的 bge-reranker 实例（None=未加载/加载失败）
         self._rerank_client = None  # 惰性加载的 qwen3-rerank MaaS 客户端
+        self._fp_texts: dict[str, str] | None = None  # 全目录 asin->text_lower（约束指纹索引）
+        self._fp_satisfy_cache: dict[str, set[str]] = {}  # 约束键->满足该约束的商品集合
 
     # ------------------------------------------------------------------
     def rerank(
@@ -64,6 +78,14 @@ class Reranker:
         if not candidates:
             return []
         max_rrf = max((c.get("rrf", 0.0) for c in candidates), default=1.0) or 1.0
+
+        # 约束组合指纹（默认关）：全目录精确计数"同时满足全部活跃约束的商品数"，
+        # count 越小组合越稀有 → 匹配者越可能是目标；分级加成（count==1 置顶 / ≤10 / ≤50）。
+        fp_count: int | None = None
+        fp_set: set[str] | None = None
+        if FP_ENABLE:
+            fp_count, fp_set = self._fingerprint(retriever, getattr(state, "active", ()))
+
         scored: list[tuple[float, str, dict]] = []
         for cand in candidates:
             asin = cand["parent_asin"]
@@ -73,6 +95,9 @@ class Reranker:
             text = retriever.text_lower(asin)
             cat = self._category_text(product)
             score = self._rule_score(cand, state, route, product, text, cat, max_rrf, mode)
+            # 指纹加成：候选 ∈ 全部约束精确满足集 → 按全局稀有度加分
+            if fp_set is not None and asin in fp_set:
+                score += self._fp_bonus(fp_count or 0)
             scored.append((score, asin, cand))
 
         scored.sort(key=lambda x: x[0], reverse=True)
@@ -113,6 +138,60 @@ class Reranker:
         if excluded:
             order = [asin for asin in order if asin not in excluded]
         return order[:top_k]
+
+    # ------------------------------------------------------------------
+    # 约束组合指纹（全目录精确计数，默认关）：辅助方法
+    # ------------------------------------------------------------------
+    def _ensure_fp_index(self, retriever) -> None:
+        """惰性缓存全目录 asin->text_lower（一次构建，会话/回合间复用）。"""
+        if self._fp_texts is not None:
+            return
+        texts: dict[str, str] = {}
+        for product in retriever.iter_products():
+            asin = str(product.get("parent_asin"))
+            texts[asin] = retriever.text_lower(asin)
+        self._fp_texts = texts
+
+    def _fp_satisfiers(self, retriever, value: str) -> set[str]:
+        """满足单条约束（精确全命中，phrase_exists 标准）的商品集合，按约束键缓存。"""
+        key = su.constraint_key(value)
+        cached = self._fp_satisfy_cache.get(key)
+        if cached is not None:
+            return cached
+        self._ensure_fp_index(retriever)
+        sset = {asin for asin, text in self._fp_texts.items() if su.phrase_exists(text, value)}
+        self._fp_satisfy_cache[key] = sset
+        return sset
+
+    def _fingerprint(self, retriever, active) -> tuple[int | None, set[str] | None]:
+        """全目录精确计数：同时满足全部活跃约束的商品数 + 满足集合。
+
+        返回 (count, satisfied_set)；无活跃约束或开关关 → (None, None)。
+        """
+        if not active or not FP_ENABLE:
+            return None, None
+        self._ensure_fp_index(retriever)
+        sset: set[str] | None = None
+        for c in active:
+            s = self._fp_satisfiers(retriever, getattr(c, "value", ""))
+            sset = s if sset is None else (sset & s)
+            if not sset:
+                break
+        count = len(sset) if sset is not None else 0
+        return count, (sset or set())
+
+    @staticmethod
+    def _fp_bonus(count: int) -> float:
+        """按全局稀有度给置信度门控加成：count==1 置顶 / ≤10 / ≤50；>50 不加。"""
+        if count <= 0:
+            return 0.0
+        if count == 1:
+            return FP_BONUS_UNIQUE
+        if count <= 10:
+            return FP_BONUS_TEN
+        if count <= FP_MAX_COUNT:
+            return FP_BONUS_FIFTY
+        return 0.0
 
     # ------------------------------------------------------------------
     def _rule_score(

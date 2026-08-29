@@ -98,7 +98,7 @@ class Agent(BaseAgent):
         return self.dialogue.recognizer.statistics()
 
     def transition_guard_statistics(self) -> dict[str, object]:
-        """Expose aggregate guard diagnostics without changing the official turn-response contract."""
+        """Expose aggregate guard diagnostics without changing the response contract."""
         return self.dialogue.transition_guard.statistics()
 
     # ------------------------------------------------------------------

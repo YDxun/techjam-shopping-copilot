@@ -38,7 +38,9 @@
   details.Material/features/title，budget 只查 price（79% 缺失→放行），brand 查 store（缺失放行）。
   `retrieval_pipeline` 通道1 已接入；reranker 经 A/B 证明保持全文本打分最优（纯字段/叠加会掉 MRR，
   详见"override 设计"一节）。
-- **重排序** `agent/reranker.py`：规则融合打分（约束覆盖度 0.5 / 品类 0.25 / RRF 0.15 / 热度 0.05 / 画像 0.05）
+- **重排序** `agent/reranker.py`：规则融合打分（约束覆盖度 0.5 / **combo_bonus 0.10** /
+  品类 0.25 / RRF 0.15 / 热度 0.05 / 画像 0.05）——combo_bonus 给"同时完整命中 ≥2 条披露约束"
+  的商品 C(n,2)/C(N,2) 超线性加成（隐藏目标来自商品自身元数据，天然全命中，用它推高 MRR）
   + 可选 **qwen3-rerank 文本重排**（`LLM_RERANK=1` + `LLM_RERANK_BACKEND=text`，阿里云 MaaS
   `/reranks`，`DASHSCOPE_API_KEY` 注入；失败自动回退规则）；+ 可选本地**重排模型**
   （`RERANKER_MODEL_ENABLE=1`，按 `RERANKER_MODEL` 自动分发：`thebajajra/RexReranker-0.6B` /
@@ -473,3 +475,28 @@ capability_probe 按模型类型探测可用性，失败一律回退规则排序
    （A/B：bge-recover 0.8759 < 0.8787），保留为 `RERANKER_MODEL_ENABLE=1` 可选，已门控 recover 变安全。
 4. **LLM 意图识别默认开**（`llm_intent_enabled=true`）：级联（规则先行，低置信才咨询 LLM），
    无 key 环境自动回退规则——零成本兜底，公开集不变。
+
+
+---
+
+## combo_bonus：全约束命中超线性加成（提升 MRR）
+
+**洞察**：隐藏目标商品来自真实购买记录，intent card 约束从该商品自身元数据生成 →
+目标文本**同时满足全部披露约束**；而干扰商品往往"分散命中"（各满足一部分）。
+当前覆盖度是逐条加权平均（线性信号），无法区分"1 个商品全命中"与"3 个商品各中一条"。
+
+**设计**（`agent/reranker.py::_rule_score`）：
+- 统计"完整命中"约束的加权数 `full_count`（hard=1.0、soft=0.5，`hit>=0.999` 才算完整）；
+- `combo_norm = C(full_count,2) / C(full_denom,2)`——"同时满足的约束对"占比，≥2 条才触发，
+  全命中=1.0，天然超线性；
+- `score += W_COMBO × combo_norm`（默认 0.10，环境变量 `COMBO_BONUS_WEIGHT` 可调）。
+
+**A/B（公开集 200 会话）**：
+| 配置 | HR@10 | MRR | MTTC | TS |
+|---|---|---|---|---|
+| 无 combo（上一版默认） | 1.0 | 0.6438 | 1.72 | 0.8787 |
+| **+ combo_bonus** | 1.0 | **0.6486** | 1.72 | **0.8802** |
+
+- 增益集中在 **buying**（MRR +0.012，hard 约束强、目标全命中）；
+- 权重 0.05~0.30 结果相同（饱和、稳健）；hard-only 计数无效（目标只有 1 条 hard 无法触发
+  C(1,2)=0，**soft 计数是关键**——目标=1 hard + 多个 soft 全命中）。

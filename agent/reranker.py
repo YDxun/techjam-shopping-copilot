@@ -33,6 +33,8 @@ W_CATEGORY = 0.25
 W_RRF = 0.15
 W_POPULARITY = 0.05
 W_PROFILE = 0.05
+# combo_bonus：全约束命中超线性加成（隐藏目标"同时满足全部披露约束"，用它把目标推第 1 名提升 MRR）
+W_COMBO = float(__import__("os").environ.get("COMBO_BONUS_WEIGHT", "0.10"))
 BGE_RERANK_CANDIDATES = 50  # bge 交叉编码重排候选规模（与检索管线 RERANK_CANDIDATES_NORMAL 一致）
 
 
@@ -125,19 +127,38 @@ class Reranker:
         mode: str,
     ) -> float:
         # 1) 约束覆盖度（核心强信号，Pillar I 硬约束过滤 + Pillar II 槽位）
+        #    + combo_bonus：隐藏目标来自商品自身元数据（intent card），"同时满足全部披露约束"；
+        #    逐条加权平均是线性信号，此处对"完整命中 ≥2 条约束"加超线性加成（C(n,2) 归一化），
+        #    把全命中目标与"分散命中"的干扰商品区分开，推高 MRR。
         hard = state.hard
         soft = state.soft
         cov_numer = 0.0
         cov_denom = 0.0
+        full_count = 0.0  # 完整命中约束的加权计数（hard=1.0, soft=0.5）
+        full_denom = 0.0  # 全部约束的加权总数（用于归一化）
         for c in hard:
             w = 1.0
-            cov_numer += w * self._constraint_hit(c, product, text)
+            h = self._constraint_hit(c, product, text)
+            cov_numer += w * h
             cov_denom += w
+            if h >= 0.999:
+                full_count += 1.0
+            full_denom += 1.0
         for c in soft:
             w = 0.4
-            cov_numer += w * self._constraint_hit(c, product, text)
+            h = self._constraint_hit(c, product, text)
+            cov_numer += w * h
             cov_denom += w
+            if h >= 0.999:
+                full_count += 0.5
+            full_denom += 0.5
         coverage = (cov_numer / cov_denom) if cov_denom > 0 else 0.5
+
+        # combo_bonus：完整命中 ≥2 条约束才触发；C(n,2)/C(N,2) 归一化
+        # （"同时满足的约束对"占"全部约束对"的比例，天然超线性，全命中=1.0）
+        combo_norm = 0.0
+        if full_denom >= 2.0 and full_count >= 2.0:
+            combo_norm = (full_count * (full_count - 1.0)) / (full_denom * (full_denom - 1.0))
 
         # 2) 品类匹配
         cat_frac = self._category_match(route.category_tokens, cat, text)
@@ -155,6 +176,7 @@ class Reranker:
 
         score = (
             W_COVERAGE * coverage
+            + W_COMBO * combo_norm
             + W_CATEGORY * cat_frac
             + W_RRF * rrf_norm
             + W_POPULARITY * popularity

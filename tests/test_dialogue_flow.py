@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import json
+import threading
 import unittest
 
-from agent.dialogue.models import GuardAction
+from agent.dialogue.models import DialogueTurnResult, GuardAction
 from agent.dialogue.pipeline import DialogueUnderstandingPipeline, StalePendingTurnError
 from agent.main_agent import Agent
 from config.env_config import EnvConfig
@@ -121,6 +122,27 @@ class RecordingPolicy:
 
     def message_for(self, decision, state):
         return self.delegate.message_for(decision, state)
+
+
+class OrderedBarrierLock:
+    def __init__(self, barrier, actual_lock, delayed_thread: str, release_event) -> None:
+        self.barrier = barrier
+        self.actual_lock = actual_lock
+        self.delayed_thread = delayed_thread
+        self.release_event = release_event
+        self.entries = 0
+
+    def __enter__(self):
+        self.entries += 1
+        self.barrier.wait(timeout=2)
+        if threading.current_thread().name == self.delayed_thread:
+            if not self.release_event.wait(timeout=2):
+                raise AssertionError("newer operation did not complete")
+        self.actual_lock.acquire()
+        return self
+
+    def __exit__(self, exc_type, exc, traceback) -> None:
+        self.actual_lock.release()
 
 
 class UnavailableClient:
@@ -511,6 +533,124 @@ class DialogueFlowTest(unittest.TestCase):
             pipeline.record_shown("s", ["A"], turn=1)
 
         self.assertEqual(pipeline.session("s"), before)
+
+    def test_concurrent_pending_commits_are_atomic_and_cannot_roll_back_turns(self) -> None:
+        # Splitting validation from assignment lets both pending turns overwrite each other.
+        pipeline = self.build_rule_pipeline(guard_enabled=False)
+        pipeline.reset("s", {})
+        older = pipeline.interpret_turn("s", "I'm looking for shoes.", turn=1)
+        newer = pipeline.interpret_turn("s", "I also need them to be blue.", turn=2)
+        barrier = threading.Barrier(2)
+        newer_done = threading.Event()
+        ordered_lock = OrderedBarrierLock(
+            barrier,
+            threading.RLock(),
+            "older-pending",
+            newer_done,
+        )
+        original_lock = getattr(pipeline, "_session_lock", None)
+        pipeline._session_lock = lambda session_id: ordered_lock
+        outcomes: dict[str, object] = {}
+
+        def decide(name: str, pending) -> None:
+            try:
+                outcomes[name] = pipeline.decide_question(pending, None, candidate_count=3)
+            except Exception as exc:
+                outcomes[name] = exc
+            finally:
+                if name == "newer":
+                    newer_done.set()
+
+        older_thread = threading.Thread(
+            target=decide,
+            args=("older", older),
+            name="older-pending",
+        )
+        newer_thread = threading.Thread(
+            target=decide,
+            args=("newer", newer),
+            name="newer-pending",
+        )
+        try:
+            older_thread.start()
+            newer_thread.start()
+            older_thread.join(timeout=2)
+            newer_thread.join(timeout=2)
+        finally:
+            if original_lock is None:
+                del pipeline._session_lock
+            else:
+                pipeline._session_lock = original_lock
+
+        self.assertFalse(older_thread.is_alive())
+        self.assertFalse(newer_thread.is_alive())
+        self.assertEqual(ordered_lock.entries, 2)
+        self.assertIsInstance(outcomes["newer"], DialogueTurnResult)
+        self.assertIsInstance(outcomes["older"], StalePendingTurnError)
+        self.assertEqual(pipeline.session("s").dialogue.turn, 2)
+        self.assertEqual(pipeline.session("s").candidate_counts, (3,))
+
+    def test_concurrent_delayed_shown_write_cannot_restore_old_history(self) -> None:
+        # A shown write must validate and assign atomically against a newer decision.
+        pipeline = self.build_rule_pipeline(guard_enabled=False)
+        pipeline.reset("s", {})
+        first = pipeline.interpret_turn("s", "I'm looking for shoes.", turn=1)
+        first_result = pipeline.decide_question(first, None, candidate_count=3)
+        newer = pipeline.interpret_turn("s", "I also need them to be blue.", turn=2)
+        barrier = threading.Barrier(2)
+        newer_done = threading.Event()
+        ordered_lock = OrderedBarrierLock(
+            barrier,
+            threading.RLock(),
+            "delayed-shown",
+            newer_done,
+        )
+        original_lock = getattr(pipeline, "_session_lock", None)
+        pipeline._session_lock = lambda session_id: ordered_lock
+        outcomes: dict[str, object] = {}
+
+        def commit_newer() -> None:
+            try:
+                outcomes["newer"] = pipeline.decide_question(newer, None, candidate_count=3)
+            except Exception as exc:
+                outcomes["newer"] = exc
+            finally:
+                newer_done.set()
+
+        def record_delayed() -> None:
+            try:
+                pipeline.record_shown(
+                    "s",
+                    ["A"],
+                    turn=1,
+                    expected_session=first_result.committed_session,
+                    expected_fingerprint=first_result.committed_session_fingerprint,
+                )
+                outcomes["shown"] = "recorded"
+            except Exception as exc:
+                outcomes["shown"] = exc
+
+        shown_thread = threading.Thread(target=record_delayed, name="delayed-shown")
+        newer_thread = threading.Thread(target=commit_newer, name="newer-commit")
+        try:
+            shown_thread.start()
+            newer_thread.start()
+            shown_thread.join(timeout=2)
+            newer_thread.join(timeout=2)
+        finally:
+            if original_lock is None:
+                del pipeline._session_lock
+            else:
+                pipeline._session_lock = original_lock
+
+        self.assertFalse(shown_thread.is_alive())
+        self.assertFalse(newer_thread.is_alive())
+        self.assertEqual(ordered_lock.entries, 2)
+        self.assertIsInstance(outcomes["newer"], DialogueTurnResult)
+        self.assertIsInstance(outcomes["shown"], StalePendingTurnError)
+        self.assertEqual(pipeline.session("s").dialogue.turn, 2)
+        self.assertEqual(pipeline.session("s").products.pending_batch, ())
+        self.assertEqual(pipeline.session("s").products.observations, ())
 
     def test_unavailable_llm_uses_rule_path_and_keeps_session_valid(self) -> None:
         agent = Agent(

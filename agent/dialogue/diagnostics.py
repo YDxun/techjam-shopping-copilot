@@ -9,14 +9,23 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import InitVar, dataclass, field
 from pathlib import Path
 from types import MappingProxyType
 
-from agent.dialogue.models import ALLOWED_ATTRIBUTES
+from agent.dialogue.models import (
+    ALLOWED_ATTRIBUTES,
+    ConstraintStrength,
+    DialogueAct,
+    GuardAction,
+    RecognitionSource,
+)
 from config.models import DecisionTraceConfig
+from llm.base import LLMErrorCategory
+from utils import session_utils as su
 
 _ATTRIBUTE_SCORE_FIELDS = frozenset(
     {
@@ -42,6 +51,63 @@ _SCORE_SUMMARY_FIELDS = frozenset(
     }
 )
 _ROUND_DIGITS = 6
+_UNKNOWN = "unknown"
+_REDACTED = "<redacted>"
+_ASIN_LIKE_RE = re.compile(r"(?i)(?<![a-z0-9])[a-z0-9]{10}(?![a-z0-9])")
+_PRODUCT_IDENTIFIER_ATTRIBUTES = frozenset(
+    {"asin", "parent_asin", "product", "product_id", "product_identifier", "sku"}
+)
+_RECOGNITION_SOURCES = frozenset(item.value for item in RecognitionSource)
+_DIALOGUE_ACTS = frozenset(item.value for item in DialogueAct)
+_GUARD_ACTIONS = frozenset(item.value for item in GuardAction)
+_CONSTRAINT_STRENGTHS = frozenset(item.value for item in ConstraintStrength)
+_GUARD_REASONS = frozenset(
+    {
+        "guard_disabled",
+        "guard_passed",
+        "add_confidence_below_threshold",
+        "generic_rejection_soft_demote",
+        "generic_rejection_confidence_below_add_threshold",
+        "replace_confidence_below_threshold",
+        "remove_confidence_below_threshold",
+        "reject_products_confidence_below_threshold",
+        "replace_missing_explicit_evidence",
+        "remove_target_absent",
+        "no_preference_attribute_unclear",
+        "no_more_preferences_not_grounded",
+        "no_more_preferences_confidence_below_threshold",
+    }
+)
+_DECISION_REASONS = frozenset(
+    {
+        "stop_utility_reached",
+        "ask_other_first",
+        "no_candidate_attribute",
+        "ask_utility_too_low",
+        "highest_ask_utility",
+        "user_has_no_more_preferences",
+        "final_turn_no_followup",
+        "all_attributes_exhausted",
+        "highest_dynamic_utility",
+        "dynamic_concrete_fallback",
+        "dynamic_other_fallback",
+        "state_update_rejected",
+    }
+) | _GUARD_REASONS
+_FALLBACK_REASONS = frozenset(
+    {
+        "not_available",
+        "invalid_json",
+        "invalid_top_level_schema",
+        "invalid_field_value",
+        "invalid_category",
+        "rejected_asin_out_of_scope",
+        "invalid_evidence",
+        "evidence_too_long",
+        "evidence_not_grounded",
+    }
+)
+_REQUEST_FAILURE_CATEGORIES = frozenset(item.value for item in LLMErrorCategory)
 
 
 def _text(value: object) -> str:
@@ -49,9 +115,21 @@ def _text(value: object) -> str:
     return str(raw).strip().casefold()
 
 
-def _reason_code(value: object) -> str:
+def _category(value: object, allowed: frozenset[str]) -> str:
     normalized = _text(value)
-    return normalized if normalized.replace("_", "").isalnum() else ""
+    return normalized if normalized in allowed else _UNKNOWN
+
+
+def _fallback_reason(value: object) -> str:
+    normalized = _text(value)
+    if normalized in _FALLBACK_REASONS:
+        return normalized
+    prefix, separator, category = normalized.partition(":")
+    if prefix == "request_failed" and separator:
+        category = category.split(":", 1)[0]
+        if category in _REQUEST_FAILURE_CATEGORIES:
+            return f"request_failed:{category}"
+    return _UNKNOWN
 
 
 def _finite_number(value: object) -> tuple[float, int]:
@@ -73,12 +151,19 @@ def _safe_nonnegative_int(value: object) -> tuple[int, int]:
 def _normalized_constraints(
     values: Sequence[Sequence[object]],
 ) -> tuple[tuple[str, str, str], ...]:
-    normalized = {
-        (_text(item[0]), _text(item[1]), _text(item[2]))
-        for item in values
-        if len(item) == 3
-    }
+    normalized = {_normalized_constraint(item) for item in values if len(item) == 3}
     return tuple(sorted(normalized))
+
+
+def _normalized_constraint(item: Sequence[object]) -> tuple[str, str, str]:
+    attribute = _text(item[0])
+    value = su.constraint_key(str(item[1]))
+    strength = _category(item[2], _CONSTRAINT_STRENGTHS)
+    if attribute in _PRODUCT_IDENTIFIER_ATTRIBUTES or _ASIN_LIKE_RE.search(value):
+        return _REDACTED, _REDACTED, strength
+    if attribute not in ALLOWED_ATTRIBUTES:
+        return _REDACTED, _REDACTED, strength
+    return attribute, value, strength
 
 
 def _frozen_numeric_mapping(
@@ -204,9 +289,20 @@ class DialogueDecisionTrace:
         object.__setattr__(self, "score_summary", summary)
         object.__setattr__(self, "missing_rates", missing)
         object.__setattr__(self, "attribute_scores", attribute_scores)
-        object.__setattr__(self, "fallback_reason", _reason_code(self.fallback_reason))
-        object.__setattr__(self, "guard_reason", _reason_code(self.guard_reason))
-        object.__setattr__(self, "decision_reason", _reason_code(self.decision_reason))
+        object.__setattr__(
+            self,
+            "recognition_source",
+            _category(self.recognition_source, _RECOGNITION_SOURCES),
+        )
+        object.__setattr__(self, "dialogue_act", _category(self.dialogue_act, _DIALOGUE_ACTS))
+        object.__setattr__(self, "fallback_reason", _fallback_reason(self.fallback_reason))
+        object.__setattr__(self, "guard_action", _category(self.guard_action, _GUARD_ACTIONS))
+        object.__setattr__(self, "guard_reason", _category(self.guard_reason, _GUARD_REASONS))
+        object.__setattr__(
+            self,
+            "decision_reason",
+            _category(self.decision_reason, _DECISION_REASONS),
+        )
         if (
             self.selected_attribute is not None
             and _text(self.selected_attribute) not in ALLOWED_ATTRIBUTES
@@ -301,12 +397,12 @@ class DialogueDecisionTrace:
         payload: dict[str, object] = {
             "session_hash": self.session_hash,
             "turn": self.turn,
-            "recognition_source": _text(self.recognition_source),
-            "dialogue_act": _text(self.dialogue_act),
+            "recognition_source": self.recognition_source,
+            "dialogue_act": self.dialogue_act,
             "recognition_confidence": self.recognition_confidence,
             "ambiguities": list(self.ambiguities),
             "fallback_reason": self.fallback_reason,
-            "guard_action": _text(self.guard_action),
+            "guard_action": self.guard_action,
             "guard_reason": self.guard_reason,
             "intent_version": self.intent_version,
             "candidate_count": self.candidate_count,
@@ -332,10 +428,12 @@ class DialogueDecisionTrace:
 
 def _state_constraints(state: object, name: str) -> set[tuple[str, str, str]]:
     return {
-        (
-            _text(getattr(constraint, "attribute", "")),
-            _text(getattr(constraint, "value", "")),
-            _text(getattr(constraint, "strength", "")),
+        _normalized_constraint(
+            (
+                getattr(constraint, "attribute", ""),
+                getattr(constraint, "value", ""),
+                getattr(constraint, "strength", ""),
+            )
         )
         for constraint in getattr(state, name, ())
     }
@@ -443,18 +541,40 @@ class DecisionTraceRecorder:
         }
 
     def export_jsonl(self, path: str | Path) -> None:
+        if not self.config.enabled:
+            return
         output = Path(path)
-        lines = [
-            json.dumps(
+        payloads = [
+            (
+                trace,
                 trace.to_dict(
                     include_attribute_scores=self.config.include_attribute_scores,
                     include_state_diff=self.config.include_state_diff,
                 ),
+            )
+            for trace in self._records
+        ]
+        payloads.sort(
+            key=lambda item: (
+                item[0].session_hash,
+                item[0].turn,
+                json.dumps(
+                    item[1],
+                    allow_nan=False,
+                    ensure_ascii=True,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ),
+            )
+        )
+        lines = [
+            json.dumps(
+                payload,
                 allow_nan=False,
                 ensure_ascii=True,
                 separators=(",", ":"),
                 sort_keys=True,
             )
-            for trace in self._records
+            for _, payload in payloads
         ]
         output.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")

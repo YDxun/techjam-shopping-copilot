@@ -256,6 +256,5 @@ class AppConfig:
         default_factory=DialogueUnderstandingConfig
     )
     decision: DecisionConfig = field(default_factory=DecisionConfig)
-    diagnostics: DiagnosticsConfig = field(default_factory=DiagnosticsConfig)
-
     llm: LLMConfig = field(default_factory=LLMConfig)
+    diagnostics: DiagnosticsConfig = field(default_factory=DiagnosticsConfig)

@@ -26,7 +26,13 @@ from agent.dialogue.models import (
 )
 from config.env_config import EnvConfig
 from config.loader import ConfigError, load_config
-from config.models import DecisionTraceConfig
+from config.models import (
+    AppConfig,
+    DecisionConfig,
+    DecisionTraceConfig,
+    DialogueUnderstandingConfig,
+    LLMConfig,
+)
 
 
 def trace(
@@ -102,8 +108,69 @@ class DecisionTraceConfigTest(unittest.TestCase):
                 overrides={"diagnostics": {"decision_trace": {"output_path": "  "}}}, environ={}
             )
 
+    def test_app_config_old_positional_llm_argument_remains_aligned(self) -> None:
+        # Break caught: inserting diagnostics before llm shifts legacy positional callers.
+        legacy_llm = LLMConfig(provider="none")
+        config = AppConfig(
+            "dev",
+            "bm25",
+            10,
+            "embedding",
+            "reranker",
+            "offline.npy",
+            "encoder",
+            "other",
+            False,
+            False,
+            None,
+            "results.json",
+            3,
+            False,
+            False,
+            False,
+            DialogueUnderstandingConfig(),
+            DecisionConfig(),
+            legacy_llm,
+        )
+
+        self.assertIs(config.llm, legacy_llm)
+        self.assertFalse(config.diagnostics.decision_trace.enabled)
+
 
 class DecisionTraceRecorderTest(unittest.TestCase):
+    def test_trace_categories_are_closed_allowlists_in_repr_export_and_summary(self) -> None:
+        # Break caught: underscore-only secret strings survive category normalization anywhere.
+        secret = "customer_secret_token"
+        record = DialogueDecisionTrace(
+            session_id="s",
+            turn=1,
+            recognition_source=f"rule_{secret}",
+            dialogue_act=f"add_constraint_{secret}",
+            fallback_reason=f"request_failed:timeout:{secret}",
+            guard_action=f"apply_{secret}",
+            guard_reason=f"guard_disabled_{secret}",
+            decision_reason=f"highest_dynamic_utility_{secret}",
+        )
+        recorder = DecisionTraceRecorder(DecisionTraceConfig(enabled=True))
+        recorder.record(record)
+        payload = record.to_dict()
+
+        self.assertEqual(payload["recognition_source"], "unknown")
+        self.assertEqual(payload["dialogue_act"], "unknown")
+        self.assertEqual(payload["fallback_reason"], "request_failed:timeout")
+        self.assertEqual(payload["guard_action"], "unknown")
+        self.assertEqual(payload["guard_reason"], "unknown")
+        self.assertEqual(payload["decision_reason"], "unknown")
+        self.assertEqual(recorder.summary()["decision_reasons"], {"unknown": 1})
+        self.assertEqual(recorder.summary()["guard_actions"], {"unknown": 1})
+        self.assertNotIn(secret, repr(record))
+        self.assertNotIn(secret, json.dumps(payload, sort_keys=True))
+        self.assertNotIn(secret, json.dumps(recorder.summary(), sort_keys=True))
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "trace.jsonl"
+            recorder.export_jsonl(output)
+            self.assertNotIn(secret, output.read_text(encoding="utf-8"))
+
     def test_trace_hashes_session_omits_unapproved_fields_and_rounds_only_on_export(self) -> None:
         # Break caught: an identifier or unapproved field leaks into an exported trace.
         record = trace("secret-session")
@@ -137,6 +204,27 @@ class DecisionTraceRecorderTest(unittest.TestCase):
         with self.assertRaises(FrozenInstanceError):
             record.turn = 4
 
+    def test_trace_canonicalizes_constraint_values_and_redacts_product_identifiers(self) -> None:
+        # Break caught: trace diffs retain punctuation variants or product IDs.
+        record = DialogueDecisionTrace(
+            session_id="s",
+            turn=1,
+            added_constraints=(
+                (" Color ", "  Color:   Navy Blue,  ", "HARD"),
+                ("asin", "B0123ABC45", "soft"),
+                ("brand", "B0123ABC45", "soft"),
+                ("customer_secret_token", "private product title", "soft"),
+            ),
+        )
+        encoded = json.dumps(record.to_dict(), sort_keys=True)
+
+        self.assertIn(("color", "navy blue", "hard"), record.added_constraints)
+        self.assertIn(("<redacted>", "<redacted>", "soft"), record.added_constraints)
+        self.assertNotIn("B0123ABC45", repr(record))
+        self.assertNotIn("B0123ABC45", encoded)
+        self.assertNotIn("customer_secret_token", repr(record))
+        self.assertNotIn("private product title", encoded)
+
     def test_trace_sanitizes_nonfinite_scalar_numbers_before_json_serialization(self) -> None:
         # Break caught: a numerical failure outside a score map makes JSONL export invalid.
         record = DialogueDecisionTrace(
@@ -165,8 +253,8 @@ class DecisionTraceRecorderTest(unittest.TestCase):
         )
         encoded = json.dumps(record.to_dict())
 
-        self.assertEqual(record.to_dict()["fallback_reason"], "")
-        self.assertEqual(record.to_dict()["guard_reason"], "")
+        self.assertEqual(record.to_dict()["fallback_reason"], "unknown")
+        self.assertEqual(record.to_dict()["guard_reason"], "unknown")
         self.assertIn("highest_dynamic_utility", encoded)
         self.assertNotIn("secret response text", encoded)
 
@@ -272,12 +360,41 @@ class DecisionTraceRecorderTest(unittest.TestCase):
             },
         )
 
+    def test_disabled_export_preserves_existing_file_and_zero_cap_keeps_aggregates(self) -> None:
+        # Break caught: disabled export truncates files or a zero cap drops aggregate accounting.
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "trace.jsonl"
+            output.write_text("keep me", encoding="utf-8")
+            DecisionTraceRecorder(DecisionTraceConfig(enabled=False)).export_jsonl(output)
+            self.assertEqual(output.read_text(encoding="utf-8"), "keep me")
+
+        recorder = DecisionTraceRecorder(DecisionTraceConfig(enabled=True, max_traces=0))
+        recorder.record(trace(decision_reason="ask_other_first", guard_action="apply"))
+        self.assertEqual(recorder.records(), ())
+        self.assertEqual(recorder.summary()["total_seen"], 1)
+        self.assertEqual(recorder.summary()["decision_reasons"], {"ask_other_first": 1})
+
+    def test_export_refuses_missing_parent_without_creating_it(self) -> None:
+        # Break caught: a malformed path silently creates an unexpected diagnostics directory.
+        with tempfile.TemporaryDirectory() as directory:
+            missing_parent = Path(directory) / "missing"
+            output = missing_parent / "trace.jsonl"
+            recorder = DecisionTraceRecorder(DecisionTraceConfig(enabled=True))
+            recorder.record(trace(decision_reason="ask_other_first"))
+
+            with self.assertRaises(FileNotFoundError):
+                recorder.export_jsonl(output)
+
+            self.assertFalse(missing_parent.exists())
+
     def test_cap_preserves_aggregate_counters_and_export_is_deterministic_jsonl(self) -> None:
         # Break caught: capped traces lose counts or output non-deterministic JSON.
         recorder = DecisionTraceRecorder(DecisionTraceConfig(enabled=True, max_traces=2))
-        recorder.record(trace("a", decision_reason="first", guard_action="apply"))
-        recorder.record(trace("b", decision_reason="second", guard_action="clarify"))
-        recorder.record(trace("c", decision_reason="first", guard_action="apply"))
+        recorder.record(trace("a", decision_reason="ask_other_first", guard_action="apply"))
+        recorder.record(
+            trace("b", decision_reason="highest_dynamic_utility", guard_action="clarify")
+        )
+        recorder.record(trace("c", decision_reason="ask_other_first", guard_action="apply"))
 
         self.assertEqual(len(recorder.records()), 2)
         self.assertEqual(
@@ -286,7 +403,7 @@ class DecisionTraceRecorderTest(unittest.TestCase):
                 "enabled": True,
                 "recorded": 2,
                 "total_seen": 3,
-                "decision_reasons": {"first": 2, "second": 1},
+                "decision_reasons": {"ask_other_first": 2, "highest_dynamic_utility": 1},
                 "guard_actions": {"apply": 2, "clarify": 1},
                 "sanitizations": 6,
             },
@@ -307,6 +424,40 @@ class DecisionTraceRecorderTest(unittest.TestCase):
             )
         )
         self.assertEqual(lines, sorted(lines, key=lambda line: json.loads(line)["turn"]))
+
+    def test_export_orders_multiple_turns_deterministically(self) -> None:
+        # Break caught: equivalent multi-turn traces have order dependent JSONL output.
+        recorder = DecisionTraceRecorder(DecisionTraceConfig(enabled=True))
+        recorder.record(
+            DialogueDecisionTrace(
+                session_id="session-a",
+                turn=2,
+                decision_reason="ask_other_first",
+                guard_action="apply",
+            )
+        )
+        recorder.record(
+            DialogueDecisionTrace(
+                session_id="session-a",
+                turn=1,
+                decision_reason="ask_other_first",
+                guard_action="apply",
+            )
+        )
+        recorder.record(
+            DialogueDecisionTrace(
+                session_id="session-a",
+                turn=1,
+                decision_reason="highest_dynamic_utility",
+                guard_action="apply",
+            )
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "trace.jsonl"
+            recorder.export_jsonl(output)
+            turns = [json.loads(line)["turn"] for line in output.read_text().splitlines()]
+
+        self.assertEqual(turns, [1, 1, 2])
 
 
 if __name__ == "__main__":

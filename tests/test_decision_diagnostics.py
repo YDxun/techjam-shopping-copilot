@@ -258,6 +258,75 @@ class DecisionTraceRecorderTest(unittest.TestCase):
         self.assertIn("highest_dynamic_utility", encoded)
         self.assertNotIn("secret response text", encoded)
 
+    def test_trace_keeps_all_real_policy_reason_codes(self) -> None:
+        # Break caught: a real policy outcome is erased as unknown by the closed allowlist.
+        for reason in (
+            "no_preference_other",
+            "maximum_questions_reached",
+            "turn_limit_guardrail",
+        ):
+            with self.subTest(reason=reason):
+                record = DialogueDecisionTrace(
+                    session_id="s",
+                    turn=1,
+                    decision_reason=reason,
+                )
+
+                self.assertEqual(record.to_dict()["decision_reason"], reason)
+
+    def test_from_turn_computes_asin_differences_before_redacting_deltas(self) -> None:
+        # Break caught: redacting before comparison hides an ASIN replacement as no state change.
+        before = DialogueState(
+            session_id="s",
+            user_profile={},
+            active_constraints=(
+                Constraint(
+                    attribute="asin",
+                    value="B0123ABC45",
+                    polarity=Polarity.INCLUDE,
+                    strength=ConstraintStrength.HARD,
+                    evidence="private",
+                    source_turn=1,
+                    tokens=(),
+                ),
+            ),
+        )
+        after = DialogueState(
+            session_id="s",
+            user_profile={},
+            active_constraints=(
+                Constraint(
+                    attribute="asin",
+                    value="B0987ZYX65",
+                    polarity=Polarity.INCLUDE,
+                    strength=ConstraintStrength.HARD,
+                    evidence="private",
+                    source_turn=2,
+                    tokens=(),
+                ),
+            ),
+        )
+
+        record = DialogueDecisionTrace.from_turn(
+            before_state=before,
+            after_state=after,
+            recognition=object(),
+            guard_decision=object(),
+            candidate_signals=None,
+            question_decision=object(),
+            attribute_components={},
+            recommendation_count=0,
+            prompt_tokens=0,
+            completion_tokens=0,
+            lookahead_depth=1,
+        )
+        encoded = json.dumps(record.to_dict(), sort_keys=True)
+
+        self.assertEqual(record.added_constraints, (("<redacted>", "<redacted>", "hard"),))
+        self.assertEqual(record.removed_constraints, (("<redacted>", "<redacted>", "hard"),))
+        self.assertNotIn("B0123ABC45", repr(record))
+        self.assertNotIn("B0987ZYX65", encoded)
+
     def test_trace_from_turn_uses_only_normalized_decision_facts(self) -> None:
         # Break caught: the integration boundary serializes an input message or constraint evidence.
         before = DialogueState(session_id="secret-session", user_profile={})
@@ -458,6 +527,44 @@ class DecisionTraceRecorderTest(unittest.TestCase):
             turns = [json.loads(line)["turn"] for line in output.read_text().splitlines()]
 
         self.assertEqual(turns, [1, 1, 2])
+
+    def test_export_is_identical_for_differently_ordered_recorders_including_ties(self) -> None:
+        # Break caught: record insertion order affects a deterministic diagnostics artifact.
+        traces = (
+            DialogueDecisionTrace(
+                session_id="session-a",
+                turn=1,
+                decision_reason="ask_other_first",
+                guard_action="apply",
+            ),
+            DialogueDecisionTrace(
+                session_id="session-a",
+                turn=1,
+                decision_reason="highest_dynamic_utility",
+                guard_action="apply",
+            ),
+            DialogueDecisionTrace(
+                session_id="session-b",
+                turn=1,
+                decision_reason="no_preference_other",
+                guard_action="clarify",
+            ),
+        )
+        first = DecisionTraceRecorder(DecisionTraceConfig(enabled=True))
+        second = DecisionTraceRecorder(DecisionTraceConfig(enabled=True))
+        for record in traces:
+            first.record(record)
+        for record in reversed(traces):
+            second.record(record)
+        with tempfile.TemporaryDirectory() as directory:
+            first_path = Path(directory) / "first.jsonl"
+            second_path = Path(directory) / "second.jsonl"
+            first.export_jsonl(first_path)
+            second.export_jsonl(second_path)
+
+            self.assertEqual(
+                first_path.read_text(encoding="utf-8"), second_path.read_text(encoding="utf-8")
+            )
 
 
 if __name__ == "__main__":

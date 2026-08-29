@@ -85,7 +85,10 @@ _DECISION_REASONS = frozenset(
         "no_candidate_attribute",
         "ask_utility_too_low",
         "highest_ask_utility",
+        "no_preference_other",
         "user_has_no_more_preferences",
+        "maximum_questions_reached",
+        "turn_limit_guardrail",
         "final_turn_no_followup",
         "all_attributes_exhausted",
         "highest_dynamic_utility",
@@ -156,9 +159,20 @@ def _normalized_constraints(
 
 
 def _normalized_constraint(item: Sequence[object]) -> tuple[str, str, str]:
+    return _redact_constraint(_private_canonical_constraint(item))
+
+
+def _private_canonical_constraint(item: Sequence[object]) -> tuple[str, str, str]:
     attribute = _text(item[0])
     value = su.constraint_key(str(item[1]))
     strength = _category(item[2], _CONSTRAINT_STRENGTHS)
+    return attribute, value, strength
+
+
+def _redact_constraint(
+    canonical: tuple[str, str, str],
+) -> tuple[str, str, str]:
+    attribute, value, strength = canonical
     if attribute in _PRODUCT_IDENTIFIER_ATTRIBUTES or _ASIN_LIKE_RE.search(value):
         return _REDACTED, _REDACTED, strength
     if attribute not in ALLOWED_ATTRIBUTES:
@@ -343,12 +357,15 @@ class DialogueDecisionTrace:
         fallback_reason: str = "",
     ) -> "DialogueDecisionTrace":
         """Build a trace from dialogue models without reading their raw text fields."""
-        before = _state_constraints(before_state, "active_constraints")
-        after = _state_constraints(after_state, "active_constraints")
-        previously_removed = _state_constraints(before_state, "removed_constraints")
-        currently_removed = _state_constraints(after_state, "removed_constraints")
-        added = tuple(sorted(after - before))
-        removed = tuple(sorted((before - after) | (currently_removed - previously_removed)))
+        before = _private_state_constraints(before_state, "active_constraints")
+        after = _private_state_constraints(after_state, "active_constraints")
+        previously_removed = _private_state_constraints(before_state, "removed_constraints")
+        currently_removed = _private_state_constraints(after_state, "removed_constraints")
+        added = tuple(_redact_constraint(item) for item in sorted(after - before))
+        removed = tuple(
+            _redact_constraint(item)
+            for item in sorted((before - after) | (currently_removed - previously_removed))
+        )
         attribute_scores, missing_rates, candidate_count = _candidate_trace_values(
             candidate_signals, attribute_components
         )
@@ -426,9 +443,9 @@ class DialogueDecisionTrace:
         return _json_value(payload)  # type: ignore[return-value]
 
 
-def _state_constraints(state: object, name: str) -> set[tuple[str, str, str]]:
+def _private_state_constraints(state: object, name: str) -> set[tuple[str, str, str]]:
     return {
-        _normalized_constraint(
+        _private_canonical_constraint(
             (
                 getattr(constraint, "attribute", ""),
                 getattr(constraint, "value", ""),

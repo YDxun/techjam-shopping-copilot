@@ -114,7 +114,10 @@ class Agent(BaseAgent):
 
         # 2) 多路由混合召回 → 候选池（Pillar I；BLaIR 稠密 + BM25 + 硬约束 AND + 品类）
         candidates = self.retriever.search(
-            route, top_k=self.env.retrieval_pool_size, mode=context.retrieval_mode
+            route,
+            top_k=self.env.retrieval_pool_size,
+            mode=context.retrieval_mode,
+            shelf=context.category_phrase,
         )
 
         # 3) 精排（Pillar I/IV）：规则 + 可选 LLM/bge，目标把目标商品推前
@@ -128,10 +131,24 @@ class Agent(BaseAgent):
             use_reranker_model=self.decisions.use_reranker_model,
             use_llm_rerank=self.decisions.use_llm_rerank,
         )
-        shown = ranked[:top_k]
+        decision = turn_result.question_decision
+
+        # 输出门控（捂盘，EMIT_GATE=1）：低置信时少给推荐，高置信/临期/停止提问才满仓。
+        # 命中即锁定名次并结束会话 -> 把早期低名次命中推迟到"更确信的 rank1"能大幅提升 MRR。
+        emit_k = top_k
+        if self.env.emit_gate:
+            n_constraints = context.total_constraints()
+            if turn >= self.env.emit_late_turn or not decision.should_ask:
+                emit_k = top_k
+            elif n_constraints == 0:
+                emit_k = max(1, min(top_k, self.env.emit_k0))
+            elif n_constraints == 1:
+                emit_k = max(1, min(top_k, self.env.emit_k1))
+            else:
+                emit_k = top_k
+        shown = ranked[:emit_k]
         self.dialogue.record_shown(session_id, shown, turn)
 
-        decision = turn_result.question_decision
         message = self.dialogue.message_for(decision, turn_result.state)
 
         return {

@@ -123,5 +123,9 @@
     "bonus_ten": 0.5,
     "bonus_fifty": 0.2,
     "max_count": 50
-  }
+  },
+  "emit_gate": true,
+  "emit_late_turn": 4,
+  "emit_k0": 1,
+  "emit_k1": 2
 }

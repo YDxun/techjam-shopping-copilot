@@ -23,6 +23,7 @@ from agent.intent_router import IntentRoute
 from config.env_config import EnvConfig
 from utils import blair as blair_utils
 from utils import session_utils as su
+from utils import shelf as shelf_utils
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +46,8 @@ class HybridRetriever:
         self._products: dict[str, dict] = {}
         self._text_lower: dict[str, str] = {}
         self._cat_lower: dict[str, str] = {}
+        self._shelf_of: dict[str, str] = {}
+        self._by_shelf: dict[str, list[str]] = {}
         self._dense = None  # 惰性加载的稠密模型
         self._dense_matrix = None
         self._retrieval_cfg = self.env.retrieval  # Step1：检索旋钮进 config
@@ -87,6 +90,8 @@ class HybridRetriever:
         if batch:
             cur.executemany("INSERT INTO products VALUES (?,?,?,?,?,?,?)", batch)
         self._conn.commit()
+        # 货架索引：turn-1 品类 -> 候选货架（赛题机制：目标必在货架内，过滤零召回损失）
+        self._shelf_of, self._by_shelf = shelf_utils.build_shelf_index(self._products.values())
         logger.info(
             "[retriever] indexed %d products (backend=%s)", len(self._products), self.backend
         )
@@ -124,7 +129,13 @@ class HybridRetriever:
         return str(value)
 
     # ------------------------------------------------------------------
-    def search(self, route: IntentRoute, top_k: int = 300, mode: str = "probe") -> list[dict]:
+    def search(
+        self,
+        route: IntentRoute,
+        top_k: int = 300,
+        mode: str = "probe",
+        shelf: str | None = None,
+    ) -> list[dict]:
         """多路由召回 + RRF 融合，返回候选（parent_asin + 融合分 + 路由命中标记）。"""
         pool: dict[str, dict] = {}
         self._route_bm25(route, pool, top_k=top_k * self._retrieval_cfg.bm25_limit_mult)
@@ -133,6 +144,16 @@ class HybridRetriever:
         if self.backend in ("dense", "hybrid"):
             self._route_dense(route, pool, top_k=top_k, mode=mode)
 
+        # 货架硬过滤（可选）：只保留品类货架内商品（目标必在货架内，零召回损失）。
+        # 匹配失败必须回退"不过滤"，任何异常都不能让整场 miss。
+        if shelf:
+            try:
+                shelf_key = shelf_utils.match_shelf(shelf, self._by_shelf)
+                if shelf_key is not None:
+                    allowed = set(self._by_shelf[shelf_key])
+                    pool = {asin: entry for asin, entry in pool.items() if asin in allowed}
+            except Exception:
+                logger.warning("[retriever] shelf filter failed, skip filtering")
         ranked = sorted(pool.values(), key=lambda x: x["rrf"], reverse=True)
         return ranked[:top_k]
 

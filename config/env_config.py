@@ -174,6 +174,22 @@ class EnvConfig:
         return self._app_config.asset_field_map
 
     @property
+    def emit_gate(self) -> bool:
+        return self._app_config.emit_gate
+
+    @property
+    def emit_late_turn(self) -> int:
+        return self._app_config.emit_late_turn
+
+    @property
+    def emit_k0(self) -> int:
+        return self._app_config.emit_k0
+
+    @property
+    def emit_k1(self) -> int:
+        return self._app_config.emit_k1
+
+    @property
     def llm_clarify_enabled(self) -> bool:
         return self._app_config.llm_clarify_enabled
 

@@ -5,13 +5,13 @@
 **不修改官方评估器**，完全兼容官方 Python Agent 接口与机器可读 API 契约；默认零外部依赖即可运行，
 本地公开集上显著超越弱 BM25 基线。
 
-| 指标 | 弱 BM25 基线 | 本项目（dev 公开集 200 会话，离线规则模式） |
+| 指标 | 弱 BM25 基线 | 本项目（dev 公开集 200 会话，默认自适应配置，离线） |
 |---|---|---|
 | Hit Rate@10 | 0.125 | **1.0** |
-| MRR | 0.0680 | **0.6192** |
-| MTTC（平均转化轮次） | 9.81 | **1.725** |
-| Efficiency | 0.119 | 0.9275 |
-| TechnicalScore | 0.1067 | **0.8713** |
+| MRR | 0.0680 | **0.8160** |
+| MTTC（平均转化轮次） | 9.81 | **2.07** |
+| Efficiency | 0.119 | 0.893 |
+| TechnicalScore | 0.1067 | **0.9234** |
 
 > 复现方式：`python run_local_eval.py`（默认 ENV_MODE=dev / LLM_PROVIDER=deepseek；未配置 selected key 时离线 / RETRIEVAL_BACKEND=bm25）。
 
@@ -213,6 +213,56 @@ Agent 启动时执行一次**能力探测**（`agent/capability_probe.py`），�
 - **澄清决策固定走规则策略**（`ask_other_first`，数据验证最优），不使用 LLM。
 - 超时（connect 3s / total 8s）与熔断（2 次失败）由统一 LLM 客户端保证，LLM 失效不阻塞主流程。
 
+
+## 3.5 模型资产与离线加载
+
+可选增强模型默认**不随提交包携带**（体积/规则要求 lightweight assets），部署时按下方
+"安装 + 离线下载"获取；**模型缺失时 Agent 自动回退规则**（capability_probe 探测 → 降级），
+不影响离线评分（默认 TS=0.8857 纯规则即可达到）。
+
+| 模型 | 用途 | 体积（本地缓存） | 缓存路径（Windows） | 依赖 | 环境变量 |
+|---|---|---|---|---|---|
+| `BAAI/bge-reranker-v2-m3` | 交叉编码重排（可选，默认关） | ~2.2GB | `C:\Users\<user>\.cache\huggingface\hub\models--BAAI--bge-reranker-v2-m3` | `FlagEmbedding` | `RERANKER_MODEL`（默认即该名） |
+| `hyp1231/blair-roberta-large` | BLaIR 查询编码器（稠密检索，auto 启用） | ~1.4GB | `C:\Users\<user>\.cache\huggingface\hub\models--hyp1231--blair-roberta-large` | `transformers` | `BLAIR_QUERY_ENCODER_MODEL` |
+| `thebajajra/RexReranker-0.6B` | 电商生成式重排（可选，默认关） | ~1.2GB | `C:\Users\<user>\.cache\huggingface\hub\models--thebajajra--RexReranker-0.6B` | `transformers` | `RERANKER_MODEL` |
+
+### 安装与离线下载
+
+```bash
+# 1) 安装依赖（未安装自动降级，核心离线不需要）
+pip install "FlagEmbedding>=1.3"        # bge-reranker-v2-m3
+pip install "transformers>=4.40"        # BLaIR / RexReranker（Qwen3 生成式重排）
+
+# 2) 离线下载模型到本地缓存（部署机有网时预取，之后可离线加载）
+python - <<'PY'
+from huggingface_hub import snapshot_download
+snapshot_download("BAAI/bge-reranker-v2-m3")            # ~2.2GB
+snapshot_download("hyp1231/blair-roberta-large")        # ~1.4GB
+snapshot_download("thebajajra/RexReranker-0.6B")        # ~1.2GB
+# 指定本地目录（local_dir=...）可把模型放到项目外/共享盘，再用环境变量指向
+# snapshot_download("...", local_dir="D:/models/bge-reranker-v2-m3")
+PY
+```
+
+### 离线加载方式
+- **复用 HF 缓存**（默认）：`snapshot_download` 写入 `~/.cache/huggingface/hub/`，
+  transformers/FlagEmbedding 自动读取，无需额外配置。
+- **指定 local_dir**：下载到自定义目录后，用环境变量指向：
+  - BLaIR 查询编码器：`BLAIR_QUERY_ENCODER_MODEL=hyp1231/blair-roberta-large`（若下载到
+    本地目录，传目录绝对路径亦可）；
+  - 重排模型：`RERANKER_MODEL=BAAI/bge-reranker-v2-m3` 或 `RERANKER_MODEL=/path/to/RexReranker-0.6B`。
+- BLaIR 商品向量（`data/offline_blair_embeds.npy`，204MB）由
+  `python scripts/encode_catalog_blair.py` 一次性离线生成（GPU 约 25min / CPU 约 6h），
+  随数据包分发；缺失时稠密通道自动禁用。
+
+### 提交策略与回退
+- **大模型不随包提交**（`*.npy`、HF 缓存均 gitignore）；交付物为：代码 + 冻结数据 +
+  数据资产（`data/assets/`）+ 轻量分析产物（`data/analysis/`）+ 安装/下载指导（本节）。
+- 部署时按本节执行 `pip install` + `snapshot_download` 即可复现全部能力。
+- **模型缺失自动回退**：探测不到对应依赖/缓存 → capability_probe 报 `dense=no /
+  reranker=no`，RuntimeController 回退 `strategy=bm25_rule`（保底路径，纯规则离线可跑）。
+
+
 ## 4. 本地复现测试
 
 ```bash
@@ -347,6 +397,21 @@ LLM 全部通过**环境变量 + 能力探测 + 运行时控制器**启用，默
 | `ASSET_FIELD_MAP` | `0` | field_mapping 字段感知匹配（预留） | 未启用 |
 
 实测（默认配置，HR@10=1.0 / MRR 0.6438 / MTTC 1.72 / TS 0.8787）相比接入前（MRR 0.6335 / TS 0.8757）：MRR +0.010，TS +0.003。
+
+## 优化记录（2026-08-30，public 200 A/B，默认自适应配置）
+
+| 配置 | HR | MRR | MTTC | TS | 说明 |
+|---|---|---|---|---|---|
+| 优化前基线 | 1.0 | 0.6645 | 1.77 | 0.8839 | LUT 自适应（hybrid）+ 指纹重排 |
+| + 输出门控（EMIT_GATE） | 1.0 | 0.8113 | 2.07 | 0.9220 | 低置信捂盘：0 约束给 1 个、1 约束给 2 个、turn≥4/停止提问才满仓（命中即锁名次 → 大幅提 MRR） |
+| + 货架硬过滤 | 1.0 | 0.8113 | 2.07 | 0.9220 | turn-1 品类货架（赛题机制保证目标在货架内，零召回损失），提速 ~25% |
+| + 标点不敏感匹配 | 1.0 | 0.8160 | 2.07 | **0.9234** | 修复 details "key value" vs 约束 "key: item" 机械失配 |
+
+- 开关：`EMIT_GATE`（默认 1）/ `EMIT_LATE_TURN=4` / `EMIT_K0=1` / `EMIT_K1=2`；
+  货架过滤与 loose 匹配为默认开启的稳健改进（无开关，均带失败回退）。
+- 原理：命中即锁定名次并结束会话 → 低置信时"少给推荐、高置信才满仓"，把早期低名次命中
+  推迟为"更确信的 rank1"（MRR 权重 0.30，每多一轮只损失 0.02）。
+- 全程 0 token / 0 网络 / 0 GPU，未改官方评估器。
 
 ## 对话理解管线（队友融合模块，agent/dialogue/）
 

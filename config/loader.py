@@ -134,6 +134,10 @@ def _environment_overrides(
         "BLAIR_OFFLINE_EMBEDDING_PATH": ("blair_offline_embedding_path", _parse_text),
         "BLAIR_QUERY_ENCODER_MODEL": ("blair_query_encoder_model", _parse_text),
         "RERANKER_MODEL_ENABLE": ("reranker_model_enabled", _parse_bool),
+        "EMIT_GATE": ("emit_gate", _parse_bool),
+        "EMIT_LATE_TURN": ("emit_late_turn", _parse_int),
+        "EMIT_K0": ("emit_k0", _parse_int),
+        "EMIT_K1": ("emit_k1", _parse_int),
     }
     for name, (field_name, parser) in flat_fields.items():
         value = _environment_value(env, name)
@@ -306,13 +310,13 @@ def _parse_float(value: str, name: str) -> float:
     except ValueError as error:
         raise ConfigError(f"{name} must be a number") from error
 
+
 def _parse_float_list(value: str, name: str) -> tuple[float, ...]:
     """'6.0,4.0,2.5,2.5,1.5,1.0' -> tuple[float]。"""
     parts = [p.strip() for p in value.split(",") if p.strip()]
     if not parts:
         raise ValueError(f"{name} must be a comma-separated list of numbers")
     return tuple(float(p) for p in parts)
-
 
 
 def _parse_bool(value: str, name: str) -> bool:
@@ -417,6 +421,10 @@ def _build_and_validate(data: Mapping[str, Any], selected_key: SecretValue) -> A
         ),
         asset_paraphrase=_bool_value(data.get("asset_paraphrase"), "asset_paraphrase"),
         asset_field_map=_bool_value(data.get("asset_field_map"), "asset_field_map"),
+        emit_gate=_bool_value(data.get("emit_gate"), "emit_gate"),
+        emit_late_turn=_int_value(data.get("emit_late_turn"), "emit_late_turn"),
+        emit_k0=_int_value(data.get("emit_k0"), "emit_k0"),
+        emit_k1=_int_value(data.get("emit_k1"), "emit_k1"),
         hard_cue_enabled=_bool_value(data.get("hard_cue_enabled"), "hard_cue_enabled"),
         clarify_strategy=_string_value(data.get("clarify_strategy"), "clarify_strategy"),
         override_erase=_bool_value(data.get("override_erase"), "override_erase"),

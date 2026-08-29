@@ -33,7 +33,7 @@ class StaticRetriever:
     def iter_products(self) -> tuple[dict, ...]:
         return PRODUCTS
 
-    def search(self, route, top_k: int, mode: str) -> list[dict]:
+    def search(self, route, top_k: int, mode: str, shelf: str | None = None) -> list[dict]:
         return [
             {"parent_asin": item["parent_asin"], "rrf": 1.0 / index}
             for index, item in enumerate(PRODUCTS, start=1)
@@ -79,12 +79,13 @@ class UnavailableClient:
 
 
 class DialogueFlowTest(unittest.TestCase):
-    def env(self, mode: str = "rule_only") -> EnvConfig:
+    def env(self, mode: str = "rule_only", emit_gate: bool = False) -> EnvConfig:
         return EnvConfig.from_env(
             overrides={
                 "skip_data_verify": True,
                 "dialogue_understanding": {"mode": mode},
                 "llm": {"rerank_enabled": False},
+                "emit_gate": emit_gate,
             },
             environ={"LLM_PROVIDER": "none"},
         )
@@ -146,6 +147,24 @@ class DialogueFlowTest(unittest.TestCase):
 
         observations = agent.dialogue.session("s1").products.observations
         self.assertEqual([item.asin for item in observations], ["C", "B"])
+
+    def test_emit_gate_limits_low_confidence_recommendations(self) -> None:
+        agent = Agent(
+            env=self.env(emit_gate=True),
+            llm_client=DisabledLLMClient(),
+            retriever=StaticRetriever(),
+            reranker=StaticReranker(("B", "A", "C")),
+        )
+        agent.reset("s1", {})
+        # 0 约束 -> 只给 1 个（低置信捂盘）；达到 late turn 前都受门控
+        r1 = agent.respond("s1", "I'm looking for shoes, but I'm still exploring.", 1, 3)
+        self.assertEqual(len(r1["recommendations"]), 1)
+        # 1 约束 -> 给 2 个
+        r2 = agent.respond("s1", "What matters is: cotton.", 2, 3)
+        self.assertEqual(len(r2["recommendations"]), 2)
+        # late turn -> 满仓
+        r3 = agent.respond("s1", "What matters is: leather.", 4, 3)
+        self.assertEqual(len(r3["recommendations"]), 3)
 
 
 if __name__ == "__main__":

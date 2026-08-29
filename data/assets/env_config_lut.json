@@ -1,0 +1,173 @@
+{
+  "generated_by": "scripts/build_lut.py",
+  "generated_at": "2026-08-29 19:35:10",
+  "n_samples": 40,
+  "note": "score ? device ???????????llm/network ? key ? text_rerank ???????fingerprint_combo/hybrid_dense ??? 200 ?????? 40 ??????????",
+  "profiles": {
+    "rule_bm25": "纯规则离线（保底，无 BLaIR/LLM/模型依赖）",
+    "hybrid_dense": "+BLaIR 稠密（dense-recover，需离线 npy + transformers）",
+    "fingerprint_combo": "最优规则 + 约束组合指纹 + combo",
+    "text_rerank": "qwen3-rerank 文本重排（需 DASHSCOPE key+网络；无 key 自动回退）",
+    "reranker_model": "RexReranker-0.6B 交叉编码（需本地模型缓存；recover 模式第二意见）"
+  },
+  "environments": {
+    "device=cuda;dense=no;llm=no;network=no": {
+      "configs": [
+        {
+          "config_id": "rule_bm25",
+          "technical_score": 0.86161,
+          "hr": 1.0,
+          "mrr": 0.5887,
+          "mttc": 1.75,
+          "latency_ms_per_turn": 171.8,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "measured": true
+        },
+        {
+          "config_id": "hybrid_dense",
+          "technical_score": 0.883942,
+          "hr": 1.0,
+          "mrr": 0.664474,
+          "mttc": 1.77,
+          "latency_ms_per_turn": 0,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "measured": "full200"
+        },
+        {
+          "config_id": "fingerprint_combo",
+          "technical_score": 0.885692,
+          "hr": 1.0,
+          "mrr": 0.670308,
+          "mttc": 1.77,
+          "latency_ms_per_turn": 0,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "measured": "full200"
+        },
+        {
+          "config_id": "text_rerank",
+          "technical_score": 0.86161,
+          "hr": 1.0,
+          "mrr": 0.5887,
+          "mttc": 1.75,
+          "latency_ms_per_turn": 167.0,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "measured": true
+        },
+        {
+          "config_id": "reranker_model",
+          "technical_score": 0.86161,
+          "hr": 1.0,
+          "mrr": 0.5887,
+          "mttc": 1.75,
+          "latency_ms_per_turn": 168.5,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "measured": true
+        }
+      ]
+    },
+    "device=cuda;dense=yes;llm=no;network=no": {
+      "configs": [
+        {
+          "config_id": "rule_bm25",
+          "technical_score": 0.86161,
+          "hr": 1.0,
+          "mrr": 0.5887,
+          "mttc": 1.75,
+          "latency_ms_per_turn": 613.6,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "measured": true
+        },
+        {
+          "config_id": "hybrid_dense",
+          "technical_score": 0.883942,
+          "hr": 1.0,
+          "mrr": 0.664474,
+          "mttc": 1.77,
+          "latency_ms_per_turn": 0,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "measured": "full200"
+        },
+        {
+          "config_id": "fingerprint_combo",
+          "technical_score": 0.885692,
+          "hr": 1.0,
+          "mrr": 0.670308,
+          "mttc": 1.77,
+          "latency_ms_per_turn": 0,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "measured": "full200"
+        },
+        {
+          "config_id": "text_rerank",
+          "technical_score": 0.86161,
+          "hr": 1.0,
+          "mrr": 0.5887,
+          "mttc": 1.75,
+          "latency_ms_per_turn": 175.0,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "measured": true
+        },
+        {
+          "config_id": "reranker_model",
+          "technical_score": 0.86161,
+          "hr": 1.0,
+          "mrr": 0.5887,
+          "mttc": 1.75,
+          "latency_ms_per_turn": 175.7,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "measured": true
+        }
+      ]
+    }
+  }
+}

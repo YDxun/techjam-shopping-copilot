@@ -1,0 +1,104 @@
+[
+  {
+    "label": "baseline",
+    "overrides": {},
+    "tune160": {
+      "hit_rate_at_10": 1.0,
+      "mrr": 0.637502,
+      "mttc": 1.65,
+      "recommended_technical_score": 0.878251
+    },
+    "valid40": {
+      "hit_rate_at_10": 1.0,
+      "mrr": 0.693125,
+      "mttc": 2.0,
+      "recommended_technical_score": 0.887938
+    }
+  },
+  {
+    "label": "rrf=0.05",
+    "overrides": {
+      "rerank_weights": {
+        "rrf": 0.05
+      }
+    },
+    "tune160": {
+      "hit_rate_at_10": 1.0,
+      "mrr": 0.653854,
+      "mttc": 1.6875,
+      "recommended_technical_score": 0.882406
+    },
+    "valid40": {
+      "hit_rate_at_10": 1.0,
+      "mrr": 0.657183,
+      "mttc": 2.05,
+      "recommended_technical_score": 0.876155
+    }
+  },
+  {
+    "label": "rrf_k=100",
+    "overrides": {
+      "retrieval": {
+        "rrf_k": 100.0
+      }
+    },
+    "tune160": {
+      "hit_rate_at_10": 1.0,
+      "mrr": 0.650766,
+      "mttc": 1.69375,
+      "recommended_technical_score": 0.881355
+    },
+    "valid40": {
+      "hit_rate_at_10": 1.0,
+      "mrr": 0.719306,
+      "mttc": 2.075,
+      "recommended_technical_score": 0.894292
+    }
+  },
+  {
+    "label": "rrf0.05+rrf_k100",
+    "overrides": {
+      "rerank_weights": {
+        "rrf": 0.05
+      },
+      "retrieval": {
+        "rrf_k": 100.0
+      }
+    },
+    "tune160": {
+      "hit_rate_at_10": 1.0,
+      "mrr": 0.669871,
+      "mttc": 1.7125,
+      "recommended_technical_score": 0.886711
+    },
+    "valid40": {
+      "hit_rate_at_10": 1.0,
+      "mrr": 0.585893,
+      "mttc": 2.1,
+      "recommended_technical_score": 0.853768
+    }
+  },
+  {
+    "label": "rrf0.05+fp",
+    "overrides": {
+      "rerank_weights": {
+        "rrf": 0.05
+      },
+      "fingerprint": {
+        "enable": true
+      }
+    },
+    "tune160": {
+      "hit_rate_at_10": 1.0,
+      "mrr": 0.660104,
+      "mttc": 1.6875,
+      "recommended_technical_score": 0.884281
+    },
+    "valid40": {
+      "hit_rate_at_10": 1.0,
+      "mrr": 0.657183,
+      "mttc": 2.05,
+      "recommended_technical_score": 0.876155
+    }
+  }
+]

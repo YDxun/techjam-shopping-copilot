@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 
 from agent.capability_probe import CapabilityProfile
 from config.env_config import EnvConfig
+from utils import lut as lut_utils
 
 logger = logging.getLogger(__name__)
 
@@ -30,14 +31,16 @@ class RuntimeDecisions:
     text_rerank_active: bool = False  # 是否走 qwen3-rerank 文本重排
     use_reranker_model: bool = False  # 是否可用 bge 交叉编码重排（FlagEmbedding）
     strategy: str = "bm25_rule"  # 选中的策略标签（环境自适应，见 decide()）
+    strategy_lut: str | None = None  # LUT 推荐的最优配置（数据驱动；缺失→None 回退默认）
     reasons: list[str] = field(default_factory=list)
 
     def summary(self) -> str:
         rerank_label = (
             "qwen3" if self.text_rerank_active else "llm" if self.use_llm_rerank else "rule"
         )
+        lut_txt = f" lut={self.strategy_lut}" if self.strategy_lut else ""
         return (
-            f"strategy={self.strategy} "
+            f"strategy={self.strategy}{lut_txt} "
             f"retrieval={self.retrieval_backend} "
             f"intent={'llm' if self.use_llm_intent else 'rule'} "
             f"clarify={'llm' if self.use_llm_clarify else 'rule'} "
@@ -122,6 +125,25 @@ class RuntimeController:
             f"strategy={d.strategy}（dense={'yes' if d.use_dense else 'no'} "
             f"llm={'yes' if d.use_llm_intent else 'no'}）"
         )
+
+        # Step 3：配置-环境-性能 LUT——按环境指纹推荐最优 config_id（数据驱动启动默认；
+        # LUT 缺失 / 环境不在表内 → None，回退上面计算出的默认策略，保底安全）
+        try:
+            fp = lut_utils.env_fingerprint(
+                device=self.profile.device,
+                dense=self.profile.dense_available,
+                llm=self.profile.llm_available,
+                network=self.profile.network_available,
+            )
+            rec = lut_utils.recommend(fp)
+            d.strategy_lut = rec["config_id"] if rec else None
+            if rec:
+                d.reasons.append(
+                    f"LUT[{fp}] -> {rec['config_id']} (ts={rec['technical_score']:.4f})"
+                )
+        except Exception as exc:  # 任何异常不阻塞启动
+            logger.warning("[runtime] LUT 推荐失败（%s）→ 回退默认策略", exc)
+            d.strategy_lut = None
 
         logger.info("[runtime] %s", d.summary())
         return d

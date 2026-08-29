@@ -168,6 +168,10 @@ def _environment_overrides(
 
     nested_fields: dict[str, tuple[tuple[str, ...], Callable[[str, str], Any]]] = {
         "COMBO_FINGERPRINT_ENABLE": (("fingerprint", "enable"), _parse_bool),
+        "RRF_K": (("retrieval", "rrf_k"), _parse_float),
+        "RRF_CONSTRAINT_K": (("retrieval", "rrf_constraint_k"), _parse_float),
+        "DENSE_WEIGHT": (("retrieval", "dense_weight"), _parse_float),
+        "BM25_FIELD_WEIGHTS": (("retrieval", "bm25_field_weights"), _parse_float_list),
         "RETRIEVAL_MODE__EXPLOIT_MIN_HARD": (("retrieval_mode", "exploit_min_hard"), _parse_int),
         "RETRIEVAL_MODE__EXPLOIT_MIN_CONSTRAINTS": (
             ("retrieval_mode", "exploit_min_constraints"),
@@ -301,6 +305,14 @@ def _parse_float(value: str, name: str) -> float:
         return float(value)
     except ValueError as error:
         raise ConfigError(f"{name} must be a number") from error
+
+def _parse_float_list(value: str, name: str) -> tuple[float, ...]:
+    """'6.0,4.0,2.5,2.5,1.5,1.0' -> tuple[float]。"""
+    parts = [p.strip() for p in value.split(",") if p.strip()]
+    if not parts:
+        raise ValueError(f"{name} must be a comma-separated list of numbers")
+    return tuple(float(p) for p in parts)
+
 
 
 def _parse_bool(value: str, name: str) -> bool:

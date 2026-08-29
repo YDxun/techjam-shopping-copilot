@@ -103,7 +103,7 @@
       1.5,
       1.0
     ],
-    "rrf_k": 60.0,
+    "rrf_k": 100.0,
     "rrf_constraint_k": 10.0,
     "dense_weight": 0.5,
     "bm25_limit_mult": 2,

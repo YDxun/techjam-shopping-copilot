@@ -134,11 +134,19 @@ class Agent(BaseAgent):
         candidates = self.retriever.search(route, top_k=pool_size, mode=context.retrieval_mode)
 
         candidate_signals = None
-        if candidate_config.enabled:
+        calculator = self.dialogue.candidate_signal_calculator
+        if candidate_config.enabled and calculator is not None:
             try:
-                candidate_signals = self.dialogue.candidate_signal_calculator.calculate(
+                candidate_signals = calculator.calculate(
                     candidates,
                     eligible_attributes=self.dialogue.eligible_candidate_attributes(pending.state),
+                    remaining_question_budget=max(
+                        0,
+                        self.env.decision.max_questions - len(pending.state.asked_attributes),
+                    ),
+                    terminal_eligible=(
+                        pending.state.turn < 10 and not pending.state.no_more_preferences
+                    ),
                 )
             except Exception:
                 logger.exception(

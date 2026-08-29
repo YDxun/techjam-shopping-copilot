@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import threading
 import unittest
+from unittest.mock import patch
 
 from agent.dialogue.models import DialogueTurnResult, GuardAction
 from agent.dialogue.pipeline import DialogueUnderstandingPipeline, StalePendingTurnError
@@ -99,15 +100,19 @@ class RecordingCalculator:
         self.delegate = delegate
         self.last_candidates = None
         self.last_eligible_attributes = None
+        self.last_context = None
 
-    def calculate(self, candidates, eligible_attributes=None):
+    def calculate(self, candidates, eligible_attributes=None, **context):
         self.last_candidates = candidates
         self.last_eligible_attributes = tuple(eligible_attributes or ())
-        return self.delegate.calculate(candidates, eligible_attributes=eligible_attributes)
+        self.last_context = dict(context)
+        return self.delegate.calculate(
+            candidates, eligible_attributes=eligible_attributes, **context
+        )
 
 
 class FailingCalculator:
-    def calculate(self, candidates, eligible_attributes=None):
+    def calculate(self, candidates, eligible_attributes=None, **context):
         raise RuntimeError("candidate signals unavailable")
 
 
@@ -321,6 +326,8 @@ class DialogueFlowTest(unittest.TestCase):
         self.assertIs(calculator.last_candidates, reranker.last_candidates)
         self.assertNotIn("category", calculator.last_eligible_attributes)
         self.assertNotIn("other", calculator.last_eligible_attributes)
+        self.assertEqual(calculator.last_context["remaining_question_budget"], 3)
+        self.assertTrue(calculator.last_context["terminal_eligible"])
         self.assertEqual(set(response), {"message", "ask_attribute", "recommendations", "usage"})
         session = agent.dialogue.session("s")
         self.assertEqual(session.dialogue.turn, 1)
@@ -352,6 +359,45 @@ class DialogueFlowTest(unittest.TestCase):
         self.assertEqual(retriever.search_calls, 1)
         self.assertEqual(response["ask_attribute"], "other")
         self.assertEqual(agent.dialogue.session("s").candidate_counts, (3,))
+
+    def test_disabled_dynamic_pipeline_never_constructs_dynamic_cache_or_calculator(self) -> None:
+        # Constructing either dynamic dependency while disabled would make rollback
+        # pay the catalog-extraction cost and raises this sentinel error.
+        with patch(
+            "agent.dialogue.pipeline.CatalogAttributeCache.from_products",
+            side_effect=AssertionError("disabled path must not build cache"),
+        ), patch(
+            "agent.dialogue.pipeline.CandidateSignalCalculator",
+            side_effect=AssertionError("disabled path must not build calculator"),
+        ):
+            pipeline = DialogueUnderstandingPipeline(
+                env=self.env(candidate_enabled=False),
+                llm_client=DisabledLLMClient(),
+                products=iter(PRODUCTS),
+            )
+
+        self.assertIsNone(pipeline.candidate_signal_calculator)
+        self.assertTrue(pipeline.catalog_signals.for_category("shoes"))
+
+    def test_enabled_cache_construction_failure_keeps_agent_response_valid(self) -> None:
+        # Escaping startup extraction errors would make an enabled experiment fail
+        # before its static-policy fallback can return the public response shape.
+        with patch(
+            "agent.dialogue.pipeline.CatalogAttributeCache.from_products",
+            side_effect=RuntimeError("extractor unavailable"),
+        ):
+            agent = Agent(
+                env=self.env(candidate_enabled=True),
+                llm_client=DisabledLLMClient(),
+                retriever=StaticRetriever(),
+                reranker=StaticReranker(("A", "B", "C")),
+            )
+            agent.reset("s", {})
+            response = agent.respond("s", "I'm looking for shoes.", 1, 3)
+
+        self.assertIsNone(agent.dialogue.candidate_signal_calculator)
+        self.assertEqual(set(response), {"message", "ask_attribute", "recommendations", "usage"})
+        self.assertEqual(response["ask_attribute"], "other")
 
     def test_empty_candidates_keep_the_official_response_valid(self) -> None:
         # Treating an empty pool as an exception would turn a harmless miss into evaluator failure.

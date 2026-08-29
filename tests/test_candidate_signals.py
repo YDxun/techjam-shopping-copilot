@@ -32,6 +32,7 @@ def calculator(
     alpha: float = 0.0,
     temperature: float = 1.0,
     lookahead_depth: int = 1,
+    finish_enabled: bool = False,
     turn_cost: float = 0.15,
     finish_weights: FinishWeights | None = None,
 ) -> CandidateSignalCalculator:
@@ -43,6 +44,7 @@ def calculator(
             weights=CandidateQuestionWeights(turn_cost=turn_cost),
         ),
         FinishStrategyConfig(
+            enabled=finish_enabled,
             lookahead_depth=lookahead_depth,
             weights=finish_weights or FinishWeights(),
         ),
@@ -216,7 +218,7 @@ class CandidateSignalCalculatorTest(unittest.TestCase):
             eligible_attributes=("category", "other", "material"),
         )
 
-        self.assertEqual(tuple(signals.by_attribute), ("material",))
+        self.assertEqual(tuple(signals.by_attribute), ("material", "category"))
         self.assertIsNone(signals.best_other_pair)
         self.assertIsNone(signals.other_signal)
 
@@ -245,6 +247,7 @@ class CandidateSignalCalculatorTest(unittest.TestCase):
         signals = calculator(
             cache,
             lookahead_depth=2,
+            finish_enabled=True,
             turn_cost=0.15,
             finish_weights=FinishWeights(
                 resolve_at_10=0.0,
@@ -256,6 +259,61 @@ class CandidateSignalCalculatorTest(unittest.TestCase):
         ).calculate([{"parent_asin": asin} for asin in "ABCD"])
 
         self.assertAlmostEqual(signals.by_attribute["material"].two_step_finish_gain, 0.85)
+
+    def test_depth_two_is_skipped_until_finish_strategy_and_phase_are_eligible(self) -> None:
+        # Eager lookahead would call the branch scorer despite disabled or inactive finish.
+        cache = cache_for(
+            A={"material": {"cotton"}, "color": {"black"}},
+            B={"material": {"leather"}, "color": {"red"}},
+        )
+        candidates = [{"parent_asin": "A"}, {"parent_asin": "B"}]
+        disabled = calculator(cache, lookahead_depth=2, finish_enabled=False)
+        inactive = calculator(cache, lookahead_depth=2, finish_enabled=True)
+
+        disabled_calls = 0
+        inactive_calls = 0
+        disabled_original = disabled._two_step_finish_gain
+        inactive_original = inactive._two_step_finish_gain
+
+        def count_disabled(*args):
+            nonlocal disabled_calls
+            disabled_calls += 1
+            return disabled_original(*args)
+
+        def count_inactive(*args):
+            nonlocal inactive_calls
+            inactive_calls += 1
+            return inactive_original(*args)
+
+        disabled._two_step_finish_gain = count_disabled
+        inactive._two_step_finish_gain = count_inactive
+        disabled.calculate(candidates)
+        inactive.calculate(candidates, terminal_eligible=False)
+
+        self.assertEqual(disabled_calls, 0)
+        self.assertEqual(inactive_calls, 0)
+
+    def test_depth_two_memoizes_equivalent_all_missing_branches(self) -> None:
+        # Recomputing every target/second-attribute branch would make this call count
+        # grow with the candidate count instead of the one shared all-missing branch.
+        cache = cache_for(**{str(index): {} for index in range(8)})
+        signal_calculator = calculator(cache, lookahead_depth=2, finish_enabled=True)
+        original = signal_calculator._signal_for_attributes
+        calls = 0
+
+        def count(*args):
+            nonlocal calls
+            calls += 1
+            return original(*args)
+
+        signal_calculator._signal_for_attributes = count
+        signals = signal_calculator.calculate(
+            [{"parent_asin": str(index)} for index in range(8)],
+            eligible_attributes=("material", "color", "size"),
+        )
+
+        self.assertIn("material", signals.by_attribute)
+        self.assertLessEqual(calls, 12)
 
     def test_empty_unknown_and_duplicate_candidates_are_safe_and_deterministic(self) -> None:
         cache = cache_for(A={"material": {"cotton"}})

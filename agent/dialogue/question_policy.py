@@ -48,6 +48,14 @@ class QuestionPolicy:
             or not self.config.candidate_question_value.enabled
             or self.config.question_termination_mode == "legacy"
         ):
+            if (
+                candidate_signals is None
+                and self.config.candidate_question_value.enabled
+                and self.config.question_termination_mode != "legacy"
+            ):
+                self.last_components = self._freeze_components(
+                    {"dynamic_signals_unavailable": {"utility": 0.0}}
+                )
             return self._decide_legacy(state, recognition, signals)
         return self._decide_dynamic(state, recognition, signals, candidate_signals)
 
@@ -126,8 +134,8 @@ class QuestionPolicy:
         concrete = tuple(
             attribute
             for attribute in ATTRIBUTE_ORDER
-            if attribute != "category"
-            and attribute != "other"
+            if attribute != "other"
+            and (attribute != "category" or not state.category)
             and attribute in candidate_signals.by_attribute
             and attribute not in state.no_preference_attributes
         )

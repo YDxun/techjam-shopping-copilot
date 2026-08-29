@@ -423,6 +423,43 @@ class DynamicQuestionPolicyTest(unittest.TestCase):
         with self.assertRaises(TypeError):
             policy.last_components["material"]["utility"] = 0.0
 
+    def test_unavailable_dynamic_signals_replace_prior_components_before_legacy_fallback(
+        self,
+    ) -> None:
+        # Leaving the previous dynamic score map in place would mislabel this
+        # legacy-safe decision as a fresh dynamic calculation.
+        policy = QuestionPolicy(dynamic_config())
+        state = DialogueState(session_id="s", user_profile={}, category="shoes", turn=2)
+        policy.decide(
+            state,
+            parsed(),
+            CatalogQuestionSignals.empty(),
+            dynamic_signals({"material": candidate_signal("material", shrink=0.5)}),
+        )
+
+        decision = policy.decide(state, parsed(), CatalogQuestionSignals.empty(), None)
+
+        self.assertEqual(decision.ask_attribute, "other")
+        self.assertIsInstance(policy.last_components, MappingProxyType)
+        self.assertEqual(set(policy.last_components), {"dynamic_signals_unavailable"})
+        with self.assertRaises(TypeError):
+            policy.last_components["dynamic_signals_unavailable"]["utility"] = 1.0
+
+    def test_category_is_the_dynamic_fallback_when_it_is_the_only_split(self) -> None:
+        # Filtering category unconditionally would turn this legal first question
+        # into an all-attributes-exhausted stop.
+        policy = QuestionPolicy(dynamic_config())
+        state = DialogueState(session_id="s", user_profile={}, category="", turn=1)
+        decision = policy.decide(
+            state,
+            parsed(),
+            CatalogQuestionSignals.empty(),
+            dynamic_signals({"category": candidate_signal("category", shrink=0.8)}),
+        )
+
+        self.assertTrue(decision.should_ask)
+        self.assertEqual(decision.ask_attribute, "category")
+
     def test_dynamic_early_stops_replace_diagnostics_with_fresh_immutable_zero_score(self) -> None:
         # Retaining prior components on a stop would leave a stale attribute score in diagnostics.
         policy = QuestionPolicy(dynamic_config())

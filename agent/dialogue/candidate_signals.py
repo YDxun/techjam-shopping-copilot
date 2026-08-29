@@ -15,9 +15,9 @@ from agent.dialogue.catalog_attributes import (
 from agent.dialogue.models import CandidateAttributeSignal, CandidateQuestionSignals
 from config.models import CandidateQuestionValueConfig, FinishStrategyConfig
 
-# Category is already part of retrieval context, and ``other`` is a composite
-# action rather than a profile attribute.
-CONCRETE_ATTRIBUTES = tuple(attribute for attribute in ATTRIBUTE_NAMES if attribute != "category")
+# ``other`` is a composite action rather than a profile attribute.  Category is
+# a normal first-question attribute until the dialogue state has learned it.
+CONCRETE_ATTRIBUTES = ATTRIBUTE_NAMES
 
 
 @dataclass(frozen=True)
@@ -54,6 +54,9 @@ class CandidateSignalCalculator:
         self,
         candidates: Iterable[object],
         eligible_attributes: Iterable[str] | None = None,
+        *,
+        remaining_question_budget: int | None = None,
+        terminal_eligible: bool = True,
     ) -> CandidateQuestionSignals:
         """Return signals for unique candidates and unresolved legal attributes.
 
@@ -75,18 +78,31 @@ class CandidateSignalCalculator:
             for attribute in attributes
         }
 
-        if self._finish_strategy.lookahead_depth == 2:
+        best_other_pair, other_signal = self._best_other_pair(rows, probabilities, attributes)
+        if self._lookahead_enabled(
+            rows,
+            by_attribute,
+            other_signal,
+            remaining_question_budget=remaining_question_budget,
+            terminal_eligible=terminal_eligible,
+        ):
+            branch_signal_cache: dict[
+                tuple[tuple[str, ...], str], CandidateAttributeSignal
+            ] = {}
             by_attribute = {
                 attribute: replace(
                     signal,
                     two_step_finish_gain=self._two_step_finish_gain(
-                        rows, probabilities, attribute, attributes
+                        rows,
+                        probabilities,
+                        attribute,
+                        attributes,
+                        branch_signal_cache,
                     ),
                 )
                 for attribute, signal in by_attribute.items()
             }
 
-        best_other_pair, other_signal = self._best_other_pair(rows, probabilities, attributes)
         return CandidateQuestionSignals(
             candidate_count=len(rows),
             by_attribute=by_attribute,
@@ -237,7 +253,8 @@ class CandidateSignalCalculator:
     ) -> tuple[tuple[str, str] | None, CandidateAttributeSignal | None]:
         best_pair: tuple[str, str] | None = None
         best_signal: CandidateAttributeSignal | None = None
-        for pair in combinations(attributes, 2):
+        other_attributes = tuple(attribute for attribute in attributes if attribute != "category")
+        for pair in combinations(other_attributes, 2):
             signal = self._signal_for_attributes(rows, probabilities, pair)
             if best_signal is None or signal.expected_shrink > best_signal.expected_shrink:
                 best_pair, best_signal = pair, signal
@@ -251,6 +268,7 @@ class CandidateSignalCalculator:
         probabilities: Mapping[str, float],
         first_attribute: str,
         attributes: tuple[str, ...],
+        branch_signal_cache: dict[tuple[tuple[str, ...], str], CandidateAttributeSignal],
     ) -> float:
         second_attributes = tuple(
             attribute for attribute in attributes if attribute != first_attribute
@@ -267,15 +285,48 @@ class CandidateSignalCalculator:
             conditional_probabilities = {
                 row.asin: probabilities[row.asin] / branch_mass for row in branch
             }
-            best_second_gain = max(
-                self._finish_gain(
-                    self._signal_for_attributes(branch, conditional_probabilities, (attribute,)),
-                    len(branch),
-                )
-                for attribute in second_attributes
-            )
+            branch_asins = tuple(row.asin for row in branch)
+            gains = []
+            for attribute in second_attributes:
+                key = (branch_asins, attribute)
+                signal = branch_signal_cache.get(key)
+                if signal is None:
+                    signal = self._signal_for_attributes(
+                        branch, conditional_probabilities, (attribute,)
+                    )
+                    branch_signal_cache[key] = signal
+                gains.append(self._finish_gain(signal, len(branch)))
+            best_second_gain = max(gains)
             expected_finish_gain += probabilities[target.asin] * best_second_gain
         return max(0.0, expected_finish_gain - self._config.weights.turn_cost)
+
+    def _lookahead_enabled(
+        self,
+        rows: Sequence[_Candidate],
+        by_attribute: Mapping[str, CandidateAttributeSignal],
+        other_signal: CandidateAttributeSignal | None,
+        *,
+        remaining_question_budget: int | None,
+        terminal_eligible: bool,
+    ) -> bool:
+        strategy = self._finish_strategy
+        phase_ready = len(rows) <= strategy.candidate_threshold or (
+            remaining_question_budget is not None
+            and remaining_question_budget <= strategy.remaining_question_threshold
+        )
+        if not (
+            strategy.enabled
+            and strategy.lookahead_depth == 2
+            and terminal_eligible
+            and phase_ready
+        ):
+            return False
+        one_step_signals = tuple(by_attribute.values()) + (
+            (other_signal,) if other_signal is not None else ()
+        )
+        return bool(one_step_signals) and max(
+            self._finish_gain(signal, len(rows)) for signal in one_step_signals
+        ) >= strategy.minimum_finish_gain
 
     def _finish_gain(self, signal: CandidateAttributeSignal, candidate_count: int) -> float:
         weights = self._finish_strategy.weights

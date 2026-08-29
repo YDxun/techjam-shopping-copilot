@@ -383,7 +383,9 @@ SHOPPING_DECISION__CANDIDATE_QUESTION_VALUE__POOL_SIZE=500 \
 python run_local_eval.py
 ```
 
-若候选信号**计算异常**，系统自动退回静态目录信号和原有安全响应路径。空候选池或没有可用候选
+仅在显式启用动态策略时，系统才会构建商品属性缓存和候选信号计算器；缓存/提取初始化或候选信号
+计算异常都会退回静态目录信号和原有安全响应路径。两步前瞻也只会在启用收尾策略、仍有合法后续
+提问、进入候选数或剩余问题预算的收尾阶段，并且已有一步收尾收益达到门槛时执行。空候选池或没有可用候选
 则仍会产生合法的动态决策：没有可问属性时返回 `all_attributes_exhausted`，不再追问，并保持官方响应契约有效。
 要完整回退到 legacy，使用上面的三项 legacy 设置即可。`transition_guard` 也是独立的安全开关，默认关闭，可用
 `SHOPPING_DIALOGUE__TRANSITION_GUARD__ENABLED=1` 单独实验，不会自动随动态问题策略开启。

@@ -147,11 +147,18 @@ class DialogueUnderstandingPipeline:
         self.question_policy = QuestionPolicy(env.decision)
         self.transition_guard = TransitionGuard(dialogue_config.transition_guard)
         self.catalog_signals = CatalogQuestionSignals.from_products(product_rows)
-        self.candidate_signal_calculator = CandidateSignalCalculator(
-            CatalogAttributeCache.from_products(product_rows, RuleVocabularyExtractor()),
-            env.decision.candidate_question_value,
-            env.decision.finish_strategy,
-        )
+        self.candidate_signal_calculator: CandidateSignalCalculator | None = None
+        if env.decision.candidate_question_value.enabled:
+            try:
+                self.candidate_signal_calculator = CandidateSignalCalculator(
+                    CatalogAttributeCache.from_products(product_rows, RuleVocabularyExtractor()),
+                    env.decision.candidate_question_value,
+                    env.decision.finish_strategy,
+                )
+            except Exception:
+                logger.exception(
+                    "[dialogue] dynamic catalog setup failed; using static question policy"
+                )
         self._sessions: dict[str, SessionState] = {}
         self._session_locks: dict[str, threading.RLock] = {}
         self._session_locks_guard = threading.Lock()
@@ -348,6 +355,7 @@ class DialogueUnderstandingPipeline:
             attribute
             for attribute in CONCRETE_ATTRIBUTES
             if attribute not in state.no_preference_attributes
+            and (attribute != "category" or not state.category)
         )
 
     def record_shown(

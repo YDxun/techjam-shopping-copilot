@@ -47,6 +47,11 @@ def resolve_trace_output_path(
     evaluation_output_path: str | Path | None = None,
 ) -> Path:
     """Resolve a local diagnostics file without permitting protected-input overwrite."""
+    lexical_output = Path(output_path)
+    if not lexical_output.is_absolute():
+        lexical_output = repo_root / lexical_output
+    _reject_symlink_components(lexical_output)
+
     def resolve_from_repo(value: str | Path) -> Path:
         path = Path(value)
         if not path.is_absolute():
@@ -62,6 +67,26 @@ def resolve_trace_output_path(
             "decision trace output must not overwrite catalog or dataset or evaluation output"
         )
     return output
+
+
+def _reject_symlink_components(path: Path) -> None:
+    """Reject lexical aliases, including dangling leaf aliases, before resolution."""
+    system_aliases = ((Path("/var"), Path("/private/var")), (Path("/tmp"), Path("/private/tmp")))
+    for alias, physical in system_aliases:
+        try:
+            path = physical / path.relative_to(alias)
+        except ValueError:
+            continue
+        break
+    current = Path("/") if path.is_absolute() else Path.cwd()
+    for component in path.parts[1:] if path.is_absolute() else path.parts:
+        if component in {"", "."}:
+            continue
+        current /= component
+        if current.is_symlink():
+            raise ValueError(
+                "decision trace output must not use symlink components or catalog or dataset"
+            )
 
 
 def initialize_llm(env: EnvConfig) -> LLMClient:

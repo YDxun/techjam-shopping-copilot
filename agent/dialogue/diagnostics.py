@@ -571,10 +571,6 @@ class DecisionTraceRecorder:
         if not self.config.enabled:
             return
         output = Path(path)
-        parent = output.parent.resolve(strict=True)
-        if not parent.is_dir() or output.parent.is_symlink():
-            raise ValueError("decision trace parent must be an existing non-symlink directory")
-        output = parent / output.name
         with self._lock:
             records = tuple(self._records)
         payloads = [
@@ -610,9 +606,55 @@ class DecisionTraceRecorder:
             )
             for _, payload in payloads
         ]
-        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-        if hasattr(os, "O_NOFOLLOW"):
-            flags |= os.O_NOFOLLOW
-        descriptor = os.open(output, flags, 0o600)
-        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-            handle.write("\n".join(lines) + ("\n" if lines else ""))
+        directory_fd, leaf = _open_pinned_parent(output)
+        descriptor: int | None = None
+        try:
+            flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+            if hasattr(os, "O_NOFOLLOW"):
+                flags |= os.O_NOFOLLOW
+            descriptor = os.open(leaf, flags, 0o600, dir_fd=directory_fd)
+            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                descriptor = None
+                handle.write("\n".join(lines) + ("\n" if lines else ""))
+        except Exception:
+            if descriptor is not None:
+                os.close(descriptor)
+            try:
+                os.unlink(leaf, dir_fd=directory_fd)
+            except OSError:
+                pass
+            raise
+        finally:
+            os.close(directory_fd)
+
+
+def _open_pinned_parent(output: Path) -> tuple[int, str]:
+    """Open every parent component without following symlinks, returning a pinned fd."""
+    if not hasattr(os, "O_DIRECTORY") or not hasattr(os, "O_NOFOLLOW"):
+        raise OSError("secure decision trace export requires directory no-follow support")
+    absolute = output if output.is_absolute() else Path.cwd() / output
+    # macOS exposes temporary paths through system aliases; canonicalize only
+    # those fixed OS entry points, never caller-controlled path components.
+    system_aliases = ((Path("/var"), Path("/private/var")), (Path("/tmp"), Path("/private/tmp")))
+    for alias, physical in system_aliases:
+        try:
+            relative = absolute.relative_to(alias)
+        except ValueError:
+            continue
+        absolute = physical / relative
+        break
+    if not absolute.name or absolute.name in {".", ".."}:
+        raise ValueError("decision trace output requires a file name")
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    directory_fd = os.open("/", flags)
+    try:
+        for component in absolute.parent.parts[1:]:
+            if component in {"", "."}:
+                continue
+            next_fd = os.open(component, flags, dir_fd=directory_fd)
+            os.close(directory_fd)
+            directory_fd = next_fd
+        return directory_fd, absolute.name
+    except Exception:
+        os.close(directory_fd)
+        raise

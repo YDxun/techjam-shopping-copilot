@@ -390,6 +390,24 @@ class DialogueFlowTest(unittest.TestCase):
         self.assertEqual(set(response), {"message", "ask_attribute", "recommendations", "usage"})
         self.assertEqual(agent.dialogue_decision_statistics()["total_seen"], 0)
 
+    def test_trace_failure_does_not_replace_a_successful_response(self) -> None:
+        # Diagnostics failure after shown-history commit must not turn success into fallback.
+        agent = Agent(
+            env=self.env(trace_enabled=True),
+            llm_client=DisabledLLMClient(),
+            retriever=StaticRetriever(),
+            reranker=StaticReranker(("A", "B", "C")),
+        )
+        agent.reset("s", {})
+        agent.dialogue.record_completed_decision = Mock(side_effect=RuntimeError("private failure"))
+
+        response = agent.respond("s", "I need shoes.", 1, 3)
+
+        self.assertEqual(
+            [item["parent_asin"] for item in response["recommendations"]], ["A", "B", "C"]
+        )
+        self.assertEqual(agent.dialogue.session("s").products.pending_batch, ("A", "B", "C"))
+
     def test_dynamic_turn_uses_one_candidate_list_and_commits_once(self) -> None:
         # A second retrieval or pre-retrieval question commit would break identity/count history.
         retriever = StaticRetriever()

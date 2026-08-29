@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+import threading
 
 from agent.dialogue.models import RecommendationContext
 from agent.intent_router import IntentRoute
@@ -39,10 +40,18 @@ class Reranker:
     def __init__(self, env: EnvConfig | None = None, llm_client: LLMClient | None = None) -> None:
         self.env = env or EnvConfig.from_env()
         self.llm_client = llm_client if llm_client is not None else DisabledLLMClient()
-        self.last_usage: dict = {"prompt_tokens": 0, "completion_tokens": 0}
+        self._usage_local = threading.local()
         self._bge = None  # 惰性加载的 bge-reranker 实例（None=未加载/加载失败）
 
     # ------------------------------------------------------------------
+    @property
+    def last_usage(self) -> dict[str, int]:
+        return getattr(self._usage_local, "value", {"prompt_tokens": 0, "completion_tokens": 0})
+
+    @last_usage.setter
+    def last_usage(self, value: dict[str, int]) -> None:
+        self._usage_local.value = dict(value)
+
     def rerank(
         self,
         retriever: HybridRetriever,

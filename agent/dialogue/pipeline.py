@@ -433,7 +433,11 @@ class DialogueUnderstandingPipeline:
             turn=pending.turn,
             fallback_reason=pending.fallback_reason,
             lookahead_depth=(
-                candidate_signals.lookahead_depth_used if candidate_signals is not None else 0
+                0
+                if pending.guard_decision.action in {GuardAction.CLARIFY, GuardAction.REJECT}
+                or decision.reason_code == "state_update_rejected"
+                or candidate_signals is None
+                else candidate_signals.lookahead_depth_used
             ),
         )
 

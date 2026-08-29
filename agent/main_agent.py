@@ -197,10 +197,13 @@ class Agent(BaseAgent):
             "recommendations": [{"parent_asin": asin} for asin in shown],
             "usage": usage,
         }
-        self.dialogue.record_completed_decision(
-            result=turn_result,
-            recommendation_count=len(shown),
-            prompt_tokens=usage["prompt_tokens"],
-            completion_tokens=usage["completion_tokens"],
-        )
+        try:
+            self.dialogue.record_completed_decision(
+                result=turn_result,
+                recommendation_count=len(shown),
+                prompt_tokens=usage["prompt_tokens"],
+                completion_tokens=usage["completion_tokens"],
+            )
+        except Exception:
+            logger.warning("[diagnostics] decision trace capture failed")
         return response

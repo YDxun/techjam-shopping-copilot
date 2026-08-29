@@ -434,7 +434,9 @@ def _build_and_validate(data: Mapping[str, Any], selected_key: SecretValue) -> A
             rrf_constraint_k=_number_value(
                 retrieval_data.get("rrf_constraint_k"), "retrieval.rrf_constraint_k"
             ),
-            dense_weight=_number_value(retrieval_data.get("dense_weight"), "retrieval.dense_weight"),
+            dense_weight=_number_value(
+                retrieval_data.get("dense_weight"), "retrieval.dense_weight"
+            ),
             bm25_limit_mult=_int_value(
                 retrieval_data.get("bm25_limit_mult"), "retrieval.bm25_limit_mult"
             ),

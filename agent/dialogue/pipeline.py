@@ -112,6 +112,21 @@ class PendingDialogueTurn:
     products: ProductHistory
     prompt_tokens: int
     completion_tokens: int
+    fallback_reason: str = ""
+
+
+@dataclass(frozen=True)
+class DecisionTraceInputs:
+    before_state: DialogueState
+    after_state: DialogueState
+    recognition: RecognitionResult
+    guard_decision: GuardDecision
+    candidate_signals: CandidateQuestionSignals | None
+    candidate_count: int | None
+    question_decision: QuestionDecision
+    turn: int
+    fallback_reason: str
+    lookahead_depth: int
 
 
 class DialogueUnderstandingPipeline:
@@ -249,6 +264,7 @@ class DialogueUnderstandingPipeline:
             products=products,
             prompt_tokens=usage.prompt_tokens,
             completion_tokens=usage.completion_tokens,
+            fallback_reason=self.recognizer.last_fallback_reason,
         )
 
     def decide_question(
@@ -276,13 +292,10 @@ class DialogueUnderstandingPipeline:
                 prompt_tokens=pending.prompt_tokens,
                 completion_tokens=pending.completion_tokens,
             )
-            self._record_decision_trace(
-                pending=pending,
-                after_state=pending.state,
-                candidate_signals=candidate_signals,
-                candidate_count=candidate_count,
-                decision=decision,
+            trace_inputs = self._trace_inputs(
+                pending, pending.state, candidate_signals, candidate_count, decision
             )
+            result = replace(result, trace_inputs=trace_inputs)
             return result
 
         with self._session_lock(pending.session_id):
@@ -332,12 +345,8 @@ class DialogueUnderstandingPipeline:
             )
             self._sessions[pending.session_id] = committed_session
             committed_session_fingerprint = _session_fingerprint(committed_session)
-            self._record_decision_trace(
-                pending=pending,
-                after_state=dialogue,
-                candidate_signals=candidate_signals,
-                candidate_count=candidate_count,
-                decision=decision,
+            trace_inputs = self._trace_inputs(
+                pending, dialogue, candidate_signals, candidate_count, decision
             )
         logger.info(
             "[dialogue] session=%s turn=%d intent_version=%d source=%s decision=%s score=%.4f",
@@ -352,7 +361,7 @@ class DialogueUnderstandingPipeline:
             "[dialogue.utility] session=%s turn=%d components=%s",
             hashlib.sha256(pending.session_id.encode("utf-8")).hexdigest()[:12],
             pending.turn,
-            self.question_policy.last_components,
+            decision.attribute_components,
         )
         return DialogueTurnResult(
             state=dialogue,
@@ -364,47 +373,69 @@ class DialogueUnderstandingPipeline:
             completion_tokens=pending.completion_tokens,
             committed_session=committed_session,
             committed_session_fingerprint=committed_session_fingerprint,
+            trace_inputs=trace_inputs,
         )
 
     def dialogue_decision_statistics(self) -> dict[str, object]:
         """Return local, aggregate decision diagnostics only."""
         return self.decision_trace_recorder.summary()
 
-    def _record_decision_trace(
+    def record_completed_decision(
         self,
         *,
+        result: DialogueTurnResult,
+        recommendation_count: int,
+        prompt_tokens: int,
+        completion_tokens: int,
+    ) -> None:
+        """Record only after an official response has completed all mutations."""
+        if not self.decision_trace_recorder.config.enabled:
+            return
+        inputs = result.trace_inputs
+        if not isinstance(inputs, DecisionTraceInputs):
+            return
+        trace = DialogueDecisionTrace.from_turn(
+            before_state=inputs.before_state,
+            after_state=inputs.after_state,
+            recognition=inputs.recognition,
+            guard_decision=inputs.guard_decision,
+            candidate_signals=inputs.candidate_signals,
+            question_decision=inputs.question_decision,
+            attribute_components=inputs.question_decision.attribute_components,
+            recommendation_count=recommendation_count,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            lookahead_depth=inputs.lookahead_depth,
+            fallback_reason=inputs.fallback_reason,
+            candidate_count=inputs.candidate_count,
+            turn=inputs.turn,
+        )
+        self.decision_trace_recorder.record(trace)
+
+    def _trace_inputs(
+        self,
         pending: PendingDialogueTurn,
         after_state: DialogueState,
         candidate_signals: CandidateQuestionSignals | None,
         candidate_count: int | None,
         decision: QuestionDecision,
-    ) -> None:
-        """Capture bounded diagnostics after a completed decision, never request text."""
-        try:
-            components = self.question_policy.last_components
-            snapshot = {
-                attribute: dict(values)
-                for attribute, values in components.items()
-                if isinstance(values, Mapping)
-            }
-            trace = DialogueDecisionTrace.from_turn(
-                before_state=pending.base_session.dialogue,
-                after_state=after_state,
-                recognition=pending.recognition,
-                guard_decision=pending.guard_decision,
-                candidate_signals=candidate_signals,
-                question_decision=decision,
-                attribute_components=snapshot,
-                recommendation_count=0,
-                prompt_tokens=pending.prompt_tokens,
-                completion_tokens=pending.completion_tokens,
-                lookahead_depth=self.question_policy.config.finish_strategy.lookahead_depth,
-                fallback_reason=getattr(pending.recognition, "fallback_reason", ""),
-                candidate_count=candidate_count,
-            )
-            self.decision_trace_recorder.record(trace)
-        except Exception:
-            logger.exception("[dialogue] decision diagnostics capture failed")
+    ) -> DecisionTraceInputs | None:
+        if not self.decision_trace_recorder.config.enabled:
+            return None
+        return DecisionTraceInputs(
+            before_state=pending.base_session.dialogue,
+            after_state=after_state,
+            recognition=pending.recognition,
+            guard_decision=pending.guard_decision,
+            candidate_signals=candidate_signals,
+            candidate_count=candidate_count,
+            question_decision=decision,
+            turn=pending.turn,
+            fallback_reason=pending.fallback_reason,
+            lookahead_depth=(
+                candidate_signals.lookahead_depth_used if candidate_signals is not None else 0
+            ),
+        )
 
     @staticmethod
     def eligible_candidate_attributes(state: DialogueState) -> tuple[str, ...]:

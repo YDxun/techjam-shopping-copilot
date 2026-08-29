@@ -185,17 +185,22 @@ class Agent(BaseAgent):
 
         decision = turn_result.question_decision
         message = self.dialogue.message_for(decision, turn_result.state)
-
-        return {
+        usage = {
+            "prompt_tokens": turn_result.prompt_tokens + self.reranker.last_usage["prompt_tokens"],
+            "completion_tokens": (
+                turn_result.completion_tokens + self.reranker.last_usage["completion_tokens"]
+            ),
+        }
+        response = {
             "message": message,
             "ask_attribute": decision.ask_attribute if decision.should_ask else None,
             "recommendations": [{"parent_asin": asin} for asin in shown],
-            "usage": {
-                "prompt_tokens": (
-                    turn_result.prompt_tokens + self.reranker.last_usage["prompt_tokens"]
-                ),
-                "completion_tokens": (
-                    turn_result.completion_tokens + self.reranker.last_usage["completion_tokens"]
-                ),
-            },
+            "usage": usage,
         }
+        self.dialogue.record_completed_decision(
+            result=turn_result,
+            recommendation_count=len(shown),
+            prompt_tokens=usage["prompt_tokens"],
+            completion_tokens=usage["completion_tokens"],
+        )
+        return response

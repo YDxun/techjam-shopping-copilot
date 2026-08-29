@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import threading
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from agent.dialogue.models import DialogueTurnResult, GuardAction
 from agent.dialogue.pipeline import DialogueUnderstandingPipeline, StalePendingTurnError
@@ -373,6 +373,23 @@ class DialogueFlowTest(unittest.TestCase):
         self.assertEqual(agent.dialogue_decision_statistics()["recorded"], 1)
         self.assertEqual(agent.dialogue_decision_statistics()["total_seen"], 3)
 
+    def test_rerank_failure_does_not_record_an_incomplete_response(self) -> None:
+        # Recording at decision commit would count a response that never reaches the caller.
+        reranker = StaticReranker(("A", "B", "C"))
+        reranker.rerank = Mock(side_effect=RuntimeError("rerank failed"))
+        agent = Agent(
+            env=self.env(trace_enabled=True),
+            llm_client=DisabledLLMClient(),
+            retriever=StaticRetriever(),
+            reranker=reranker,
+        )
+        agent.reset("s", {})
+
+        response = agent.respond("s", "I need shoes.", 1, 3)
+
+        self.assertEqual(set(response), {"message", "ask_attribute", "recommendations", "usage"})
+        self.assertEqual(agent.dialogue_decision_statistics()["total_seen"], 0)
+
     def test_dynamic_turn_uses_one_candidate_list_and_commits_once(self) -> None:
         # A second retrieval or pre-retrieval question commit would break identity/count history.
         retriever = StaticRetriever()
@@ -550,8 +567,11 @@ class DialogueFlowTest(unittest.TestCase):
                 self.record_shown_for_test(pipeline, "s", ["A"], turn=1)
                 before = pipeline.session("s")
 
-                pipeline.decide_question(
+                result = pipeline.decide_question(
                     pipeline.interpret_turn("s", "Reject A", turn=2), None, candidate_count=3
+                )
+                pipeline.record_completed_decision(
+                    result=result, recommendation_count=0, prompt_tokens=0, completion_tokens=0
                 )
 
                 trace = pipeline.decision_trace_recorder.records()[0].to_dict()
@@ -568,7 +588,10 @@ class DialogueFlowTest(unittest.TestCase):
         first = pipeline.interpret_turn("s", "I'm looking for shoes.", turn=1)
         second = pipeline.interpret_turn("s", "I also need them to be blue.", turn=2)
 
-        pipeline.decide_question(second, None, candidate_count=3)
+        second_result = pipeline.decide_question(second, None, candidate_count=3)
+        pipeline.record_completed_decision(
+            result=second_result, recommendation_count=0, prompt_tokens=0, completion_tokens=0
+        )
         committed = pipeline.session("s")
         self.assertEqual(pipeline.decision_trace_recorder.summary()["total_seen"], 1)
 

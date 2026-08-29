@@ -79,6 +79,7 @@ class CandidateSignalCalculator:
         }
 
         best_other_pair, other_signal = self._best_other_pair(rows, probabilities, attributes)
+        lookahead_depth_used = 1
         if self._lookahead_enabled(
             rows,
             by_attribute,
@@ -86,6 +87,7 @@ class CandidateSignalCalculator:
             remaining_question_budget=remaining_question_budget,
             terminal_eligible=terminal_eligible,
         ):
+            lookahead_depth_used = 2
             branch_signal_cache: dict[
                 tuple[tuple[str, ...], str], CandidateAttributeSignal
             ] = {}
@@ -112,6 +114,7 @@ class CandidateSignalCalculator:
             },
             best_other_pair=best_other_pair,
             other_signal=other_signal,
+            lookahead_depth_used=lookahead_depth_used,
         )
 
     def _validate_configuration(self) -> None:

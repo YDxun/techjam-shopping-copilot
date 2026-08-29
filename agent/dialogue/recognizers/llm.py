@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 import re
+import threading
 from copy import deepcopy
 
 from agent.dialogue.models import (
@@ -104,8 +105,23 @@ class LLMIntentRecognizer:
         self.client = client
         self.max_evidence_length = max_evidence_length
         self.max_tokens = max_tokens
-        self.last_usage = LLMUsage()
-        self.last_failure_reason: str | None = None
+        self._local = threading.local()
+
+    @property
+    def last_usage(self) -> LLMUsage:
+        return getattr(self._local, "usage", LLMUsage())
+
+    @last_usage.setter
+    def last_usage(self, value: LLMUsage) -> None:
+        self._local.usage = value
+
+    @property
+    def last_failure_reason(self) -> str | None:
+        return getattr(self._local, "failure_reason", None)
+
+    @last_failure_reason.setter
+    def last_failure_reason(self, value: str | None) -> None:
+        self._local.failure_reason = value
 
     @property
     def available(self) -> bool:

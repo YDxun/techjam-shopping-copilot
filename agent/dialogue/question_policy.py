@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import math
+import threading
+from dataclasses import replace
 from types import MappingProxyType
 from typing import Mapping
 
@@ -34,7 +36,15 @@ class QuestionPolicy:
 
     def __init__(self, config: DecisionConfig) -> None:
         self.config = config
-        self.last_components: Mapping[str, Mapping[str, float]] = {}
+        self._local = threading.local()
+
+    @property
+    def last_components(self) -> Mapping[str, Mapping[str, float]]:
+        return getattr(self._local, "components", MappingProxyType({}))
+
+    @last_components.setter
+    def last_components(self, value: Mapping[str, Mapping[str, float]]) -> None:
+        self._local.components = value
 
     def decide(
         self,
@@ -43,6 +53,7 @@ class QuestionPolicy:
         signals: CatalogQuestionSignals,
         candidate_signals: CandidateQuestionSignals | None = None,
     ) -> QuestionDecision:
+        self.last_components = MappingProxyType({})
         if (
             candidate_signals is None
             or not self.config.candidate_question_value.enabled
@@ -56,8 +67,10 @@ class QuestionPolicy:
                 self.last_components = self._freeze_components(
                     {"dynamic_signals_unavailable": {"utility": 0.0}}
                 )
-            return self._decide_legacy(state, recognition, signals)
-        return self._decide_dynamic(state, recognition, signals, candidate_signals)
+            decision = self._decide_legacy(state, recognition, signals)
+        else:
+            decision = self._decide_dynamic(state, recognition, signals, candidate_signals)
+        return replace(decision, attribute_components=self.last_components)
 
     def _decide_legacy(
         self,

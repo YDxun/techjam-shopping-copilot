@@ -44,6 +44,7 @@ def resolve_trace_output_path(
     catalog_path: str | Path,
     dataset_path: str | Path,
     repo_root: Path = ROOT,
+    evaluation_output_path: str | Path | None = None,
 ) -> Path:
     """Resolve a local diagnostics file without permitting protected-input overwrite."""
     def resolve_from_repo(value: str | Path) -> Path:
@@ -54,8 +55,12 @@ def resolve_trace_output_path(
 
     output = resolve_from_repo(output_path)
     protected = {resolve_from_repo(catalog_path), resolve_from_repo(dataset_path)}
+    if evaluation_output_path is not None:
+        protected.add(Path(evaluation_output_path).resolve())
     if output in protected:
-        raise ValueError("decision trace output must not overwrite catalog or dataset")
+        raise ValueError(
+            "decision trace output must not overwrite catalog or dataset or evaluation output"
+        )
     return output
 
 
@@ -83,6 +88,9 @@ def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     env = EnvConfig.from_env()
     output = args.output or env.output_path
+    catalog_path = Path(args.catalog).resolve()
+    dataset_path = Path(args.dataset).resolve()
+    evaluation_output = Path(output).resolve()
     print("\n=== TechJam2026 购物副驾 Agent 本地评估 ===")
     print(f"    {env.summary()}")
     if env.env_mode == "submit":
@@ -105,17 +113,17 @@ def main() -> int:
 
     # 官方评估器数据加载
     t0 = time.time()
-    samples = load_jsonl(args.dataset)
+    samples = load_jsonl(dataset_path)
     if env.sample_limit:
         samples = samples[: env.sample_limit]
         print(f"    [dev] SAMPLE_LIMIT={env.sample_limit}（冒烟测试子集）")
-    catalog_ids, categories, products = catalog_index(args.catalog)
+    catalog_ids, categories, products = catalog_index(catalog_path)
     print(
         f"    数据加载完成：{len(samples)} 会话 / {len(catalog_ids)} 商品 ({time.time() - t0:.1f}s)"
     )
 
     # 实例化业务 Agent（Pillar I~IV）
-    agent = Agent(catalog_path=args.catalog, env=env, llm_client=llm_client)
+    agent = Agent(catalog_path=catalog_path, env=env, llm_client=llm_client)
 
     # 调用官方评估器 evaluate()（唯一评分入口，未修改）
     t0 = time.time()
@@ -127,14 +135,15 @@ def main() -> int:
     result["transition_guard_statistics"] = agent.transition_guard_statistics()
     result["dialogue_decision_statistics"] = agent.dialogue_decision_statistics()
 
-    Path(output).write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+    evaluation_output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
 
     if env.diagnostics.decision_trace.enabled:
         try:
             trace_output = resolve_trace_output_path(
                 env.diagnostics.decision_trace.output_path,
-                args.catalog,
-                args.dataset,
+                catalog_path,
+                dataset_path,
+                evaluation_output_path=evaluation_output,
             )
             agent.dialogue.decision_trace_recorder.export_jsonl(trace_output)
         except Exception as exc:

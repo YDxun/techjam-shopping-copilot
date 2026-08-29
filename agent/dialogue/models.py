@@ -189,6 +189,9 @@ class QuestionDecision:
     reason_code: str
     utility_score: float
     alternative_scores: dict[str, float]
+    attribute_components: Mapping[str, Mapping[str, float]] = field(
+        default_factory=dict, repr=False, compare=False
+    )
 
 
 @dataclass(frozen=True)
@@ -216,6 +219,7 @@ class CandidateQuestionSignals:
     other_signal: CandidateAttributeSignal | None = None
     previous_candidate_count: int | None = None
     source: str = "dynamic"
+    lookahead_depth_used: int = 0
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "by_attribute", MappingProxyType(dict(self.by_attribute)))
@@ -296,6 +300,7 @@ class DialogueTurnResult:
     completion_tokens: int
     committed_session: object | None = field(default=None, repr=False, compare=False)
     committed_session_fingerprint: str | None = field(default=None, repr=False, compare=False)
+    trace_inputs: object | None = field(default=None, repr=False, compare=False)
 
 
 @dataclass(frozen=True)

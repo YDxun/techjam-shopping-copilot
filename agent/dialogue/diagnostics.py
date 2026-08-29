@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import re
 import threading
 from collections import Counter
@@ -357,6 +358,7 @@ class DialogueDecisionTrace:
         lookahead_depth: int,
         fallback_reason: str = "",
         candidate_count: int | None = None,
+        turn: int | None = None,
     ) -> "DialogueDecisionTrace":
         """Build a trace from dialogue models without reading their raw text fields."""
         before = _private_state_constraints(before_state, "active_constraints")
@@ -383,7 +385,7 @@ class DialogueDecisionTrace:
         )
         return cls(
             session_id=str(getattr(after_state, "session_id", "")),
-            turn=getattr(after_state, "turn", 0),
+            turn=getattr(after_state, "turn", 0) if turn is None else turn,
             recognition_source=getattr(recognition, "source", ""),
             dialogue_act=getattr(recognition, "dialogue_act", ""),
             recognition_confidence=getattr(recognition, "confidence", 0.0),
@@ -569,6 +571,10 @@ class DecisionTraceRecorder:
         if not self.config.enabled:
             return
         output = Path(path)
+        parent = output.parent.resolve(strict=True)
+        if not parent.is_dir() or output.parent.is_symlink():
+            raise ValueError("decision trace parent must be an existing non-symlink directory")
+        output = parent / output.name
         with self._lock:
             records = tuple(self._records)
         payloads = [
@@ -604,4 +610,9 @@ class DecisionTraceRecorder:
             )
             for _, payload in payloads
         ]
-        output.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        descriptor = os.open(output, flags, 0o600)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write("\n".join(lines) + ("\n" if lines else ""))

@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 
 from agent.dialogue.models import RecommendationContext
 from config.env_config import EnvConfig
+from utils import data_assets as assets_util
 from utils import field_mapping as fm
 
 
@@ -34,6 +35,7 @@ class IntentRouter:
 
     def __init__(self, env: EnvConfig | None = None) -> None:
         self.env = env or EnvConfig.from_env()
+        self._assets = assets_util.load_assets()
 
     # ------------------------------------------------------------------
     def route(self, state: RecommendationContext, mode: str) -> IntentRoute:
@@ -42,6 +44,11 @@ class IntentRouter:
         route = IntentRoute()
 
         route.category_tokens = list(state.category_tokens)
+        # 品类映射扩展（ASSET_CATEGORY_EXPAND）：family alias -> 商品类型 token，首轮路由 recall
+        if self.env.asset_category_expand:
+            for token in self._assets.category_expand(state.category_phrase or ""):
+                if token not in route.category_tokens:
+                    route.category_tokens.append(token)
 
         # 硬约束 token 组：每个 hard 约束是一组 AND（覆盖度强信号）
         for c in hard:

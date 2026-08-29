@@ -7,6 +7,7 @@
 
 配合 scripts/build_field_mapping.py（生成）与 data/analysis/field_mapping.json（定稿）使用。
 """
+
 from __future__ import annotations
 
 import json
@@ -62,8 +63,11 @@ def load(path: str | Path | None = None) -> dict[str, Any]:
             logger.warning("[field_mapping] 加载失败（%s），回退默认表", exc)
     _mapping_cache = {
         "attributes": {
-            "material": {"lookup_fields": [{"field": "title", "weight": 1.0}],
-                         "tolerance": "strict", "missing_policy": "unmet"},
+            "material": {
+                "lookup_fields": [{"field": "title", "weight": 1.0}],
+                "tolerance": "strict",
+                "missing_policy": "unmet",
+            },
         },
         "default": {"tolerance": "lenient", "missing_policy": "soft_unmet"},
     }
@@ -139,12 +143,20 @@ def expand_with_vocab(attribute: str, value: str) -> list[str]:
 
 
 def _load_vocab() -> dict[str, Any] | None:
+    """ASSET_VOCAB_EXPAND=1 时优先用 data/assets/vocab_v2_clean.json（去噪精修版）。"""
     global _vocab_cache
     if _vocab_cache is not None:
         return _vocab_cache
-    if _VOCAB_PATH.exists():
+    import os
+
+    path = _VOCAB_PATH
+    if os.environ.get("ASSET_VOCAB_EXPAND", "0").strip().lower() in {"1", "true", "yes", "on"}:
+        alt = _ROOT / "data" / "assets" / "vocab_v2_clean.json"
+        if alt.exists():
+            path = alt
+    if path.exists():
         try:
-            _vocab_cache = json.loads(_VOCAB_PATH.read_text(encoding="utf-8"))
+            _vocab_cache = json.loads(path.read_text(encoding="utf-8"))
         except Exception:
             _vocab_cache = None
     else:

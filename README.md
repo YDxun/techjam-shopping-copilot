@@ -318,6 +318,28 @@ LLM 全部通过**环境变量 + 能力探测 + 运行时控制器**启用，默
 - 回退：任何 LLM 环节失败/超时/断网 → 自动回退规则，离线可用。
 - 密钥：仅环境变量注入，代码/仓库不含任何 key（`DEEPSEEK_API_KEY`/`OPENAI_API_KEY`）。
 
+## 数据优化资产融合（data/assets/，队友打包）
+
+融合队友"数据处理与检索资产优化"的 4 个运行时资产（离线静态，`utils/data_assets.py` 惰性加载、缺失容错）：
+
+- `data/assets/vocab_v2_clean.json`：精修词表（canonical + synonyms，去除 68 个噪声词）
+- `data/assets/category_mapping.json`：品类路由（audience/family 别名 -> 商品类型 token）
+- `data/assets/review_paraphrases.json`：评论改写语言（size_fit / material / color，含否定规则）
+- `data/assets/field_mapping.json`：属性 -> 检索字段/权重/匹配策略（预留，当前主打分未用）
+
+生成脚本收入 `scripts/data_assets/`（可复现）；原始打包目录 `new_data_porcess/` 不入库。
+
+### 环境开关（默认值已按 public 200 A/B 设定）
+
+| 变量 | 默认 | 说明 | A/B 结论（public 200, bm25, 离线） |
+|---|---|---|---|
+| `ASSET_CATEGORY_EXPAND` | `1` | 品类映射 token 扩展（首轮路由） | 单独开无变化；与 paraphrase 协同 MRR +0.010 |
+| `ASSET_PARAPHRASE` | `1` | 评论改写软约束抽取（私有集鲁棒，含否定保护） | 公开集无变化（模板消息），私有集改写鲁棒 |
+| `ASSET_VOCAB_EXPAND` | `0` | 用 vocab_v2_clean 替换 data/analysis/vocab.json 做同义词扩展 | MRR 0.6335→0.6298（略降），默认关 |
+| `ASSET_FIELD_MAP` | `0` | field_mapping 字段感知匹配（预留） | 未启用 |
+
+实测（默认配置，HR@10=1.0 / MRR 0.6438 / MTTC 1.72 / TS 0.8787）相比接入前（MRR 0.6335 / TS 0.8757）：MRR +0.010，TS +0.003。
+
 ## 对话理解管线（队友融合模块，agent/dialogue/）
 
 合入队友的对话理解子系统，与 BLaIR 检索/重排管线共存：

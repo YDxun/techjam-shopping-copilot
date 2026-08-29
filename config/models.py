@@ -119,8 +119,10 @@ class LLMConfig:
     #         chat=旧 LLM 语义重排 / auto=text 可用优先
     rerank_backend: str = "text"
     qwen_rerank_model: str = "qwen3-rerank"
-    dashscope_workspace_id: str = ""    # MaaS base_url 子域（https://{ws}.cn-beijing.maas.aliyuncs.com/...）
-    qwen_rerank_base_url: str = ""      # 完整 base_url 覆盖（优先于 workspace_id 拼接）
+    dashscope_workspace_id: str = (
+        ""  # MaaS base_url 子域（https://{ws}.cn-beijing.maas.aliyuncs.com/...）
+    )
+    qwen_rerank_base_url: str = ""  # 完整 base_url 覆盖（优先于 workspace_id 拼接）
     health_check_enabled: bool = True
     connect_timeout_seconds: float = 3.0
     timeout_seconds: float = 8.0
@@ -181,6 +183,11 @@ class AppConfig:
     llm_clarify_enabled: bool = False
     # bge-reranker-v2-m3 交叉编码重排（默认关，环境自感知开启时可用才启用）
     reranker_model_enabled: bool = False
+    # 数据资产开关（队友打包：data/assets/*.json，离线静态资产）
+    asset_vocab_expand: bool = False  # vocab_v2_clean 同义词扩展（约束词 recall）
+    asset_category_expand: bool = False  # category_mapping 品类 token 扩展（首轮路由）
+    asset_paraphrase: bool = False  # review_paraphrases 评论改写抽取（私有集鲁棒）
+    asset_field_map: bool = False  # field_mapping 字段感知匹配（预留）
 
     dialogue_understanding: DialogueUnderstandingConfig = field(
         default_factory=DialogueUnderstandingConfig

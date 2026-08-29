@@ -82,5 +82,9 @@
     "qwen_rerank_model": "qwen3-rerank",
     "dashscope_workspace_id": "",
     "qwen_rerank_base_url": ""
-  }
+  },
+  "asset_vocab_expand": false,
+  "asset_category_expand": true,
+  "asset_paraphrase": true,
+  "asset_field_map": false
 }

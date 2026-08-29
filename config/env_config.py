@@ -134,6 +134,22 @@ class EnvConfig:
         return self._app_config.llm_intent_enabled
 
     @property
+    def asset_vocab_expand(self) -> bool:
+        return self._app_config.asset_vocab_expand
+
+    @property
+    def asset_category_expand(self) -> bool:
+        return self._app_config.asset_category_expand
+
+    @property
+    def asset_paraphrase(self) -> bool:
+        return self._app_config.asset_paraphrase
+
+    @property
+    def asset_field_map(self) -> bool:
+        return self._app_config.asset_field_map
+
+    @property
     def llm_clarify_enabled(self) -> bool:
         return self._app_config.llm_clarify_enabled
 

@@ -386,6 +386,12 @@ def _build_and_validate(data: Mapping[str, Any], selected_key: SecretValue) -> A
         reranker_model_enabled=_bool_value(
             data.get("reranker_model_enabled"), "reranker_model_enabled"
         ),
+        asset_vocab_expand=_bool_value(data.get("asset_vocab_expand"), "asset_vocab_expand"),
+        asset_category_expand=_bool_value(
+            data.get("asset_category_expand"), "asset_category_expand"
+        ),
+        asset_paraphrase=_bool_value(data.get("asset_paraphrase"), "asset_paraphrase"),
+        asset_field_map=_bool_value(data.get("asset_field_map"), "asset_field_map"),
         clarify_strategy=_string_value(data.get("clarify_strategy"), "clarify_strategy"),
         override_erase=_bool_value(data.get("override_erase"), "override_erase"),
         skip_data_verify=_bool_value(data.get("skip_data_verify"), "skip_data_verify"),

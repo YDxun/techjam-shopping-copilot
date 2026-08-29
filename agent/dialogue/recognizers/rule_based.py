@@ -43,8 +43,17 @@ RE_COMPLEX = re.compile(
 class RuleBasedRecognizer:
     """Pure deterministic parser for official phrases and bounded variants."""
 
-    def __init__(self, max_evidence_length: int = 180) -> None:
+    def __init__(self, max_evidence_length: int = 180, paraphrase_enabled: bool = False) -> None:
         self.max_evidence_length = max_evidence_length
+        self.paraphrase_enabled = paraphrase_enabled
+        self._paraphrase_patterns: list[tuple[re.Pattern, str]] = []
+        if paraphrase_enabled:
+            try:
+                from utils.data_assets import load_assets
+
+                self._paraphrase_patterns = load_assets().paraphrase_patterns()
+            except Exception:
+                self._paraphrase_patterns = []
 
     def recognize(self, request: RecognitionRequest) -> RecognitionResult:
         text = request.user_message or ""
@@ -117,6 +126,10 @@ class RuleBasedRecognizer:
                 dialogue_act = DialogueAct.ADD_CONSTRAINT
                 confidence = 0.75
 
+        # 评论改写抽取（ASSET_PARAPHRASE）：私有集 paraphrase 鲁棒性
+        if self.paraphrase_enabled:
+            operations.extend(self._paraphrase_operations(text, operations))
+
         # turn-1 尾部旧偏好捕获（与 0.995 HR 基线行为一致）：
         # intent_override 首条消息为 "I'm looking for {cat}. {old_value}"，
         # 把 {old_value} 作为 soft 约束立刻获得排序信号；buying/browsing 尾部含
@@ -186,6 +199,39 @@ class RuleBasedRecognizer:
             self._operation(OperationKind.ADD, value, ConstraintStrength.SOFT)
             for value in values[:2]
         ]
+
+    def _paraphrase_operations(
+        self, text: str, existing: list[ConstraintOperation]
+    ) -> list[ConstraintOperation]:
+        """用 review_paraphrases 的模式做软约束抽取（去重：已有同属性约束则跳过）。"""
+        lowered = text.lower()
+        existing_attrs = {op.attribute for op in existing}
+        result: list[ConstraintOperation] = []
+        seen: set[str] = set()
+        for pattern, attr_type in self._paraphrase_patterns:
+            if attr_type in existing_attrs or attr_type in seen:
+                continue
+            match = pattern.search(lowered)
+            if not match:
+                continue
+            # 否定保护：匹配前 12 字符内出现否定词则跳过（如 "not made of leather"）
+            start = max(0, match.start() - 12)
+            window = lowered[start : match.start()]
+            if re.search(r"(?:not|no|don't|doesn't|dont|never|without|instead of)\b", window):
+                continue
+            value = match.group(1) if match.groups() else match.group(0)
+            value = (value or "").strip()
+            if not value or len(value) < 2:
+                continue
+            result.append(
+                self._operation(
+                    OperationKind.ADD, value[: self.max_evidence_length], ConstraintStrength.SOFT
+                )
+            )
+            seen.add(attr_type)
+            if len(result) >= 2:
+                break
+        return result
 
     def _turn1_tail_operations(self, text: str, turn: int) -> list[ConstraintOperation]:
         """turn 1：'looking for X. <tail>' 的 <tail> 若不含标记，捕获为 soft 约束。"""

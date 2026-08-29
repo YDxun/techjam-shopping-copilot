@@ -10,6 +10,7 @@ from agent.dialogue.models import (
     DialogueAct,
     DialogueState,
     DialogueTurnResult,
+    GuardAction,
     QuestionDecision,
     RecognitionRequest,
     RecommendationContext,
@@ -20,6 +21,7 @@ from agent.dialogue.recognizers.cascade import CascadedIntentRecognizer
 from agent.dialogue.recognizers.llm import LLMIntentRecognizer
 from agent.dialogue.recognizers.rule_based import RuleBasedRecognizer
 from agent.dialogue.reducer import StateReducer
+from agent.dialogue.transition_guard import TransitionGuard
 from config.env_config import EnvConfig
 from llm.base import LLMClient
 
@@ -60,6 +62,7 @@ class DialogueUnderstandingPipeline:
             rule_confidence_threshold=dialogue_config.rule_confidence_threshold,
         )
         self.question_policy = QuestionPolicy(env.decision)
+        self.transition_guard = TransitionGuard(dialogue_config.transition_guard)
         self.catalog_signals = CatalogQuestionSignals.from_products(products)
         self._sessions: dict[str, SessionState] = {}
 
@@ -81,35 +84,49 @@ class DialogueUnderstandingPipeline:
             self.reset(session_id, {})
         session = self._sessions[session_id]
         version_at_start = session.dialogue.intent_version
-        products = session.products.settle_previous_turn(version_at_start)
         request = RecognitionRequest(
             user_message=user_message,
             turn=turn,
             state=session.dialogue,
-            recently_shown_asins=products.pending_batch,
+            recently_shown_asins=session.products.pending_batch,
         )
         recognition = self.recognizer.recognize(request)
-        products = products.apply_feedback(version_at_start, recognition)
-        reduction = self.reducer.reduce(session.dialogue, recognition, turn)
+        guard_decision = self.transition_guard.evaluate(session.dialogue, recognition)
 
-        if reduction.applied:
-            dialogue = reduction.state
-            decision = self.question_policy.decide(
-                dialogue,
-                recognition,
-                self.catalog_signals,
-            )
-        else:
+        if guard_decision.action in {GuardAction.CLARIFY, GuardAction.REJECT}:
             dialogue = session.dialogue
+            products = session.products
             decision = QuestionDecision(
                 should_ask=True,
-                ask_attribute="other",
-                reason_code="state_update_rejected",
+                ask_attribute=guard_decision.clarify_attribute or "other",
+                reason_code=guard_decision.reason_code,
                 utility_score=0.0,
                 alternative_scores={},
             )
-        if decision.should_ask:
-            dialogue = self.reducer.record_question(dialogue, decision.ask_attribute)
+        else:
+            recognition = guard_decision.recognition
+            products = session.products.settle_previous_turn(version_at_start)
+            products = products.apply_feedback(version_at_start, recognition)
+            reduction = self.reducer.reduce(session.dialogue, recognition, turn)
+
+            if reduction.applied:
+                dialogue = reduction.state
+                decision = self.question_policy.decide(
+                    dialogue,
+                    recognition,
+                    self.catalog_signals,
+                )
+            else:
+                dialogue = session.dialogue
+                decision = QuestionDecision(
+                    should_ask=True,
+                    ask_attribute="other",
+                    reason_code="state_update_rejected",
+                    utility_score=0.0,
+                    alternative_scores={},
+                )
+            if decision.should_ask:
+                dialogue = self.reducer.record_question(dialogue, decision.ask_attribute)
 
         context = self._build_context(dialogue, recognition, products)
         self._sessions[session_id] = SessionState(dialogue=dialogue, products=products)
@@ -132,6 +149,7 @@ class DialogueUnderstandingPipeline:
         return DialogueTurnResult(
             state=dialogue,
             recognition=recognition,
+            guard_decision=guard_decision,
             recommendation_context=context,
             question_decision=decision,
             prompt_tokens=usage.prompt_tokens,

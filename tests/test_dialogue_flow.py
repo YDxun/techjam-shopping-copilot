@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import json
 import unittest
 
+from agent.dialogue.models import GuardAction
+from agent.dialogue.pipeline import DialogueUnderstandingPipeline
 from agent.main_agent import Agent
 from config.env_config import EnvConfig
 from evaluator.local_evaluator import ALLOWED_ATTRIBUTES
-from llm.base import DisabledLLMClient, LLMState, LLMStatus, LLMUsage
+from llm.base import DisabledLLMClient, LLMResult, LLMState, LLMStatus, LLMUsage
 
 PRODUCTS = (
     {
@@ -78,6 +81,25 @@ class UnavailableClient:
         raise AssertionError("unavailable client must not be called")
 
 
+class ScriptedIntentClient:
+    def __init__(self, response: dict[str, object]) -> None:
+        self._response = json.dumps(response)
+
+    @property
+    def status(self) -> LLMStatus:
+        return LLMStatus(LLMState.AVAILABLE, "test", "test-model")
+
+    @property
+    def cumulative_usage(self) -> LLMUsage:
+        return LLMUsage()
+
+    def initialize(self) -> LLMStatus:
+        return self.status
+
+    def chat(self, messages, *, temperature=None, max_tokens=None) -> LLMResult:
+        return LLMResult(True, "test", "test-model", content=self._response)
+
+
 class DialogueFlowTest(unittest.TestCase):
     def env(self, mode: str = "rule_only") -> EnvConfig:
         return EnvConfig.from_env(
@@ -87,6 +109,38 @@ class DialogueFlowTest(unittest.TestCase):
                 "llm": {"rerank_enabled": False},
             },
             environ={"LLM_PROVIDER": "none"},
+        )
+
+    @staticmethod
+    def low_confidence_rejection(asin: str) -> dict[str, object]:
+        return {
+            "dialogue_act": "reject_products",
+            "category": None,
+            "constraint_operations": [],
+            "explicit_rejected_asins": [asin],
+            "confidence": 0.70,
+            "ambiguities": [],
+        }
+
+    def build_pipeline(
+        self, *, guard_enabled: bool, llm_response: dict[str, object]
+    ) -> DialogueUnderstandingPipeline:
+        env = EnvConfig.from_env(
+            overrides={
+                "skip_data_verify": True,
+                "dialogue_understanding": {
+                    "mode": "cascaded",
+                    "rule_confidence_threshold": 0.90,
+                    "transition_guard": {"enabled": guard_enabled},
+                },
+                "llm": {"rerank_enabled": False},
+            },
+            environ={"LLM_PROVIDER": "none"},
+        )
+        return DialogueUnderstandingPipeline(
+            env=env,
+            llm_client=ScriptedIntentClient(llm_response),
+            products=PRODUCTS,
         )
 
     def test_offline_response_preserves_existing_ranked_order_and_contract(self) -> None:
@@ -106,6 +160,10 @@ class DialogueFlowTest(unittest.TestCase):
         )
 
         self.assertIsInstance(response, dict)
+        self.assertEqual(
+            set(response),
+            {"message", "ask_attribute", "recommendations", "usage"},
+        )
         self.assertIsInstance(response["message"], str)
         self.assertIn(response["ask_attribute"], ALLOWED_ATTRIBUTES | {None})
         self.assertEqual(
@@ -146,6 +204,39 @@ class DialogueFlowTest(unittest.TestCase):
 
         observations = agent.dialogue.session("s1").products.observations
         self.assertEqual([item.asin for item in observations], ["C", "B"])
+
+    def test_guarded_rejection_does_not_mutate_products_or_dialogue(self) -> None:
+        pipeline = self.build_pipeline(
+            guard_enabled=True,
+            llm_response=self.low_confidence_rejection("A"),
+        )
+        pipeline.reset("s", {})
+        pipeline.record_shown("s", ["A"], turn=1)
+        before = pipeline.session("s")
+
+        result = pipeline.process_turn("s", "Reject A", turn=2)
+        session = pipeline.session("s")
+
+        self.assertEqual(result.guard_decision.action, GuardAction.CLARIFY)
+        self.assertEqual(result.question_decision.ask_attribute, "other")
+        self.assertEqual(session, before)
+        self.assertEqual(session.dialogue.active_constraints, ())
+        self.assertEqual(session.products.context_lists(1).hard_rejected_asins, ())
+
+    def test_disabled_guard_preserves_existing_feedback_flow(self) -> None:
+        pipeline = self.build_pipeline(
+            guard_enabled=False,
+            llm_response=self.low_confidence_rejection("A"),
+        )
+        pipeline.reset("s", {})
+        pipeline.record_shown("s", ["A"], turn=1)
+
+        result = pipeline.process_turn("s", "Reject A", turn=2)
+        session = pipeline.session("s")
+
+        self.assertEqual(result.guard_decision.action, GuardAction.APPLY)
+        self.assertEqual(session.dialogue.turn, 2)
+        self.assertEqual(session.products.context_lists(1).hard_rejected_asins, ("A",))
 
 
 if __name__ == "__main__":

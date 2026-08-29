@@ -23,6 +23,14 @@ class LLMStartupTest(unittest.TestCase):
             "llm_fallbacks": 0,
             "fallback_reasons": {},
         }
+        agent.transition_guard_statistics.return_value = {
+            "enabled": False,
+            "total": 0,
+            "actions": {},
+            "reasons": {},
+            "dialogue_acts": {},
+            "recognition_sources": {},
+        }
         agent_constructor = Mock(return_value=agent)
         output = io.StringIO()
         with (
@@ -104,7 +112,7 @@ class LLMStartupTest(unittest.TestCase):
                 agent_constructor, _ = self._run_main_with_client(env, client)
                 self.assertIs(agent_constructor.call_args.kwargs.get("llm_client"), client)
 
-    def test_available_deepseek_and_openai_share_the_same_injection_path_and_hide_secrets(self) -> None:
+    def test_available_clients_share_injection_path_and_hide_secrets(self) -> None:
         deepseek_secret = "deepseek-test-secret"
         openai_secret = "openai-test-secret"
         for provider in ("deepseek", "openai"):
@@ -178,6 +186,14 @@ class LLMStartupTest(unittest.TestCase):
             "llm_fallbacks": 1,
             "fallback_reasons": {"invalid_json": 1},
         }
+        agent.transition_guard_statistics.return_value = {
+            "enabled": True,
+            "total": 3,
+            "actions": {"apply": 2, "clarify": 1},
+            "reasons": {"guard_passed": 2, "replace_confidence_below_threshold": 1},
+            "dialogue_acts": {"add_constraint": 2, "replace_constraint": 1},
+            "recognition_sources": {"llm": 1, "rule": 2},
+        }
         with (
             patch("run_local_eval.EnvConfig.from_env", return_value=env),
             patch("run_local_eval.create_llm_client", return_value=client),
@@ -195,6 +211,14 @@ class LLMStartupTest(unittest.TestCase):
         self.assertEqual(
             written_result["intent_recognition_statistics"],
             agent.intent_recognition_statistics.return_value,
+        )
+        self.assertEqual(
+            written_result["transition_guard_statistics"],
+            agent.transition_guard_statistics.return_value,
+        )
+        self.assertEqual(
+            set(written_result),
+            {"sample_count", "intent_recognition_statistics", "transition_guard_statistics"},
         )
 
 if __name__ == "__main__":

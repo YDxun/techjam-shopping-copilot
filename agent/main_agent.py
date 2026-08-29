@@ -97,6 +97,10 @@ class Agent(BaseAgent):
         """Expose local diagnostics without changing the official turn-response contract."""
         return self.dialogue.recognizer.statistics()
 
+    def transition_guard_statistics(self) -> dict[str, object]:
+        """Expose aggregate guard diagnostics without changing the official turn-response contract."""
+        return self.dialogue.transition_guard.statistics()
+
     # ------------------------------------------------------------------
     def respond(self, session_id: str, user_message: str, turn: int, top_k: int) -> dict:
         """每轮对话主流程（Pillar I~IV 编排）。"""

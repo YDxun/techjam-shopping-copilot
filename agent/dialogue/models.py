@@ -252,6 +252,7 @@ class RecommendationContext:
 class DialogueTurnResult:
     state: DialogueState
     recognition: RecognitionResult
+    guard_decision: GuardDecision
     recommendation_context: RecommendationContext
     question_decision: QuestionDecision
     prompt_tokens: int

@@ -102,6 +102,7 @@ def main() -> int:
 
     # 本地诊断附加在最终评测文件，不改变官方每轮 Agent 响应契约或官方评估器。
     result["intent_recognition_statistics"] = agent.intent_recognition_statistics()
+    result["transition_guard_statistics"] = agent.transition_guard_statistics()
 
     Path(output).write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
 

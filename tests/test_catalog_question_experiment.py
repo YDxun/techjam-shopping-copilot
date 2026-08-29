@@ -167,6 +167,35 @@ class CatalogQuestionExperimentTest(unittest.TestCase):
         self.assertGreater(pool["mean_catalog_mass_coverage"], 0.89)
         self.assertEqual(_without_timing(first), _without_timing(second))
 
+    def test_master_windows_pair_pool_sizes_independently_of_requested_list(self) -> None:
+        # Sampling each pool with shared mutable credits makes the 300-pool
+        # result depend on whether a 500-pool result was requested beside it.
+        from experiments.catalog_question_value import run_catalog_experiment
+
+        with tempfile.TemporaryDirectory() as temporary:
+            catalog = self._catalog(Path(temporary))
+            alone = run_catalog_experiment(catalog, (2,), 8, 31)
+            paired = run_catalog_experiment(catalog, (2, 4), 8, 31)
+
+        self.assertEqual(
+            _without_comparator(alone["pool_sizes"]["2"]),
+            _without_comparator(paired["pool_sizes"]["2"]),
+        )
+
+    def test_master_window_prefixes_and_seed_are_deterministic(self) -> None:
+        # Independent pool draws would not guarantee that every small-pool
+        # candidate is also present in the paired larger pool.
+        from experiments.catalog_question_value import _MasterWindowSampler
+
+        buckets = {"large": ("a", "b", "c", "d"), "small": ("e", "f")}
+        first = _MasterWindowSampler(buckets, 41)
+        second = _MasterWindowSampler(buckets, 41)
+        for index in range(6):
+            small = first.window(index, 2)
+            large = first.window(index, 5)
+            self.assertEqual(small, large[:2])
+            self.assertEqual(small, second.window(index, 2))
+
     def test_rejects_output_aliases_before_touching_catalog(self) -> None:
         # Writing through a direct, symlink, or hardlink alias could replace the
         # catalog itself instead of merely replacing a separate report.
@@ -232,3 +261,13 @@ def _without_timing(value: object) -> object:
     if isinstance(value, list):
         return [_without_timing(item) for item in value]
     return value
+
+
+def _without_comparator(value: object) -> object:
+    report = _without_timing(value)
+    assert isinstance(report, dict)
+    return {
+        key: item
+        for key, item in report.items()
+        if key != "chosen_attribute_agreement_with_largest_pool"
+    }

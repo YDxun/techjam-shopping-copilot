@@ -68,18 +68,23 @@ def run_catalog_experiment(
     }
     coverage = _catalog_attribute_coverage(cache.profiles.values())
     measurements: dict[int, list[_PoolMeasurement]] = {pool: [] for pool in normalized_pools}
-    randomizer = random.Random(seed)
-    sampler = _StratifiedSampler(categories, random.Random(seed))
+    sampler = _MasterWindowSampler(categories, seed)
     latency_samples: dict[int, list[float]] = {pool: [] for pool in normalized_pools}
     latency_indices = _latency_sample_indices(sample_count)
 
     for sample_index in range(sample_count):
+        window = sampler.window(sample_index, normalized_pools[-1])
         sampled_for_pool = {
-            pool: tuple(cache.profiles[asin] for asin in sampler.sample(pool))
+            pool: tuple(cache.profiles[asin] for asin in window[:pool])
             for pool in normalized_pools
         }
         baseline = {
-            pool: _measure_pool(sampled_for_pool[pool], randomizer, candidate_config, finish_config)
+            pool: _measure_pool(
+                sampled_for_pool[pool],
+                random.Random(_deletion_seed(seed, sample_index, pool)),
+                candidate_config,
+                finish_config,
+            )
             for pool in normalized_pools
         }
         largest_choice = baseline[normalized_pools[-1]].choice
@@ -211,47 +216,38 @@ def _category_buckets(cache: CatalogAttributeCache) -> dict[str, tuple[str, ...]
     return {category: tuple(sorted(asins)) for category, asins in sorted(buckets.items())}
 
 
-class _StratifiedSampler:
-    def __init__(self, buckets: Mapping[str, Sequence[str]], randomizer: random.Random) -> None:
-        self._total = sum(len(values) for values in buckets.values())
-        self._buckets: dict[str, tuple[str, ...]] = {}
-        self._offsets: dict[str, int] = {}
-        self._credits = {category: 0 for category in buckets}
-        self._tie_order = list(sorted(buckets))
-        randomizer.shuffle(self._tie_order)
-        for category, values in buckets.items():
-            ordered = list(values)
-            randomizer.shuffle(ordered)
-            self._buckets[category] = tuple(ordered)
-            self._offsets[category] = 0
+class _MasterWindowSampler:
+    """One proportional order, so all pool sizes share paired candidate windows."""
 
-    def sample(self, count: int) -> tuple[str, ...]:
-        allocation = {
-            category: count * len(values) // self._total
-            for category, values in self._buckets.items()
-        }
-        remainder = {
-            category: count * len(values) % self._total
-            for category, values in self._buckets.items()
-        }
-        for category in self._buckets:
-            self._credits[category] += remainder[category]
-        for _ in range(count - sum(allocation.values())):
-            winner = max(
-                self._buckets,
-                key=lambda category: (self._credits[category], -self._tie_order.index(category)),
+    def __init__(self, buckets: Mapping[str, Sequence[str]], seed: int) -> None:
+        randomizer = random.Random(seed)
+        total = sum(len(values) for values in buckets.values())
+        scheduled: list[tuple[float, int, str]] = []
+        for tie, category in enumerate(sorted(buckets)):
+            values = list(buckets[category])
+            randomizer.shuffle(values)
+            offset = randomizer.random()
+            scheduled.extend(
+                ((position + offset) / len(values), tie, asin)
+                for position, asin in enumerate(values)
             )
-            allocation[winner] += 1
-            self._credits[winner] -= self._total
-            self._tie_order = self._tie_order[1:] + self._tie_order[:1]
-        selected: list[str] = []
-        for category in sorted(self._buckets):
-            values = self._buckets[category]
-            amount = allocation[category]
-            offset = self._offsets[category]
-            selected.extend(values[(offset + index) % len(values)] for index in range(amount))
-            self._offsets[category] = (offset + amount) % len(values)
-        return tuple(sorted(selected))
+        self._master = tuple(asin for _, _, asin in sorted(scheduled))
+        self._stride = _coprime_stride(seed, total)
+
+    def window(self, sample_index: int, count: int) -> tuple[str, ...]:
+        start = (sample_index * self._stride) % len(self._master)
+        return tuple(self._master[(start + offset) % len(self._master)] for offset in range(count))
+
+
+def _coprime_stride(seed: int, total: int) -> int:
+    stride = seed % max(1, total - 1) + 1
+    while math.gcd(stride, total) != 1:
+        stride = stride % total + 1
+    return stride
+
+
+def _deletion_seed(seed: int, sample_index: int, pool_size: int) -> int:
+    return (seed * 1_000_003 + sample_index * 9_973 + pool_size * 101) & ((1 << 63) - 1)
 
 
 def _latency_sample_indices(sample_count: int) -> frozenset[int]:

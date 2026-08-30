@@ -7,11 +7,88 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
+from config.env_config import EnvConfig
 from tests.test_webapp_catalog import write_rows
 from tests.test_webapp_service import FakeAgent
-from webapp.app import WebRuntime, create_app
+from webapp.app import WebRuntime, create_app, initialize_runtime
 from webapp.catalog import CatalogPresenter
 from webapp.service import SessionManager
+
+
+def test_initialize_runtime_validates_selected_catalog_and_disables_duplicate_agent_check(
+    tmp_path: Path,
+) -> None:
+    selected = tmp_path / "selected.jsonl"
+    write_rows(selected, [{"parent_asin": "A1", "title": "One"}])
+    verified: list[tuple[Path, str, str, bool]] = []
+    captured: dict[str, object] = {}
+
+    def verifier(path: Path, expected: str, label: str, skip: bool = False) -> bool:
+        verified.append((Path(path), expected, label, skip))
+        return True
+
+    def env_loader() -> EnvConfig:
+        return EnvConfig.from_env(
+            overrides={"skip_data_verify": False, "llm": {"provider": "none"}},
+            environ={},
+        )
+
+    def agent_factory(path: Path, env: EnvConfig, llm_client: object) -> FakeAgent:
+        captured.update(path=Path(path), env=env, llm_client=llm_client)
+        return FakeAgent()
+
+    runtime = initialize_runtime(
+        selected,
+        env_loader=env_loader,
+        verifier=verifier,
+        agent_factory=agent_factory,
+    )
+
+    assert verified[0][0] == selected
+    assert captured["path"] == selected
+    assert isinstance(captured["env"], EnvConfig)
+    assert captured["env"].skip_data_verify is True
+    assert runtime.catalog.detail("A1")["title"] == "One"
+
+
+def test_initialize_runtime_honors_existing_skip_flag(tmp_path: Path) -> None:
+    selected = tmp_path / "selected.jsonl"
+    write_rows(selected, [{"parent_asin": "A1", "title": "One"}])
+    verifier_calls: list[Path] = []
+
+    def env_loader() -> EnvConfig:
+        return EnvConfig.from_env(
+            overrides={"skip_data_verify": True, "llm": {"provider": "none"}},
+            environ={},
+        )
+
+    def verifier(path: Path, expected: str, label: str, skip: bool = False) -> bool:
+        verifier_calls.append(path)
+        return True
+
+    runtime = initialize_runtime(
+        selected,
+        env_loader=env_loader,
+        verifier=verifier,
+        agent_factory=lambda path, env, client: FakeAgent(),
+    )
+
+    assert verifier_calls == []
+    assert runtime.catalog.detail("A1")["title"] == "One"
+
+
+def test_web_cli_defaults_and_overrides() -> None:
+    from webapp.__main__ import parse_args
+
+    defaults = parse_args([])
+    assert defaults.catalog == Path("data/catalog.jsonl")
+    assert defaults.host == "127.0.0.1"
+    assert defaults.port == 8000
+
+    custom = parse_args(["--catalog", "/tmp/catalog.jsonl", "--port", "8080"])
+    assert custom.catalog == Path("/tmp/catalog.jsonl")
+    assert custom.host == "127.0.0.1"
+    assert custom.port == 8080
 
 
 def make_runtime(tmp_path: Path) -> tuple[WebRuntime, FakeAgent]:

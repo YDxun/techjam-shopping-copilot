@@ -4,7 +4,7 @@ import asyncio
 import logging
 from collections.abc import Callable
 from contextlib import asynccontextmanager, suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal
 from uuid import UUID
@@ -13,6 +13,11 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from agent.main_agent import Agent
+from config import constants
+from config.env_config import EnvConfig
+from llm.factory import create_llm_client
+from utils.data_verify import verify_file
 from webapp.catalog import CatalogError, CatalogPresenter
 from webapp.schemas import ChatResponse, MessageRequest, SessionResponse
 from webapp.service import InvalidMessage, SessionManager, SessionNotFound
@@ -44,13 +49,32 @@ def _unconfigured_initializer(catalog_path: Path) -> WebRuntime:
     raise RuntimeError(f"No runtime initializer configured for {catalog_path}")
 
 
+def initialize_runtime(
+    catalog_path: Path,
+    *,
+    env_loader: Callable[[], EnvConfig] = EnvConfig.from_env,
+    verifier: Callable[[Path, str, str, bool], bool] = verify_file,
+    agent_factory: Callable[[Path, EnvConfig, object], Agent] = Agent,
+) -> WebRuntime:
+    """Build the production web runtime for one selected catalog file."""
+    env = env_loader()
+    if not env.skip_data_verify:
+        verifier(catalog_path, constants.EXPECTED_SHA256_CATALOG, "catalog.jsonl", skip=False)
+    catalog = CatalogPresenter.build(catalog_path)
+    web_env = EnvConfig(replace(env.app_config, skip_data_verify=True))
+    llm_client = create_llm_client(web_env.llm)
+    llm_client.initialize()
+    agent = agent_factory(catalog_path, web_env, llm_client)
+    return WebRuntime(SessionManager(agent, catalog, top_k=web_env.top_k), catalog)
+
+
 def create_app(
     catalog_path: Path = Path("data/catalog.jsonl"),
     initializer: Initializer | None = None,
     runtime: WebRuntime | None = None,
 ) -> FastAPI:
     container = RuntimeContainer()
-    active_initializer = initializer or _unconfigured_initializer
+    active_initializer = initializer or initialize_runtime
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):

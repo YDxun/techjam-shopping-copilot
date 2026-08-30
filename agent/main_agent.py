@@ -84,7 +84,11 @@ class Agent(BaseAgent):
         self.dialogue = DialogueUnderstandingPipeline(
             env=self.env,
             llm_client=self.llm_client,
-            products=self.retriever.iter_products(),
+            products=(
+                ()
+                if dialogue_catalog_resources is not None
+                else self.retriever.iter_products()
+            ),
             # 自动化控制：LLM 意图识别仅在探测可用且 LLM_INTENT_ENABLE=1 时级联启用，
             # 否则走纯规则识别（离线安全）。澄清决策始终用规则策略（"other-first" 数据验证最优）。
             mode="cascaded" if self.decisions.use_llm_intent else "rule_only",

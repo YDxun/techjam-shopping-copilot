@@ -426,7 +426,8 @@ decision trace；不会调用 LLM，也不会导出用户原文或逐会话 trac
 这是 20 条会话的筛选，**不会推广任何配置，也不会改变默认 Legacy 行为**。Unix 平台使用进程级
 `SIGALRM`/`setitimer` 强制 1,200 秒截止；若截止发生，当前配置会被丢弃，输出以原子替换方式写入仅含
 已完成配置的 `time_budget_exceeded` 报告，并且 CLI 返回非零。没有 `SIGALRM` 的平台会把报告标为
-`external_watchdog_required`，调用方必须提供同等的外部 1,200 秒 watchdog。
+`external_watchdog_required`；调用方必须提供同等的外部 1,200 秒 watchdog，并显式传入
+`--external-watchdog-confirmed`，否则比较会在评估开始前失败。
 
 ### Catalog question-value diagnostic
 

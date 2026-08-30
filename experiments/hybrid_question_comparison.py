@@ -62,7 +62,7 @@ _GATES = {
 }
 
 
-class TimeBudgetExceeded(TimeoutError):
+class TimeBudgetExceeded(BaseException):
     """Raised when the process-wide comparison deadline expires."""
 
 
@@ -154,6 +154,7 @@ def run_comparison(
     agent_factory: Callable[..., object] | None = None,
     evaluator: Callable[..., Mapping[str, object]] | None = None,
     monotonic: Callable[[], float] | None = None,
+    external_watchdog_confirmed: bool = False,
 ) -> dict[str, object]:
     """Evaluate Legacy and three Hybrid gate settings under one hard deadline.
 
@@ -175,6 +176,10 @@ def run_comparison(
     initialization_elapsed = 0.0
     timeout_configuration: str | None = None
     enforcement_mode = _deadline_enforcement_mode()
+    if enforcement_mode == "external_watchdog_required" and not external_watchdog_confirmed:
+        raise RuntimeError(
+            "an external watchdog is required when process SIGALRM enforcement is unavailable"
+        )
     status = "complete"
 
     try:
@@ -237,6 +242,7 @@ def run_comparison(
         status=status,
         time_budget_seconds=budget,
         enforcement_mode=enforcement_mode,
+        external_watchdog_confirmed=external_watchdog_confirmed,
         initialization_elapsed=initialization_elapsed,
         total_elapsed=total_elapsed,
         timeout_configuration=timeout_configuration,
@@ -383,6 +389,7 @@ def _comparison_report(
     status: str,
     time_budget_seconds: float,
     enforcement_mode: str,
+    external_watchdog_confirmed: bool,
     initialization_elapsed: float,
     total_elapsed: float,
     timeout_configuration: str | None,
@@ -396,7 +403,14 @@ def _comparison_report(
         "selected_sample_id_hashes": [_sample_hash(row) for row in selected],
         "stratum_counts": dict(Counter(str(row["scenario_type"]) for row in selected)),
         "time_budget_seconds": time_budget_seconds,
-        "deadline_enforcement": {"mode": enforcement_mode},
+        "deadline_enforcement": {
+            "mode": enforcement_mode,
+            "external_watchdog_confirmed": (
+                external_watchdog_confirmed
+                if enforcement_mode == "external_watchdog_required"
+                else False
+            ),
+        },
         "timing_seconds": {
             "initialization": round(max(0.0, initialization_elapsed), 6),
             "total": round(max(0.0, total_elapsed), 6),
@@ -615,6 +629,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--output", required=True)
     parser.add_argument("--seed", type=int, default=20260830)
     parser.add_argument("--time-budget-seconds", type=float, default=1200.0)
+    parser.add_argument(
+        "--external-watchdog-confirmed",
+        action="store_true",
+        help="confirm an external 1,200-second watchdog on platforms without SIGALRM",
+    )
     args = parser.parse_args(argv)
     report = run_comparison(
         args.catalog,
@@ -622,6 +641,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         args.seed,
         args.time_budget_seconds,
         output_path=args.output,
+        external_watchdog_confirmed=args.external_watchdog_confirmed,
     )
     print(json.dumps({"status": report["status"], "output": str(args.output)}, sort_keys=True))
     return 0 if report["status"] == "complete" else 2

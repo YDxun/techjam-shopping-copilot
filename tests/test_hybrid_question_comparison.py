@@ -4,6 +4,7 @@ import json
 import tempfile
 from collections import Counter
 from pathlib import Path
+from unittest.mock import patch
 
 
 def _samples() -> list[dict]:
@@ -214,3 +215,113 @@ def test_timeout_writes_only_completed_configurations_without_a_winner() -> None
     assert persisted == report
     assert "winner" not in report
     assert "recommendation" not in report
+
+
+def test_alarm_exception_escapes_the_real_evaluator_response_handler() -> None:
+    from experiments.hybrid_question_comparison import TimeBudgetExceeded, run_comparison
+
+    class FakeRetriever:
+        def iter_products(self) -> tuple[dict, ...]:
+            return ({"parent_asin": "A", "categories": ["Clothing", "Tops"]},)
+
+    class AlarmAgent:
+        def reset(self, session_id: str, user_profile: dict) -> None:
+            del session_id, user_profile
+
+        def respond(self, session_id: str, user_message: str, turn: int, top_k: int) -> dict:
+            del session_id, user_message, turn, top_k
+            raise TimeBudgetExceeded("simulated SIGALRM while evaluating a turn")
+
+        def hybrid_question_statistics(self) -> dict[str, object]:
+            return {}
+
+    with tempfile.TemporaryDirectory() as temporary:
+        directory = Path(temporary)
+        dataset = directory / "public.jsonl"
+        catalog = directory / "catalog.jsonl"
+        output = directory / "comparison.json"
+        _write_jsonl(dataset, _samples())
+        _write_jsonl(catalog, [{"parent_asin": "A"}])
+        report = run_comparison(
+            catalog,
+            dataset,
+            seed=20260830,
+            time_budget_seconds=60,
+            output_path=output,
+            retriever_factory=lambda *args, **kwargs: FakeRetriever(),
+            resource_factory=lambda *args, **kwargs: object(),
+            agent_factory=lambda **kwargs: AlarmAgent(),
+        )
+
+    assert report["status"] == "time_budget_exceeded"
+    assert report["configurations"] == []
+    assert report["timeout"] == {"during_configuration": "legacy"}
+
+
+def test_unsupported_platform_requires_confirmed_external_watchdog() -> None:
+    from experiments.hybrid_question_comparison import run_comparison
+
+    class FakeRetriever:
+        def iter_products(self) -> tuple[dict, ...]:
+            return ({"parent_asin": "A", "categories": ["Clothing", "Tops"]},)
+
+    class FakeAgent:
+        def hybrid_question_statistics(self) -> dict[str, object]:
+            return {}
+
+    def evaluator(agent: FakeAgent, samples: list[dict], *args: object) -> dict:
+        del agent, args
+        return {
+            "sample_count": len(samples),
+            "hit_rate_at_10": 1.0,
+            "mrr": 0.5,
+            "mttc": 2.0,
+            "efficiency": 0.9,
+            "recommended_technical_score": 0.83,
+            "reported_token_usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+            "scenario_metrics": {},
+        }
+
+    with tempfile.TemporaryDirectory() as temporary:
+        directory = Path(temporary)
+        dataset = directory / "public.jsonl"
+        catalog = directory / "catalog.jsonl"
+        _write_jsonl(dataset, _samples())
+        _write_jsonl(catalog, [{"parent_asin": "A"}])
+        with patch(
+            "experiments.hybrid_question_comparison._deadline_enforcement_mode",
+            return_value="external_watchdog_required",
+        ):
+            try:
+                run_comparison(
+                    catalog,
+                    dataset,
+                    seed=20260830,
+                    time_budget_seconds=60,
+                    retriever_factory=lambda *args, **kwargs: FakeRetriever(),
+                    resource_factory=lambda *args, **kwargs: object(),
+                    agent_factory=lambda **kwargs: FakeAgent(),
+                    evaluator=evaluator,
+                )
+            except RuntimeError as error:
+                assert "external watchdog" in str(error)
+            else:
+                raise AssertionError("comparison ran without an external watchdog confirmation")
+
+            report = run_comparison(
+                catalog,
+                dataset,
+                seed=20260830,
+                time_budget_seconds=60,
+                external_watchdog_confirmed=True,
+                retriever_factory=lambda *args, **kwargs: FakeRetriever(),
+                resource_factory=lambda *args, **kwargs: object(),
+                agent_factory=lambda **kwargs: FakeAgent(),
+                evaluator=evaluator,
+            )
+
+    assert report["status"] == "complete"
+    assert report["deadline_enforcement"] == {
+        "mode": "external_watchdog_required",
+        "external_watchdog_confirmed": True,
+    }

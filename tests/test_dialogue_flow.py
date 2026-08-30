@@ -409,6 +409,37 @@ class DialogueFlowTest(unittest.TestCase):
             {"hybrid_first_other_preserved": 1},
         )
 
+    def test_injected_catalog_resources_do_not_reiterate_the_shared_retriever(self) -> None:
+        # Reading products again for every Agent turns a one-snapshot comparison
+        # into repeated allocations despite the injected immutable resources.
+        class CountingRetriever(StaticRetriever):
+            def __init__(self) -> None:
+                super().__init__()
+                self.product_snapshot_calls = 0
+
+            def iter_products(self) -> tuple[dict, ...]:
+                self.product_snapshot_calls += 1
+                return super().iter_products()
+
+        resources = DialogueCatalogResources.from_products(PRODUCTS, include_attribute_cache=True)
+        retriever = CountingRetriever()
+        Agent(
+            env=self.hybrid_env(),
+            llm_client=DisabledLLMClient(),
+            retriever=retriever,
+            reranker=StaticReranker(("B", "A", "C")),
+            dialogue_catalog_resources=resources,
+        )
+        Agent(
+            env=self.hybrid_env(),
+            llm_client=DisabledLLMClient(),
+            retriever=retriever,
+            reranker=StaticReranker(("B", "A", "C")),
+            dialogue_catalog_resources=resources,
+        )
+
+        self.assertEqual(retriever.product_snapshot_calls, 0)
+
     def test_committed_hybrid_replacement_increments_only_replacement_counter(self) -> None:
         # Marking initial other, rather than the replacement, spends the session budget early.
         env = EnvConfig.from_env(

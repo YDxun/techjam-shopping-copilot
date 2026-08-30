@@ -13,6 +13,21 @@ from config.loader import ConfigError, load_config
 
 
 class DialogueConfigTest(unittest.TestCase):
+    def test_hybrid_question_defaults_preserve_legacy_behavior(self) -> None:
+        decision = load_config(environ={}).decision
+
+        self.assertFalse(decision.hybrid_question_policy.enabled)
+        self.assertEqual(decision.hybrid_question_policy.pool_size, 300)
+        self.assertEqual(decision.hybrid_question_policy.max_replacements_per_session, 1)
+        self.assertTrue(decision.hybrid_question_policy.only_after_other_asked)
+
+    def test_hybrid_question_environment_overrides(self) -> None:
+        decision = load_config(
+            environ={"SHOPPING_DECISION__HYBRID_QUESTION_POLICY__ENABLED": "1"}
+        ).decision
+
+        self.assertTrue(decision.hybrid_question_policy.enabled)
+
     def test_dynamic_question_defaults_preserve_legacy_behavior(self) -> None:
         decision = EnvConfig.from_env(environ={}).decision
 

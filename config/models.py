@@ -115,6 +115,33 @@ class CandidateQuestionValueConfig:
 
 
 @dataclass(frozen=True)
+class HybridQuestionWeights:
+    expected_shrink: float = 0.40
+    resolve_at_10: float = 0.25
+    coverage: float = 0.15
+    answer_probability: float = 0.10
+    extraction_confidence: float = 0.10
+    missing_penalty: float = 0.25
+    turn_cost: float = 0.10
+
+
+@dataclass(frozen=True)
+class HybridQuestionPolicyConfig:
+    enabled: bool = False
+    max_replacements_per_session: int = 1
+    only_after_other_asked: bool = True
+    pool_size: int = 300
+    prior_alpha: float = 0.25
+    prior_temperature: float = 1.0
+    minimum_coverage: float = 0.60
+    maximum_missing_rate: float = 0.40
+    minimum_expected_shrink: float = 0.25
+    minimum_resolve_at_10: float = 0.05
+    minimum_gain: float = 0.25
+    weights: HybridQuestionWeights = field(default_factory=HybridQuestionWeights)
+
+
+@dataclass(frozen=True)
 class FinishWeights:
     resolve_at_10: float = 0.50
     resolve_at_3: float = 0.20
@@ -143,6 +170,9 @@ class DecisionConfig:
     stop_utility: StopUtilityConfig = field(default_factory=StopUtilityConfig)
     candidate_question_value: CandidateQuestionValueConfig = field(
         default_factory=CandidateQuestionValueConfig
+    )
+    hybrid_question_policy: HybridQuestionPolicyConfig = field(
+        default_factory=HybridQuestionPolicyConfig
     )
     finish_strategy: FinishStrategyConfig = field(default_factory=FinishStrategyConfig)
     question_termination_mode: str = "legacy"

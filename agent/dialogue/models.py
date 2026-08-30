@@ -131,6 +131,7 @@ class DialogueState:
     active_constraints: tuple[Constraint, ...] = ()
     removed_constraints: tuple[Constraint, ...] = ()
     asked_attributes: tuple[str, ...] = ()
+    hybrid_replacements_used: int = 0
     no_preference_attributes: frozenset[str] = frozenset()
     no_more_preferences: bool = False
     last_dialogue_act: DialogueAct = DialogueAct.AMBIGUOUS

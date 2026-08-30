@@ -20,6 +20,8 @@ from config.models import (
     DialogueUnderstandingConfig,
     FinishStrategyConfig,
     FinishWeights,
+    HybridQuestionPolicyConfig,
+    HybridQuestionWeights,
     LLMConfig,
     ProviderConfig,
     ProviderConfigs,
@@ -221,6 +223,50 @@ def _environment_overrides(
             ("decision", "candidate_question_value", "other_vagueness_penalty"),
             _parse_float,
         ),
+        "SHOPPING_DECISION__HYBRID_QUESTION_POLICY__ENABLED": (
+            ("decision", "hybrid_question_policy", "enabled"),
+            _parse_bool,
+        ),
+        "SHOPPING_DECISION__HYBRID_QUESTION_POLICY__MAX_REPLACEMENTS_PER_SESSION": (
+            ("decision", "hybrid_question_policy", "max_replacements_per_session"),
+            _parse_int,
+        ),
+        "SHOPPING_DECISION__HYBRID_QUESTION_POLICY__ONLY_AFTER_OTHER_ASKED": (
+            ("decision", "hybrid_question_policy", "only_after_other_asked"),
+            _parse_bool,
+        ),
+        "SHOPPING_DECISION__HYBRID_QUESTION_POLICY__POOL_SIZE": (
+            ("decision", "hybrid_question_policy", "pool_size"),
+            _parse_int,
+        ),
+        "SHOPPING_DECISION__HYBRID_QUESTION_POLICY__PRIOR_ALPHA": (
+            ("decision", "hybrid_question_policy", "prior_alpha"),
+            _parse_float,
+        ),
+        "SHOPPING_DECISION__HYBRID_QUESTION_POLICY__PRIOR_TEMPERATURE": (
+            ("decision", "hybrid_question_policy", "prior_temperature"),
+            _parse_float,
+        ),
+        "SHOPPING_DECISION__HYBRID_QUESTION_POLICY__MINIMUM_COVERAGE": (
+            ("decision", "hybrid_question_policy", "minimum_coverage"),
+            _parse_float,
+        ),
+        "SHOPPING_DECISION__HYBRID_QUESTION_POLICY__MAXIMUM_MISSING_RATE": (
+            ("decision", "hybrid_question_policy", "maximum_missing_rate"),
+            _parse_float,
+        ),
+        "SHOPPING_DECISION__HYBRID_QUESTION_POLICY__MINIMUM_EXPECTED_SHRINK": (
+            ("decision", "hybrid_question_policy", "minimum_expected_shrink"),
+            _parse_float,
+        ),
+        "SHOPPING_DECISION__HYBRID_QUESTION_POLICY__MINIMUM_RESOLVE_AT_10": (
+            ("decision", "hybrid_question_policy", "minimum_resolve_at_10"),
+            _parse_float,
+        ),
+        "SHOPPING_DECISION__HYBRID_QUESTION_POLICY__MINIMUM_GAIN": (
+            ("decision", "hybrid_question_policy", "minimum_gain"),
+            _parse_float,
+        ),
         "SHOPPING_DECISION__FINISH_STRATEGY__ENABLED": (
             ("decision", "finish_strategy", "enabled"),
             _parse_bool,
@@ -304,6 +350,12 @@ def _environment_overrides(
         name = f"SHOPPING_DECISION__CANDIDATE_QUESTION_VALUE__WEIGHTS__{field.upper()}"
         nested_fields[name] = (
             ("decision", "candidate_question_value", "weights", field),
+            _parse_float,
+        )
+    for field in HybridQuestionWeights.__dataclass_fields__:
+        name = f"SHOPPING_DECISION__HYBRID_QUESTION_POLICY__WEIGHTS__{field.upper()}"
+        nested_fields[name] = (
+            ("decision", "hybrid_question_policy", "weights", field),
             _parse_float,
         )
     for field in FinishWeights.__dataclass_fields__:
@@ -413,6 +465,12 @@ def _build_and_validate(data: Mapping[str, Any], selected_key: SecretValue) -> A
     )
     candidate_question_weights_data = _mapping(
         candidate_question_value_data.get("weights"), "decision.candidate_question_value.weights"
+    )
+    hybrid_question_policy_data = _mapping(
+        decision_data.get("hybrid_question_policy"), "decision.hybrid_question_policy"
+    )
+    hybrid_question_weights_data = _mapping(
+        hybrid_question_policy_data.get("weights"), "decision.hybrid_question_policy.weights"
     )
     finish_strategy_data = _mapping(
         decision_data.get("finish_strategy"), "decision.finish_strategy"
@@ -615,6 +673,61 @@ def _build_and_validate(data: Mapping[str, Any], selected_key: SecretValue) -> A
                     }
                 ),
             ),
+            hybrid_question_policy=HybridQuestionPolicyConfig(
+                enabled=_bool_value(
+                    hybrid_question_policy_data.get("enabled"),
+                    "decision.hybrid_question_policy.enabled",
+                ),
+                max_replacements_per_session=_int_value(
+                    hybrid_question_policy_data.get("max_replacements_per_session"),
+                    "decision.hybrid_question_policy.max_replacements_per_session",
+                ),
+                only_after_other_asked=_bool_value(
+                    hybrid_question_policy_data.get("only_after_other_asked"),
+                    "decision.hybrid_question_policy.only_after_other_asked",
+                ),
+                pool_size=_int_value(
+                    hybrid_question_policy_data.get("pool_size"),
+                    "decision.hybrid_question_policy.pool_size",
+                ),
+                prior_alpha=_number_value(
+                    hybrid_question_policy_data.get("prior_alpha"),
+                    "decision.hybrid_question_policy.prior_alpha",
+                ),
+                prior_temperature=_number_value(
+                    hybrid_question_policy_data.get("prior_temperature"),
+                    "decision.hybrid_question_policy.prior_temperature",
+                ),
+                minimum_coverage=_number_value(
+                    hybrid_question_policy_data.get("minimum_coverage"),
+                    "decision.hybrid_question_policy.minimum_coverage",
+                ),
+                maximum_missing_rate=_number_value(
+                    hybrid_question_policy_data.get("maximum_missing_rate"),
+                    "decision.hybrid_question_policy.maximum_missing_rate",
+                ),
+                minimum_expected_shrink=_number_value(
+                    hybrid_question_policy_data.get("minimum_expected_shrink"),
+                    "decision.hybrid_question_policy.minimum_expected_shrink",
+                ),
+                minimum_resolve_at_10=_number_value(
+                    hybrid_question_policy_data.get("minimum_resolve_at_10"),
+                    "decision.hybrid_question_policy.minimum_resolve_at_10",
+                ),
+                minimum_gain=_number_value(
+                    hybrid_question_policy_data.get("minimum_gain"),
+                    "decision.hybrid_question_policy.minimum_gain",
+                ),
+                weights=HybridQuestionWeights(
+                    **{
+                        field: _number_value(
+                            hybrid_question_weights_data.get(field),
+                            f"decision.hybrid_question_policy.weights.{field}",
+                        )
+                        for field in HybridQuestionWeights.__dataclass_fields__
+                    }
+                ),
+            ),
             finish_strategy=FinishStrategyConfig(
                 enabled=_bool_value(
                     finish_strategy_data.get("enabled"), "decision.finish_strategy.enabled"
@@ -758,6 +871,39 @@ def _validate(config: AppConfig) -> None:
     )
     for name, value in vars(candidate_question_value.weights).items():
         _non_negative(value, f"decision.candidate_question_value.weights.{name}")
+    hybrid_question_policy = config.decision.hybrid_question_policy
+    _positive(hybrid_question_policy.pool_size, "decision.hybrid_question_policy.pool_size")
+    _unit_interval(
+        hybrid_question_policy.prior_alpha, "decision.hybrid_question_policy.prior_alpha"
+    )
+    _positive(
+        hybrid_question_policy.prior_temperature,
+        "decision.hybrid_question_policy.prior_temperature",
+    )
+    for name in (
+        "minimum_coverage",
+        "maximum_missing_rate",
+        "minimum_expected_shrink",
+        "minimum_resolve_at_10",
+        "minimum_gain",
+    ):
+        _unit_interval(
+            getattr(hybrid_question_policy, name), f"decision.hybrid_question_policy.{name}"
+        )
+    _in(
+        hybrid_question_policy.max_replacements_per_session,
+        "decision.hybrid_question_policy.max_replacements_per_session",
+        {0, 1},
+    )
+    if not hybrid_question_policy.only_after_other_asked:
+        raise ConfigError("decision.hybrid_question_policy.only_after_other_asked must be true")
+    for name, value in vars(hybrid_question_policy.weights).items():
+        _non_negative(value, f"decision.hybrid_question_policy.weights.{name}")
+    if hybrid_question_policy.enabled and candidate_question_value.enabled:
+        raise ConfigError(
+            "decision.hybrid_question_policy may not be enabled with "
+            "decision.candidate_question_value"
+        )
     finish_strategy = config.decision.finish_strategy
     _positive(finish_strategy.candidate_threshold, "decision.finish_strategy.candidate_threshold")
     _positive(

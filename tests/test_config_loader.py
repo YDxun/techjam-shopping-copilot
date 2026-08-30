@@ -21,6 +21,86 @@ def contains_string(value: object, expected: str) -> bool:
 
 
 class ConfigLoaderTest(unittest.TestCase):
+    def test_hybrid_question_configuration_accepts_all_numeric_overrides(self) -> None:
+        config = load_config(
+            overrides={
+                "decision": {
+                    "hybrid_question_policy": {
+                        "max_replacements_per_session": 0,
+                        "pool_size": 400,
+                        "prior_alpha": 0.5,
+                        "prior_temperature": 2.0,
+                        "minimum_coverage": 0.7,
+                        "maximum_missing_rate": 0.3,
+                        "minimum_expected_shrink": 0.4,
+                        "minimum_resolve_at_10": 0.2,
+                        "minimum_gain": 0.3,
+                        "weights": {
+                            "expected_shrink": 0.41,
+                            "resolve_at_10": 0.26,
+                            "coverage": 0.16,
+                            "answer_probability": 0.11,
+                            "extraction_confidence": 0.12,
+                            "missing_penalty": 0.27,
+                            "turn_cost": 0.13,
+                        },
+                    }
+                }
+            },
+            environ={},
+        )
+
+        policy = config.decision.hybrid_question_policy
+        self.assertEqual(policy.max_replacements_per_session, 0)
+        self.assertEqual(policy.pool_size, 400)
+        self.assertEqual(policy.prior_alpha, 0.5)
+        self.assertEqual(policy.prior_temperature, 2.0)
+        self.assertEqual(policy.minimum_coverage, 0.7)
+        self.assertEqual(policy.maximum_missing_rate, 0.3)
+        self.assertEqual(policy.minimum_expected_shrink, 0.4)
+        self.assertEqual(policy.minimum_resolve_at_10, 0.2)
+        self.assertEqual(policy.minimum_gain, 0.3)
+        self.assertEqual(policy.weights.expected_shrink, 0.41)
+        self.assertEqual(policy.weights.resolve_at_10, 0.26)
+        self.assertEqual(policy.weights.coverage, 0.16)
+        self.assertEqual(policy.weights.answer_probability, 0.11)
+        self.assertEqual(policy.weights.extraction_confidence, 0.12)
+        self.assertEqual(policy.weights.missing_penalty, 0.27)
+        self.assertEqual(policy.weights.turn_cost, 0.13)
+
+    def test_hybrid_question_configuration_rejects_invalid_domains(self) -> None:
+        cases = (
+            ({"pool_size": 0}, "pool_size"),
+            ({"prior_alpha": 1.1}, "prior_alpha"),
+            ({"prior_temperature": 0}, "prior_temperature"),
+            ({"minimum_coverage": -0.1}, "minimum_coverage"),
+            ({"maximum_missing_rate": 1.1}, "maximum_missing_rate"),
+            ({"minimum_expected_shrink": -0.1}, "minimum_expected_shrink"),
+            ({"minimum_resolve_at_10": 1.1}, "minimum_resolve_at_10"),
+            ({"minimum_gain": -0.1}, "minimum_gain"),
+            ({"max_replacements_per_session": 2}, "max_replacements_per_session"),
+            ({"only_after_other_asked": False}, "only_after_other_asked"),
+            ({"weights": {"coverage": -0.1}}, "weights.coverage"),
+            ({"weights": {"coverage": float("inf")}}, "weights.coverage"),
+        )
+        for policy, field in cases:
+            with self.subTest(field=field), self.assertRaisesRegex(ConfigError, field):
+                load_config(
+                    overrides={"decision": {"hybrid_question_policy": policy}}, environ={}
+                )
+
+    def test_hybrid_question_configuration_is_mutually_exclusive_with_dynamic_mode(self) -> None:
+        with self.assertRaisesRegex(ConfigError, "hybrid_question_policy"):
+            load_config(
+                overrides={
+                    "decision": {
+                        "candidate_question_value": {"enabled": True},
+                        "hybrid_question_policy": {"enabled": True},
+                    }
+                },
+                environ={},
+            )
+
     def test_dynamic_question_configuration_rejects_invalid_domains(self) -> None:
         cases = (
             (

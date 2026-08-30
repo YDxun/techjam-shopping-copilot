@@ -6,6 +6,7 @@ from agent.dialogue.models import (
     ConstraintOperation,
     ConstraintStrength,
     DialogueAct,
+    DialogueState,
     OperationKind,
     Polarity,
     RecognitionResult,
@@ -65,6 +66,66 @@ class StateReducerTest(unittest.TestCase):
         self.assertFalse(result.applied)
         self.assertEqual(result.reason_code, "invalid_constraint_operation")
         self.assertEqual(state.active_constraints, ())
+
+    def test_hybrid_replacement_question_increments_only_when_recorded(self) -> None:
+        state = DialogueState(session_id="s", user_profile={})
+
+        state = StateReducer.record_question(state, "material", hybrid_replacement=True)
+        duplicate = StateReducer.record_question(state, "material", hybrid_replacement=True)
+
+        self.assertEqual(state.asked_attributes, ("material",))
+        self.assertEqual(state.hybrid_replacements_used, 1)
+        self.assertIs(duplicate, state)
+        self.assertEqual(duplicate.hybrid_replacements_used, 1)
+
+    def test_ordinary_question_does_not_increment_hybrid_replacement_counter(self) -> None:
+        state = StateReducer.record_question(
+            DialogueState(session_id="s", user_profile={}), "material"
+        )
+
+        self.assertEqual(state.asked_attributes, ("material",))
+        self.assertEqual(state.hybrid_replacements_used, 0)
+
+    def test_hybrid_replacement_counter_persists_when_an_intent_is_overridden(self) -> None:
+        state = self.reducer.reduce(
+            self.reducer.new_state("s", {}),
+            recognition(
+                DialogueAct.ADD_CONSTRAINT,
+                operation(OperationKind.ADD, "style", "casual"),
+            ),
+            turn=1,
+        ).state
+        state = StateReducer.record_question(state, "material", hybrid_replacement=True)
+
+        result = self.reducer.reduce(
+            state,
+            recognition(
+                DialogueAct.REPLACE_CONSTRAINT,
+                operation(OperationKind.REPLACE, "material", "cotton"),
+            ),
+            turn=3,
+        )
+
+        self.assertTrue(result.applied)
+        self.assertEqual(result.state.hybrid_replacements_used, 1)
+
+    def test_rejected_turn_leaves_hybrid_replacement_counter_unchanged(self) -> None:
+        state = StateReducer.record_question(
+            DialogueState(session_id="s", user_profile={}), "material", hybrid_replacement=True
+        )
+
+        result = self.reducer.reduce(
+            state,
+            recognition(
+                DialogueAct.ADD_CONSTRAINT,
+                operation(OperationKind.ADD, "material", "cotton"),
+            ),
+            turn=0,
+        )
+
+        self.assertFalse(result.applied)
+        self.assertIs(result.state, state)
+        self.assertEqual(result.state.hybrid_replacements_used, 1)
 
     def test_add_constraint_returns_a_new_state_without_changing_version(self) -> None:
         state = self.reducer.new_state("s1", {})

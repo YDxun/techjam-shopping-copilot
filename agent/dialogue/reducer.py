@@ -100,7 +100,12 @@ class StateReducer:
         return ReduceResult(state=new_state, applied=True, reason_code="applied")
 
     @staticmethod
-    def record_question(state: DialogueState, attribute: str | None) -> DialogueState:
+    def record_question(
+        state: DialogueState,
+        attribute: str | None,
+        *,
+        hybrid_replacement: bool = False,
+    ) -> DialogueState:
         if not attribute or attribute in state.asked_attributes:
             return state
         if attribute not in ALLOWED_ATTRIBUTES:
@@ -108,6 +113,7 @@ class StateReducer:
         return replace(
             state,
             asked_attributes=(*state.asked_attributes, attribute),
+            hybrid_replacements_used=state.hybrid_replacements_used + int(hybrid_replacement),
         )
 
     def _validate(self, recognition: RecognitionResult, turn: int) -> str | None:

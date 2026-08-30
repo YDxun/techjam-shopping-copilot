@@ -76,6 +76,28 @@
         "turn_cost": 0.15
       }
     },
+    "hybrid_question_policy": {
+      "enabled": false,
+      "max_replacements_per_session": 1,
+      "only_after_other_asked": true,
+      "pool_size": 300,
+      "prior_alpha": 0.25,
+      "prior_temperature": 1.0,
+      "minimum_coverage": 0.6,
+      "maximum_missing_rate": 0.4,
+      "minimum_expected_shrink": 0.25,
+      "minimum_resolve_at_10": 0.05,
+      "minimum_gain": 0.25,
+      "weights": {
+        "expected_shrink": 0.4,
+        "resolve_at_10": 0.25,
+        "coverage": 0.15,
+        "answer_probability": 0.1,
+        "extraction_confidence": 0.1,
+        "missing_penalty": 0.25,
+        "turn_cost": 0.1
+      }
+    },
     "finish_strategy": {
       "enabled": false,
       "candidate_threshold": 100,

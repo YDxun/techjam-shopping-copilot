@@ -7,6 +7,7 @@ from types import MappingProxyType
 from typing import Mapping
 
 from agent.dialogue.catalog_signals import ATTRIBUTE_ORDER, CatalogQuestionSignals
+from agent.dialogue.hybrid_question_policy import HybridQuestionPolicy
 from agent.dialogue.models import (
     CandidateAttributeSignal,
     CandidateQuestionSignals,
@@ -36,6 +37,7 @@ class QuestionPolicy:
 
     def __init__(self, config: DecisionConfig) -> None:
         self.config = config
+        self.hybrid_policy = HybridQuestionPolicy(config.hybrid_question_policy)
         self._local = threading.local()
 
     @property
@@ -54,11 +56,9 @@ class QuestionPolicy:
         candidate_signals: CandidateQuestionSignals | None = None,
     ) -> QuestionDecision:
         self.last_components = MappingProxyType({})
-        if (
-            candidate_signals is None
-            or not self.config.candidate_question_value.enabled
-            or self.config.question_termination_mode == "legacy"
-        ):
+        if self._full_dynamic_is_active(candidate_signals):
+            decision = self._decide_dynamic(state, recognition, signals, candidate_signals)
+        else:
             if (
                 candidate_signals is None
                 and self.config.candidate_question_value.enabled
@@ -68,9 +68,48 @@ class QuestionPolicy:
                     {"dynamic_signals_unavailable": {"utility": 0.0}}
                 )
             decision = self._decide_legacy(state, recognition, signals)
-        else:
-            decision = self._decide_dynamic(state, recognition, signals, candidate_signals)
+            if self.config.hybrid_question_policy.enabled:
+                legacy_components = self.last_components
+                decision = self.hybrid_policy.consider(
+                    state, decision, signals, candidate_signals
+                )
+                if decision.attribute_components:
+                    self.last_components = decision.attribute_components
+                else:
+                    self.last_components = legacy_components
         return replace(decision, attribute_components=self.last_components)
+
+    def needs_candidate_signals(
+        self,
+        state: DialogueState,
+        recognition: RecognitionResult,
+    ) -> bool:
+        """Avoid candidate work unless the active policy can consume it."""
+        if self._full_dynamic_configured():
+            return True
+        if not self.config.hybrid_question_policy.enabled:
+            return False
+        previous_components = self.last_components
+        try:
+            preview = self._decide_legacy(state, recognition, CatalogQuestionSignals.empty())
+        finally:
+            self.last_components = previous_components
+        return (
+            preview.should_ask
+            and preview.ask_attribute == "other"
+            and "other" in state.asked_attributes
+            and state.hybrid_replacements_used
+            < self.config.hybrid_question_policy.max_replacements_per_session
+        )
+
+    def _full_dynamic_configured(self) -> bool:
+        return (
+            self.config.candidate_question_value.enabled
+            and self.config.question_termination_mode != "legacy"
+        )
+
+    def _full_dynamic_is_active(self, candidate_signals: CandidateQuestionSignals | None) -> bool:
+        return self._full_dynamic_configured() and candidate_signals is not None
 
     def _decide_legacy(
         self,

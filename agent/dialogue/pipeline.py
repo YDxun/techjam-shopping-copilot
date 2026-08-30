@@ -333,7 +333,11 @@ class DialogueUnderstandingPipeline:
                 )
             dialogue = pending.state
             if decision.should_ask:
-                dialogue = self.reducer.record_question(dialogue, decision.ask_attribute)
+                dialogue = self.reducer.record_question(
+                    dialogue,
+                    decision.ask_attribute,
+                    hybrid_replacement=decision.reason_code == "hybrid_specific_replacement",
+                )
             context = self._build_context(dialogue, pending.recognition, pending.products)
             counts = session.candidate_counts
             if candidate_count is not None:
@@ -379,6 +383,12 @@ class DialogueUnderstandingPipeline:
     def dialogue_decision_statistics(self) -> dict[str, object]:
         """Return local, aggregate decision diagnostics only."""
         return self.decision_trace_recorder.summary()
+
+    def needs_candidate_signals(self, pending: PendingDialogueTurn) -> bool:
+        """Return whether a non-Guard question decision can use candidate signals."""
+        if pending.guard_decision.action in {GuardAction.CLARIFY, GuardAction.REJECT}:
+            return False
+        return self.question_policy.needs_candidate_signals(pending.state, pending.recognition)
 
     def record_completed_decision(
         self,

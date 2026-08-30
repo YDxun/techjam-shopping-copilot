@@ -31,6 +31,7 @@ from config.models import (
     DecisionConfig,
     FinishStrategyConfig,
     FinishWeights,
+    HybridQuestionPolicyConfig,
     StopUtilityConfig,
     StopUtilityWeights,
 )
@@ -285,6 +286,42 @@ class QuestionPolicyTest(unittest.TestCase):
 
 
 class DynamicQuestionPolicyTest(unittest.TestCase):
+    def test_candidate_signal_need_is_limited_to_dynamic_or_repeated_other(self) -> None:
+        # Fetching signals for a Legacy stop, first other, or concrete ask adds retrieval work
+        # without a policy path that can consume it.
+        hybrid = DecisionConfig(
+            hybrid_question_policy=HybridQuestionPolicyConfig(enabled=True),
+        )
+        hybrid_policy = QuestionPolicy(hybrid)
+        state = DialogueState(session_id="s", user_profile={}, category="shoes", turn=2)
+
+        self.assertFalse(hybrid_policy.needs_candidate_signals(state, parsed()))
+        self.assertTrue(
+            hybrid_policy.needs_candidate_signals(
+                replace(state, asked_attributes=("other",)), parsed()
+            )
+        )
+        self.assertFalse(
+            hybrid_policy.needs_candidate_signals(
+                replace(
+                    state,
+                    asked_attributes=("other",),
+                    hybrid_replacements_used=1,
+                ),
+                parsed(),
+            )
+        )
+        self.assertFalse(
+            QuestionPolicy(
+                replace(hybrid, ask_other_first=False)
+            ).needs_candidate_signals(
+                replace(state, asked_attributes=("other",)), parsed()
+            )
+        )
+        self.assertTrue(
+            QuestionPolicy(dynamic_config()).needs_candidate_signals(state, parsed())
+        )
+
     def test_all_legacy_routes_return_literal_snapshot(self) -> None:
         # Sending a legacy route through dynamic selection would change this exact decision.
         state = DialogueState(session_id="s1", user_profile={}, category="shoes", turn=1)

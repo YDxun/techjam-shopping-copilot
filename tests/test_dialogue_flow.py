@@ -3,9 +3,16 @@ from __future__ import annotations
 import json
 import threading
 import unittest
+from dataclasses import replace
 from unittest.mock import Mock, patch
 
-from agent.dialogue.models import DialogueTurnResult, GuardAction
+from agent.dialogue.models import (
+    CandidateAttributeSignal,
+    CandidateQuestionSignals,
+    DialogueTurnResult,
+    GuardAction,
+    GuardDecision,
+)
 from agent.dialogue.pipeline import DialogueUnderstandingPipeline, StalePendingTurnError
 from agent.main_agent import Agent
 from config.env_config import EnvConfig
@@ -292,6 +299,71 @@ class DialogueFlowTest(unittest.TestCase):
             expected_session=session,
             expected_fingerprint=fingerprint,
         )
+
+    def test_guard_owned_pending_turn_never_requests_candidate_signals(self) -> None:
+        # Delegating a Guard clarification would trigger dynamic work for a decision it owns.
+        pipeline = self.build_rule_pipeline(guard_enabled=False)
+        pipeline.reset("s", {})
+        pending = pipeline.interpret_turn("s", "I need shoes.", 1)
+        pipeline.question_policy = Mock()
+        guarded = replace(
+            pending,
+            guard_decision=GuardDecision(
+                GuardAction.CLARIFY,
+                pending.recognition,
+                "guard_needs_clarification",
+                "category",
+            ),
+        )
+
+        self.assertFalse(pipeline.needs_candidate_signals(guarded))
+        pipeline.question_policy.needs_candidate_signals.assert_not_called()
+
+    def test_committed_hybrid_replacement_increments_only_replacement_counter(self) -> None:
+        # Marking initial other, rather than the replacement, spends the session budget early.
+        env = EnvConfig.from_env(
+            overrides={
+                "skip_data_verify": True,
+                "dialogue_understanding": {"mode": "rule_only"},
+                "decision": {"hybrid_question_policy": {"enabled": True}},
+                "llm": {"rerank_enabled": False},
+            },
+            environ={"LLM_PROVIDER": "none"},
+        )
+        pipeline = DialogueUnderstandingPipeline(
+            env=env,
+            llm_client=DisabledLLMClient(),
+            products=PRODUCTS,
+        )
+        pipeline.reset("s", {})
+        first = pipeline.decide_question(pipeline.interpret_turn("s", "I need shoes.", 1), None)
+        signal = CandidateAttributeSignal(
+            attribute="material",
+            coverage=0.9,
+            expected_remaining=8.0,
+            expected_shrink=0.6,
+            resolve_at_10=0.4,
+            resolve_at_3=0.2,
+            resolve_at_1=0.1,
+            p90_remaining=12.0,
+            worst_case_remaining=15,
+            missing_rate=0.1,
+            extraction_confidence=0.8,
+        )
+
+        replacement = pipeline.decide_question(
+            pipeline.interpret_turn("s", "I also like blue.", 2),
+            CandidateQuestionSignals(
+                candidate_count=3,
+                by_attribute={"material": signal},
+                target_probabilities={},
+            ),
+        )
+
+        self.assertEqual(first.question_decision.reason_code, "hybrid_first_other_preserved")
+        self.assertEqual(replacement.question_decision.reason_code, "hybrid_specific_replacement")
+        self.assertEqual(replacement.state.hybrid_replacements_used, 1)
+        self.assertEqual(replacement.state.asked_attributes, ("other", "material"))
 
     def test_offline_response_preserves_existing_ranked_order_and_contract(self) -> None:
         agent = Agent(

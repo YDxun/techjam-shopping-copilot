@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Shopping Copilot</title>
+    <link rel="stylesheet" href="/assets/styles.css">
+    <script src="/assets/app.js" defer></script>
+  </head>
+  <body>
+    <aside class="sidebar" aria-label="Application">
+      <div class="brand">Shopping Copilot</div>
+      <p>Your local conversational product finder.</p>
+      <button id="new-chat" type="button">New chat</button>
+    </aside>
+    <main class="app-main">
+      <header>
+        <h1>Shopping Copilot</h1>
+        <span id="service-status">Local · Loading</span>
+      </header>
+      <section id="welcome" aria-labelledby="welcome-title">
+        <h2 id="welcome-title">What are you shopping for?</h2>
+        <div id="prompt-examples"></div>
+      </section>
+      <section id="conversation" aria-live="polite"></section>
+      <p id="status-notice" role="status"></p>
+      <form id="composer">
+        <label class="sr-only" for="message-input">Shopping request</label>
+        <textarea
+          id="message-input"
+          maxlength="4000"
+          rows="1"
+          placeholder="Describe what you are looking for"
+        ></textarea>
+        <button id="send-message" type="submit">Send</button>
+      </form>
+    </main>
+    <div id="drawer-backdrop" hidden></div>
+    <aside id="product-drawer" hidden aria-hidden="true" aria-labelledby="drawer-title">
+      <button id="drawer-close" type="button">Close</button>
+      <h2 id="drawer-title" tabindex="-1">Product details</h2>
+      <div id="drawer-body"></div>
+    </aside>
+  </body>
+</html>

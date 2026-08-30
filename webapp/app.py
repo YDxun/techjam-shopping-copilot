@@ -11,7 +11,8 @@ from uuid import UUID
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from agent.main_agent import Agent
 from config import constants
@@ -23,6 +24,7 @@ from webapp.schemas import ChatResponse, MessageRequest, SessionResponse
 from webapp.service import InvalidMessage, SessionManager, SessionNotFound
 
 logger = logging.getLogger(__name__)
+STATIC_DIR = Path(__file__).parent / "static"
 
 
 @dataclass(frozen=True)
@@ -103,6 +105,7 @@ def create_app(
 
     app = FastAPI(lifespan=lifespan)
     app.state.runtime_container = container
+    app.mount("/assets", StaticFiles(directory=STATIC_DIR), name="assets")
 
     @app.middleware("http")
     async def security_headers(request: Request, call_next: Callable):
@@ -144,6 +147,10 @@ def create_app(
 
     def internal_error_response() -> JSONResponse:
         return error_response(500, "internal_error", "An internal error occurred.")
+
+    @app.get("/", include_in_schema=False, response_class=FileResponse)
+    async def index() -> FileResponse:
+        return FileResponse(STATIC_DIR / "index.html")
 
     @app.get("/api/health")
     async def health() -> dict[str, object]:

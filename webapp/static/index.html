@@ -36,7 +36,14 @@
       </form>
     </main>
     <div id="drawer-backdrop" hidden></div>
-    <aside id="product-drawer" hidden aria-hidden="true" aria-labelledby="drawer-title">
+    <aside
+      id="product-drawer"
+      role="dialog"
+      aria-modal="true"
+      hidden
+      aria-hidden="true"
+      aria-labelledby="drawer-title"
+    >
       <button id="drawer-close" type="button">Close</button>
       <h2 id="drawer-title" tabindex="-1">Product details</h2>
       <div id="drawer-body"></div>

@@ -25,6 +25,12 @@ const statusNotice = document.querySelector("#status-notice");
 const composer = document.querySelector("#composer");
 const messageInput = document.querySelector("#message-input");
 const sendButton = document.querySelector("#send-message");
+const drawer = document.getElementById("product-drawer");
+const backdrop = document.getElementById("drawer-backdrop");
+const drawerTitle = document.getElementById("drawer-title");
+const drawerBody = document.getElementById("drawer-body");
+const drawerClose = document.getElementById("drawer-close");
+let focusBeforeDrawer = null;
 
 class ApiError extends Error {
   constructor(status, code) {
@@ -98,6 +104,134 @@ function renderPromptExamples() {
   promptExamples.replaceChildren(...buttons);
 }
 
+function element(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) {
+    node.className = className;
+  }
+  if (text !== undefined) {
+    node.textContent = text;
+  }
+  return node;
+}
+
+function renderProducts(payload) {
+  const grid = element("div", "product-grid");
+  payload.agent_response.recommendations.forEach((recommendation, index) => {
+    const asin = recommendation.parent_asin;
+    const product = payload.products[asin];
+    const card = element("article", "product-card");
+    card.append(element(
+      "div",
+      "product-visual",
+      product?.categories?.at(-1) || "Product",
+    ));
+    card.append(element("span", "product-rank", `#${index + 1}`));
+    card.append(element(
+      "h3",
+      "product-title",
+      product?.title || "Product details unavailable",
+    ));
+    card.append(element("p", "product-asin", asin));
+    const numericPrice = Number(product?.price);
+    card.append(element(
+      "p",
+      "product-price",
+      product?.price !== null
+        && product?.price !== undefined
+        && Number.isFinite(numericPrice)
+        ? `$${numericPrice.toFixed(2)}`
+        : "Price unavailable",
+    ));
+    if (product?.average_rating !== null && product?.average_rating !== undefined) {
+      const count = product.rating_number ? ` (${product.rating_number})` : "";
+      card.append(element(
+        "p",
+        "product-rating",
+        `${product.average_rating} stars${count}`,
+      ));
+    }
+    if (product?.store) {
+      card.append(element("p", "product-store", product.store));
+    }
+    const badges = element("div", "category-badges");
+    (product?.categories || []).slice(0, 2).forEach((category) => {
+      badges.append(element("span", "category-badge", category));
+    });
+    card.append(badges);
+    const features = element("ul", "product-features");
+    (product?.features || []).slice(0, 2).forEach((feature) => {
+      features.append(element("li", "", feature));
+    });
+    card.append(features);
+    const button = element("button", "product-details-button", "View details");
+    button.type = "button";
+    button.dataset.asin = asin;
+    button.addEventListener("click", () => openProductDrawer(asin));
+    card.append(button);
+    grid.append(card);
+  });
+  return grid;
+}
+
+function appendDetailList(label, values) {
+  if (!Array.isArray(values) || values.length === 0) {
+    return;
+  }
+  drawerBody.append(element("h3", "", label));
+  const list = element("ul", "detail-list");
+  values.forEach((value) => list.append(element("li", "", String(value))));
+  drawerBody.append(list);
+}
+
+function renderProductDetail(product) {
+  drawerBody.replaceChildren();
+  drawerTitle.textContent = product.title || "Product details";
+  drawerBody.append(element("p", "product-asin", product.parent_asin));
+  appendDetailList("Categories", product.categories);
+  appendDetailList("Features", product.features);
+  appendDetailList("Description", product.description);
+  if (product.details && typeof product.details === "object") {
+    drawerBody.append(element("h3", "", "Specifications"));
+    const list = element("dl", "detail-pairs");
+    Object.entries(product.details).forEach(([key, value]) => {
+      list.append(element("dt", "", key));
+      list.append(element(
+        "dd",
+        "",
+        typeof value === "string" ? value : JSON.stringify(value),
+      ));
+    });
+    drawerBody.append(list);
+  }
+}
+
+async function openProductDrawer(asin) {
+  focusBeforeDrawer = document.activeElement;
+  drawer.hidden = false;
+  backdrop.hidden = false;
+  drawer.setAttribute("aria-hidden", "false");
+  drawerTitle.textContent = "Loading product details…";
+  drawerBody.replaceChildren();
+  drawerClose.focus();
+  try {
+    const product = await apiRequest(`/api/products/${encodeURIComponent(asin)}`);
+    renderProductDetail(product);
+  } catch (error) {
+    drawerTitle.textContent = "Product details unavailable";
+    drawerBody.textContent = "Product details are unavailable for this recommendation.";
+  }
+}
+
+function closeProductDrawer() {
+  drawer.hidden = true;
+  backdrop.hidden = true;
+  drawer.setAttribute("aria-hidden", "true");
+  if (focusBeforeDrawer instanceof HTMLElement) {
+    focusBeforeDrawer.focus();
+  }
+}
+
 function renderUserMessage(message) {
   const row = document.createElement("article");
   row.className = "message user-message";
@@ -115,7 +249,10 @@ function renderUserMessage(message) {
     retry.textContent = "Retry";
     retry.disabled = state.pending;
     retry.addEventListener("click", () => {
-      retryMessage(message.messageId).catch(handleUnexpectedInteractionError);
+      const submission = retryMessage(message.messageId);
+      if (submission) {
+        submission.catch(handleUnexpectedInteractionError);
+      }
     });
     actions.append(retry);
     row.append(actions);
@@ -130,6 +267,23 @@ function renderAssistantMessage(message) {
   const responseMessage = message.payload?.agent_response?.message;
   text.textContent = typeof responseMessage === "string" ? responseMessage : "";
   row.append(text);
+  const recommendations = message.payload?.agent_response?.recommendations;
+  if (Array.isArray(recommendations) && recommendations.length > 0) {
+    row.append(renderProducts(message.payload));
+  } else {
+    row.append(element(
+      "p",
+      "empty-recommendations",
+      "Tell me another preference and I’ll refine the search.",
+    ));
+  }
+  return row;
+}
+
+function renderLoadingMessage() {
+  const row = element("article", "message assistant-message loading-message");
+  row.setAttribute("role", "status");
+  row.append(element("p", "", "Understanding your request and searching products..."));
   return row;
 }
 
@@ -137,7 +291,11 @@ function renderConversation() {
   const rows = state.messages.map((message) => (
     message.role === "user" ? renderUserMessage(message) : renderAssistantMessage(message)
   ));
+  if (state.pending) {
+    rows.push(renderLoadingMessage());
+  }
   conversation.replaceChildren(...rows);
+  conversation.setAttribute("aria-busy", String(state.pending));
   welcome.hidden = state.messages.length > 0;
   setComposerEnabled(Boolean(state.sessionId) && !state.pending);
 }
@@ -159,7 +317,7 @@ async function submitExistingMessage(text, messageId) {
   userMessage.status = "pending";
   persistState();
   renderConversation();
-  showNotice("Understanding your request and searching products...");
+  showNotice("");
 
   let finalNotice = "";
   try {
@@ -176,11 +334,11 @@ async function submitExistingMessage(text, messageId) {
         finalNotice = "The local service restarted. Starting a new chat.";
       } catch (replacementError) {
         userMessage.status = "failed";
-        finalNotice = "The chat could not be restarted. Select New chat to try again.";
+        finalNotice = "Something went wrong. Please retry this message.";
       }
     } else {
       userMessage.status = "failed";
-      finalNotice = "The message could not be sent. You can retry it.";
+      finalNotice = "Something went wrong. Please retry this message.";
     }
   } finally {
     state.pending = false;
@@ -196,16 +354,15 @@ async function sendMessage(text) {
   return submitExistingMessage(text, messageId);
 }
 
-async function retryMessage(messageId) {
-  if (state.pending) {
-    return;
-  }
-  const message = state.messages.find(
+function retryMessage(messageId) {
+  const failed = state.messages.find(
     (item) => item.role === "user" && item.messageId === messageId,
   );
-  if (message) {
-    await submitExistingMessage(message.text, message.messageId);
+  if (!failed || state.pending) {
+    return;
   }
+  failed.status = "pending";
+  return submitExistingMessage(failed.text, failed.messageId);
 }
 
 async function newChat() {
@@ -324,7 +481,7 @@ function handleUnexpectedInteractionError() {
   }
   persistState();
   renderConversation();
-  showNotice("The request could not be completed. Try again.");
+  showNotice("Something went wrong. Please retry this message.");
 }
 
 composer.addEventListener("submit", (event) => {
@@ -346,6 +503,14 @@ messageInput.addEventListener("keydown", (event) => {
 
 newChatButton.addEventListener("click", () => {
   newChat().catch(handleUnexpectedInteractionError);
+});
+
+drawerClose.addEventListener("click", closeProductDrawer);
+backdrop.addEventListener("click", closeProductDrawer);
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !drawer.hidden) {
+    closeProductDrawer();
+  }
 });
 
 bootstrap().catch(renderInitializationFailure);

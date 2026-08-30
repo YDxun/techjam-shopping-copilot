@@ -68,7 +68,7 @@ class RetrieverDenseBreakerTest(unittest.TestCase):
             available = True
 
         bad_pair = (BadEncoder(), BadStore())
-        retriever._dense = bad_pair  # ?? _ensure_dense ??????????? self._dense?
+        retriever._dense = bad_pair  # set _dense directly so _route_dense uses it
         retriever._ensure_dense = lambda: bad_pair  # type: ignore[method-assign]
         from agent.intent_router import IntentRoute
         route = IntentRoute(category_tokens=[], query_terms=["cotton"])

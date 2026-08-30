@@ -209,6 +209,7 @@ class DialogueFlowTest(unittest.TestCase):
         return EnvConfig.from_env(
             overrides={
                 "skip_data_verify": True,
+                "emit_gate": False,  # 流程/契约测试按"非门控"设计（门控本身由专门测试覆盖）
                 "dialogue_understanding": {"mode": mode},
                 "decision": {
                     "candidate_question_value": {
@@ -232,6 +233,7 @@ class DialogueFlowTest(unittest.TestCase):
         return EnvConfig.from_env(
             overrides={
                 "skip_data_verify": True,
+                "emit_gate": False,  # hybrid 状态测试按"非门控"设计（门控由专门测试覆盖）
                 "dialogue_understanding": {"mode": "rule_only"},
                 "decision": {"hybrid_question_policy": {"enabled": True}},
                 "llm": {"rerank_enabled": False},
@@ -1148,7 +1150,7 @@ class DialogueFlowTest(unittest.TestCase):
         observations = agent.dialogue.session("s1").products.observations
         self.assertEqual([item.asin for item in observations], ["C", "B"])
 
-    def test_emit_gate_is_opt_in_and_limits_low_confidence_turns(self) -> None:
+    def test_emit_gate_limits_low_confidence_turns_and_full_emission_otherwise(self) -> None:
         gated = EnvConfig.from_env(
             overrides={
                 "skip_data_verify": True,

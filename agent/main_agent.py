@@ -20,7 +20,6 @@ from pathlib import Path
 from agent.base_agent import BaseAgent
 from agent.capability_probe import CapabilityProbe, CapabilityProfile
 from agent.dialogue.catalog_resources import DialogueCatalogResources
-from agent.dialogue.models import GuardAction
 from agent.dialogue.pipeline import DialogueUnderstandingPipeline
 from agent.intent_router import IntentRouter
 from agent.reranker import Reranker
@@ -178,6 +177,7 @@ class Agent(BaseAgent):
             pending,
             candidate_signals,
             candidate_count=len(candidates),
+            defer_commit=True,
         )
 
         # 3) 精排（Pillar I/IV）：规则 + 可选 LLM/bge，目标把目标商品推前
@@ -192,15 +192,6 @@ class Agent(BaseAgent):
             use_llm_rerank=self.decisions.use_llm_rerank,
         )
         shown = ranked[:top_k]
-        if turn_result.guard_decision.action not in {GuardAction.CLARIFY, GuardAction.REJECT}:
-            self.dialogue.record_shown(
-                session_id,
-                shown,
-                turn,
-                expected_session=turn_result.committed_session,
-                expected_fingerprint=turn_result.committed_session_fingerprint,
-            )
-
         decision = turn_result.question_decision
         message = self.dialogue.message_for(decision, turn_result.state)
         usage = {
@@ -215,6 +206,7 @@ class Agent(BaseAgent):
             "recommendations": [{"parent_asin": asin} for asin in shown],
             "usage": usage,
         }
+        self.dialogue.commit_response(turn_result, shown, turn)
         try:
             self.dialogue.record_completed_decision(
                 result=turn_result,

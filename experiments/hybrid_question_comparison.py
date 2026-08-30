@@ -28,6 +28,7 @@ from agent.dialogue.catalog_resources import DialogueCatalogResources
 from agent.main_agent import Agent
 from agent.retriever import HybridRetriever
 from config.env_config import EnvConfig
+from config.loader import DEFAULT_CONFIG_PATH
 from evaluator.local_evaluator import evaluate, load_jsonl
 
 STRATUM_COUNTS = {
@@ -190,7 +191,7 @@ def run_comparison(
 
             # One retriever builds the SQLite index and owns the single product
             # snapshot used for evaluator data plus catalog-derived resources.
-            base_env = EnvConfig.from_env(overrides=_offline_overlay({}))
+            base_env = _fixed_offline_env(_offline_overlay({}))
             retriever = retriever_builder(
                 catalog,
                 env=base_env,
@@ -206,7 +207,7 @@ def run_comparison(
                 configuration_name = str(configuration["name"])
                 deadline.check()
                 configuration_started = clock()
-                env = EnvConfig.from_env(overrides=configuration["overlay"])
+                env = _fixed_offline_env(configuration["overlay"])
                 agent = build_agent(
                     catalog_path=catalog,
                     env=env,
@@ -300,6 +301,7 @@ def _offline_overlay(decision_overlay: Mapping[str, object]) -> dict[str, object
         "dialogue_understanding": {"mode": "rule_only"},
         "diagnostics": {"decision_trace": {"enabled": False}},
         "decision": {
+            "hybrid_question_policy": {"enabled": False},
             "candidate_question_value": {"enabled": False},
             "question_termination_mode": "legacy",
             "finish_strategy": {"enabled": False, "lookahead_depth": 1},
@@ -307,6 +309,11 @@ def _offline_overlay(decision_overlay: Mapping[str, object]) -> dict[str, object
     }
     _deep_merge(overlay, decision_overlay, root="decision")
     return overlay
+
+
+def _fixed_offline_env(overlay: Mapping[str, object]) -> EnvConfig:
+    """Load the declared comparison baseline without inheriting host settings."""
+    return EnvConfig.from_env(path=DEFAULT_CONFIG_PATH, overrides=overlay, environ={})
 
 
 def _deep_merge(

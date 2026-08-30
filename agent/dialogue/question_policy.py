@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import math
 import threading
 from dataclasses import replace
@@ -30,6 +31,8 @@ QUESTION_MESSAGES = {
     "brand": "Do you have a preferred brand?",
     "other": "What else matters most for your choice?",
 }
+
+logger = logging.getLogger(__name__)
 
 
 class QuestionPolicy:
@@ -70,9 +73,18 @@ class QuestionPolicy:
             decision = self._decide_legacy(state, recognition, signals)
             if self.config.hybrid_question_policy.enabled:
                 legacy_components = self.last_components
-                decision = self.hybrid_policy.consider(
-                    state, decision, signals, candidate_signals
-                )
+                legacy_decision = decision
+                try:
+                    decision = self.hybrid_policy.consider(
+                        state, decision, signals, candidate_signals
+                    )
+                except Exception as error:
+                    logger.warning(
+                        "[dialogue] hybrid question consideration failed; "
+                        "retaining legacy decision (%s)",
+                        type(error).__name__,
+                    )
+                    decision = legacy_decision
                 if decision.attribute_components:
                     self.last_components = decision.attribute_components
                 else:

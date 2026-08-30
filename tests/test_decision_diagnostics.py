@@ -275,6 +275,26 @@ class DecisionTraceRecorderTest(unittest.TestCase):
 
                 self.assertEqual(record.to_dict()["decision_reason"], reason)
 
+    def test_trace_keeps_hybrid_policy_reason_codes(self) -> None:
+        # Break caught: a valid bounded Hybrid outcome is erased by the trace
+        # allowlist, leaving tuning diagnostics unable to distinguish it.
+        for reason in (
+            "hybrid_first_other_preserved",
+            "hybrid_replacement_already_used",
+            "hybrid_signals_unavailable",
+            "hybrid_threshold_not_met",
+            "hybrid_no_eligible_attribute",
+            "hybrid_specific_replacement",
+        ):
+            with self.subTest(reason=reason):
+                record = DialogueDecisionTrace(
+                    session_id="s",
+                    turn=1,
+                    decision_reason=reason,
+                )
+
+                self.assertEqual(record.to_dict()["decision_reason"], reason)
+
     def test_from_turn_computes_asin_differences_before_redacting_deltas(self) -> None:
         # Break caught: redacting before comparison hides an ASIN replacement as no state change.
         before = DialogueState(

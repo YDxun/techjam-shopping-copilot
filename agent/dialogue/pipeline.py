@@ -294,6 +294,7 @@ class DialogueUnderstandingPipeline:
         candidate_signals: CandidateQuestionSignals | None,
         *,
         candidate_count: int | None = None,
+        defer_commit: bool = False,
     ) -> DialogueTurnResult:
         """Choose and commit exactly one ordinary question after candidate retrieval."""
         if pending.guard_decision.action in {GuardAction.CLARIFY, GuardAction.REJECT}:
@@ -368,8 +369,9 @@ class DialogueUnderstandingPipeline:
                 products=pending.products,
                 candidate_counts=counts,
             )
-            self._sessions[pending.session_id] = committed_session
             committed_session_fingerprint = _session_fingerprint(committed_session)
+            if not defer_commit:
+                self._sessions[pending.session_id] = committed_session
             trace_inputs = self._trace_inputs(
                 pending, dialogue, candidate_signals, candidate_count, decision
             )
@@ -398,8 +400,38 @@ class DialogueUnderstandingPipeline:
             completion_tokens=pending.completion_tokens,
             committed_session=committed_session,
             committed_session_fingerprint=committed_session_fingerprint,
+            pending_turn=pending if defer_commit else None,
             trace_inputs=trace_inputs,
         )
+
+    def commit_response(
+        self,
+        result: DialogueTurnResult,
+        shown: tuple[str, ...] | list[str],
+        turn: int,
+    ) -> None:
+        """Atomically commit one deferred ordinary response and its shown history."""
+        if result.guard_decision.action in {GuardAction.CLARIFY, GuardAction.REJECT}:
+            return
+        pending = result.pending_turn
+        proposed = result.committed_session
+        if not isinstance(pending, PendingDialogueTurn) or not isinstance(proposed, SessionState):
+            raise StalePendingTurnError("response has no deferred dialogue session")
+        with self._session_lock(pending.session_id):
+            session = self._sessions[pending.session_id]
+            if (
+                session is not pending.base_session
+                or _session_fingerprint(session) != pending.base_session_fingerprint
+            ):
+                raise StalePendingTurnError(
+                    "deferred response no longer matches the current dialogue session"
+                )
+            products = proposed.products.record_shown(
+                shown,
+                intent_version=proposed.dialogue.intent_version,
+                turn=turn,
+            )
+            self._sessions[pending.session_id] = replace(proposed, products=products)
 
     def dialogue_decision_statistics(self) -> dict[str, object]:
         """Return local, aggregate decision diagnostics only."""

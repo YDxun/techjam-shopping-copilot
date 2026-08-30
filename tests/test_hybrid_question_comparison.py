@@ -159,6 +159,66 @@ def test_comparison_reuses_one_catalog_resource_and_isolates_agents() -> None:
         assert overlay["diagnostics"]["decision_trace"]["enabled"] is False
 
 
+def test_fixed_comparison_configs_ignore_hostile_app_config_and_environment() -> None:
+    # Break caught: ambient APP_CONFIG_PATH or SHOPPING_* values can make the
+    # declared Legacy arm run Hybrid rather than the predeclared baseline.
+    from experiments.hybrid_question_comparison import run_comparison
+
+    class FakeRetriever:
+        def iter_products(self) -> tuple[dict, ...]:
+            return ({"parent_asin": "A", "categories": ["Clothing", "Tops"]},)
+
+    class FakeAgent:
+        def __init__(self, **kwargs: object) -> None:
+            self.kwargs = kwargs
+
+        def hybrid_question_statistics(self) -> dict[str, object]:
+            return {}
+
+    def evaluator(agent: FakeAgent, samples: list[dict], *args: object) -> dict:
+        return {"sample_count": len(samples), "scenario_metrics": {}}
+
+    with tempfile.TemporaryDirectory() as temporary:
+        directory = Path(temporary)
+        dataset = directory / "public.jsonl"
+        catalog = directory / "catalog.jsonl"
+        hostile_config = directory / "hostile.json"
+        _write_jsonl(dataset, _samples())
+        _write_jsonl(catalog, [{"parent_asin": "A"}])
+        hostile_config.write_text(
+            json.dumps(
+                {
+                    "top_k": 1,
+                    "decision": {"hybrid_question_policy": {"enabled": True}},
+                }
+            ),
+            encoding="utf-8",
+        )
+        agents: list[FakeAgent] = []
+        with patch.dict(
+            "os.environ",
+            {
+                "APP_CONFIG_PATH": str(hostile_config),
+                "SHOPPING_DECISION__HYBRID_QUESTION_POLICY__ENABLED": "1",
+            },
+            clear=False,
+        ):
+            run_comparison(
+                catalog,
+                dataset,
+                seed=20260830,
+                time_budget_seconds=60,
+                retriever_factory=lambda *args, **kwargs: FakeRetriever(),
+                resource_factory=lambda *args, **kwargs: object(),
+                agent_factory=lambda **kwargs: agents.append(FakeAgent(**kwargs)) or agents[-1],
+                evaluator=evaluator,
+            )
+
+    assert agents[0].kwargs["env"].decision.hybrid_question_policy.enabled is False
+    assert all(agent.kwargs["env"].top_k != 1 for agent in agents)
+    assert all(agent.kwargs["env"].decision.hybrid_question_policy.enabled for agent in agents[1:])
+
+
 def test_timeout_writes_only_completed_configurations_without_a_winner() -> None:
     from experiments.hybrid_question_comparison import TimeBudgetExceeded, run_comparison
 

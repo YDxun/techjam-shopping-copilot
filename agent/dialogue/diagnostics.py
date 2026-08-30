@@ -97,6 +97,12 @@ _DECISION_REASONS = frozenset(
         "dynamic_concrete_fallback",
         "dynamic_other_fallback",
         "state_update_rejected",
+        "hybrid_first_other_preserved",
+        "hybrid_replacement_already_used",
+        "hybrid_signals_unavailable",
+        "hybrid_threshold_not_met",
+        "hybrid_no_eligible_attribute",
+        "hybrid_specific_replacement",
     }
 ) | _GUARD_REASONS
 _FALLBACK_REASONS = frozenset(

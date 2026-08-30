@@ -301,6 +301,7 @@ class DialogueTurnResult:
     completion_tokens: int
     committed_session: object | None = field(default=None, repr=False, compare=False)
     committed_session_fingerprint: str | None = field(default=None, repr=False, compare=False)
+    pending_turn: object | None = field(default=None, repr=False, compare=False)
     trace_inputs: object | None = field(default=None, repr=False, compare=False)
 
 

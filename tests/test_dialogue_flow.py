@@ -583,6 +583,49 @@ class DialogueFlowTest(unittest.TestCase):
         self.assertEqual(set(response), {"message", "ask_attribute", "recommendations", "usage"})
         self.assertEqual(agent.dialogue_decision_statistics()["total_seen"], 0)
 
+    def test_rerank_failure_leaves_hybrid_turn_state_uncommitted(self) -> None:
+        # Break caught: committing before reranking consumes the next question,
+        # candidate count, replacement budget, and shown-history slot on fallback.
+        reranker = StaticReranker(("A", "B", "C"))
+        agent = Agent(
+            env=self.hybrid_env(),
+            llm_client=DisabledLLMClient(),
+            retriever=StaticRetriever(),
+            reranker=reranker,
+        )
+        agent.reset("s", {})
+        agent.respond("s", "I need shoes.", 1, 3)
+        before = agent.dialogue.session("s")
+        reranker.rerank = Mock(side_effect=RuntimeError("rerank failed"))
+
+        response = agent.respond("s", "I also need them to be blue.", 2, 3)
+
+        self.assertEqual(response["recommendations"], [])
+        self.assertEqual(agent.dialogue.session("s"), before)
+        self.assertEqual(agent.dialogue.session("s").dialogue.asked_attributes, ("other",))
+        self.assertEqual(agent.dialogue.session("s").dialogue.hybrid_replacements_used, 0)
+        self.assertEqual(agent.dialogue.session("s").candidate_counts, (3,))
+        self.assertEqual(agent.dialogue.session("s").products.pending_batch, ("A", "B", "C"))
+
+    def test_successful_hybrid_turn_commits_state_once_after_response_construction(self) -> None:
+        # Break caught: deferring commit forever would make a completed response
+        # fail to carry forward its question, replacement budget, and history.
+        agent = Agent(
+            env=self.hybrid_env(),
+            llm_client=DisabledLLMClient(),
+            retriever=StaticRetriever(),
+            reranker=StaticReranker(("A", "B", "C")),
+        )
+        agent.reset("s", {})
+        response = agent.respond("s", "I need shoes.", 1, 3)
+
+        session = agent.dialogue.session("s")
+        self.assertEqual(response["ask_attribute"], "other")
+        self.assertEqual(session.dialogue.asked_attributes, ("other",))
+        self.assertEqual(session.dialogue.hybrid_replacements_used, 0)
+        self.assertEqual(session.candidate_counts, (3,))
+        self.assertEqual(session.products.pending_batch, ("A", "B", "C"))
+
     def test_trace_failure_does_not_replace_a_successful_response(self) -> None:
         # Diagnostics failure after shown-history commit must not turn success into fallback.
         agent = Agent(
@@ -711,6 +754,27 @@ class DialogueFlowTest(unittest.TestCase):
             )
 
         self.assertIsNone(pipeline.candidate_signal_calculator)
+
+    def test_hybrid_policy_failure_keeps_the_legacy_public_response(self) -> None:
+        # Break caught: letting Hybrid exceptions reach Agent.respond replaces the
+        # already-computed Legacy decision with the generic empty fallback.
+        agent = Agent(
+            env=self.hybrid_env(),
+            llm_client=DisabledLLMClient(),
+            retriever=StaticRetriever(),
+            reranker=StaticReranker(("A", "B", "C")),
+        )
+        agent.reset("s", {})
+        agent.dialogue.question_policy.hybrid_policy.consider = Mock(
+            side_effect=RuntimeError("hybrid consideration failed")
+        )
+
+        response = agent.respond("s", "I need shoes.", 1, 3)
+
+        self.assertEqual(response["ask_attribute"], "other")
+        self.assertEqual(
+            [item["parent_asin"] for item in response["recommendations"]], ["A", "B", "C"]
+        )
 
     def test_empty_candidates_keep_the_official_response_valid(self) -> None:
         # Treating an empty pool as an exception would turn a harmless miss into evaluator failure.

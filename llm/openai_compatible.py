@@ -6,8 +6,6 @@ import time
 from dataclasses import dataclass
 from typing import Callable, Sequence
 
-import httpx
-
 from config.models import LLMConfig, ProviderConfig
 
 from .base import LLMErrorCategory, LLMResult, LLMState, LLMStatus, LLMUsage
@@ -92,6 +90,10 @@ class OpenAICompatibleClient:
 
     def _make_sdk(self) -> object:
         if self._sdk is None:
+            # httpx is optional for the offline/rule-only core; require it only
+            # when an OpenAI-compatible client is actually initialized.
+            import httpx
+
             profile = self._require_profile()
             self._sdk = self._sdk_factory(
                 api_key=profile.api_key.reveal(),

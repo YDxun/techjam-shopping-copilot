@@ -79,7 +79,13 @@ class IntentRouter:
         # 不再做同义词扩展，避免旧偏好词污染新查询（A/B：override MRR 0.769→0.744，版本门控最优）。
         if getattr(state, "intent_version", 1) == 1:
             for c in [*hard, *soft]:
-                route.query_terms.extend(fm.expand_with_vocab(c.attribute, c.value))
+                route.query_terms.extend(
+                    fm.expand_with_vocab(
+                        c.attribute,
+                        c.value,
+                        use_asset_vocab=self.env.asset_vocab_expand,
+                    )
+                )
         route.query_terms = list(dict.fromkeys(route.query_terms))[:40]
 
         # Pillar III 自适应：RECOVER 模式下把 hard 组降级为 soft（放宽过滤）

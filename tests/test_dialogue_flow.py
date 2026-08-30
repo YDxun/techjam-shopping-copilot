@@ -1148,6 +1148,48 @@ class DialogueFlowTest(unittest.TestCase):
         observations = agent.dialogue.session("s1").products.observations
         self.assertEqual([item.asin for item in observations], ["C", "B"])
 
+    def test_emit_gate_is_opt_in_and_limits_low_confidence_turns(self) -> None:
+        gated = EnvConfig.from_env(
+            overrides={
+                "skip_data_verify": True,
+                "emit_gate": True,
+                "emit_k0": 1,
+                "emit_k1": 2,
+                "emit_k2": 3,
+                "emit_late_turn": 4,
+                "emit_fp_confident": 0,
+                "emit_margin_confident": 99.0,
+            },
+            environ={"LLM_PROVIDER": "none"},
+        )
+        agent = Agent(
+            env=gated,
+            llm_client=DisabledLLMClient(),
+            retriever=StaticRetriever(),
+            reranker=StaticReranker(("B", "A", "C")),
+        )
+        agent.reset("gate", {})
+        first = agent.respond("gate", "I'm looking for shoes, but I'm still exploring.", 1, 3)
+        second = agent.respond("gate", "What matters is: cotton.", 2, 3)
+        late = agent.respond("gate", "What matters is: leather.", 4, 3)
+        self.assertEqual(
+            [len(item["recommendations"]) for item in (first, second, late)], [1, 2, 3]
+        )
+
+        default_agent = Agent(
+            env=self.env(),
+            llm_client=DisabledLLMClient(),
+            retriever=StaticRetriever(),
+            reranker=StaticReranker(("C", "B", "A")),
+        )
+        default_agent.reset("default", {})
+        full = default_agent.respond("default", "I'm looking for shoes.", 1, 3)
+        self.assertEqual([item["parent_asin"] for item in full["recommendations"]], ["C", "B", "A"])
+        self.assertEqual(
+            [item.asin for item in default_agent.dialogue.session("default").products.observations],
+            ["C", "B", "A"],
+        )
+
     def test_guarded_rejection_does_not_mutate_products_or_dialogue(self) -> None:
         pipeline = self.build_pipeline(
             guard_enabled=True,

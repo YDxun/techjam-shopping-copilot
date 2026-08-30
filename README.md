@@ -387,7 +387,7 @@ LLM 全部通过**环境变量 + 能力探测 + 运行时控制器**启用，默
 
 生成脚本收入 `scripts/data_assets/`（可复现）；原始打包目录 `new_data_porcess/` 不入库。
 
-### 环境开关（默认值已按 public 200 A/B 设定）
+### 环境开关（当前兼容默认值）
 
 | 变量 | 默认 | 说明 | A/B 结论（public 200, bm25, 离线） |
 |---|---|---|---|
@@ -396,9 +396,9 @@ LLM 全部通过**环境变量 + 能力探测 + 运行时控制器**启用，默
 | `ASSET_VOCAB_EXPAND` | `0` | 用 vocab_v2_clean 替换 data/analysis/vocab.json 做同义词扩展 | MRR 0.6335→0.6298（略降），默认关 |
 | `ASSET_FIELD_MAP` | `0` | field_mapping 字段感知匹配（预留） | 未启用 |
 
-实测（默认配置，HR@10=1.0 / MRR 0.6438 / MTTC 1.72 / TS 0.8787）相比接入前（MRR 0.6335 / TS 0.8757）：MRR +0.010，TS +0.003。
+这些资产开关与检索参数可用于复现公开集实验；它们不改变下述对话兼容默认：Hybrid 和输出门控均关闭。具体结果取决于所选配置、数据集与可用模型，不应视为当前默认的承诺指标。
 
-## 优化记录（2026-08-30，public 200 A/B + 40 条留出验证）
+## 优化记录（2026-08-30，public 200 A/B + 40 条留出验证；非默认配置）
 
 | 配置 | train(160) TS | **holdout(40) TS** | 说明 |
 |---|---|---|---|
@@ -407,8 +407,9 @@ LLM 全部通过**环境变量 + 能力探测 + 运行时控制器**启用，默
 | + 输出门控 K0=1/K1=1/K2=1/late=5 | 0.954 | **0.955** | 低置信捂盘：0/1/≥2 约束各给 1/1/1 个，turn≥5 或高置信才满仓 |
 | + 置信度门控 | 0.954 | 0.955 | fp 唯一性≤3 / top 分差≥0.10 / 约束≥4 → 提前满仓（防捂盘浪费回合） |
 
-- 默认配置（default.json）：`fingerprint.enable=true`、`emit_gate=true`、`emit_k0=1`、`emit_k1=1`、`emit_k2=1`、
+- 该基准的门控 overlay 为：`fingerprint.enable=true`、`emit_gate=true`、`emit_k0=1`、`emit_k1=1`、`emit_k2=1`、
   `emit_late_turn=5`、`emit_fp_confident=3`、`emit_margin_confident=0.10`、`emit_commit_constraints=4`。
+- 当前 `config/default.json` 保持兼容默认：`emit_gate=false`，且 Hybrid policy 关闭；设置 `EMIT_GATE=1` 才会启用上述输出门控行为。
 - **40 条留出验证**：调参（160）与留出（40）TS 均≈0.955、HR=1.0，非纯 public 过拟合。
 - 原理：命中即锁名次 → 低置信少给、高置信/临期满仓，把低名次命中推迟为 rank1。
 
@@ -543,14 +544,14 @@ capability_probe 按模型类型探测可用性，失败一律回退规则排序
 
 | 环境特征 | 选中的默认策略 | 公开集 200 会话 |
 |---|---|---|
-| 任意（含队友数据资产默认开） | `strategy=bm25` 或 `hybrid`（auto 按 BLaIR 可用性选） | **1.0 HR / 0.6438 MRR / 1.72 MTTC / 0.8787 TS** |
+| 启用相应数据资产的实验配置 | `strategy=bm25` 或 `hybrid`（auto 按 BLaIR 可用性选） | **1.0 HR / 0.6438 MRR / 1.72 MTTC / 0.8787 TS** |
 | 无队友资产（纯规则） | `strategy=bm25` | 1.0 HR / 0.6335 MRR / 1.715 MTTC / 0.8757 TS |
 | LLM 可用（key）且 `llm_intent_enabled=true`（默认） | 级联意图识别兜底（规则高置信不改变结果） | 同左（安全） |
 | 重排模型（bge/Rex）开启 | 仅 `recover` 模式作第二意见精排 | 略降（默认关，可选） |
 
 关键设计（全部公开集 A/B 验证）：
-1. **0.8787 的提升主要来自队友数据资产**（category 扩展 / review paraphrase / refined vocab，
-   `ASSET_*` 默认开）：bm25+资产 = hybrid+资产 = 0.8787（六位小数一致）。
+1. **0.8787 的提升主要来自该实验启用的数据资产**（category 扩展 / review paraphrase / refined vocab）：
+   bm25+资产 = hybrid+资产 = 0.8787（六位小数一致）。
 2. **BLaIR dense 只在 recover 模式启用**（`retrieval_backend=auto` 时）：公开集上 recover 几乎不触发
    → dense 休眠、零损失（与 bm25 完全同分）；hard 约束回验 + 0.5 权重使其在私有集连 miss 时
    可作语义召回安全网，而不扰动公开集已对齐排序（全量启用 dense 会掉到 0.870）。

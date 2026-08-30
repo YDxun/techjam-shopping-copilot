@@ -151,6 +151,10 @@ def _environment_overrides(
         "EMIT_FP_CONFIDENT": ("emit_fp_confident", _parse_int),
         "EMIT_MARGIN_CONFIDENT": ("emit_margin_confident", _parse_float),
         "EMIT_COMMIT_CONSTRAINTS": ("emit_commit_constraints", _parse_int),
+        "ASSET_VOCAB_EXPAND": ("asset_vocab_expand", _parse_bool),
+        "ASSET_CATEGORY_EXPAND": ("asset_category_expand", _parse_bool),
+        "ASSET_PARAPHRASE": ("asset_paraphrase", _parse_bool),
+        "ASSET_FIELD_MAP": ("asset_field_map", _parse_bool),
     }
     for name, (field_name, parser) in flat_fields.items():
         value = _environment_value(env, name)
@@ -185,6 +189,10 @@ def _environment_overrides(
 
     nested_fields: dict[str, tuple[tuple[str, ...], Callable[[str, str], Any]]] = {
         "COMBO_FINGERPRINT_ENABLE": (("fingerprint", "enable"), _parse_bool),
+        "COMBO_BONUS_WEIGHT": (("rerank_weights", "combo"), _parse_float),
+        "COMBO_FINGERPRINT_BONUS_UNIQUE": (("fingerprint", "bonus_unique"), _parse_float),
+        "COMBO_FINGERPRINT_BONUS_TEN": (("fingerprint", "bonus_ten"), _parse_float),
+        "COMBO_FINGERPRINT_BONUS_FIFTY": (("fingerprint", "bonus_fifty"), _parse_float),
         "RRF_K": (("retrieval", "rrf_k"), _parse_float),
         "RRF_CONSTRAINT_K": (("retrieval", "rrf_constraint_k"), _parse_float),
         "DENSE_WEIGHT": (("retrieval", "dense_weight"), _parse_float),

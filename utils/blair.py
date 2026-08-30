@@ -16,8 +16,10 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-import numpy as np
+if TYPE_CHECKING:
+    import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +47,8 @@ class BlairEmbeddingStore:
             logger.warning("[blair] 离线商品向量不存在: %s（稠密通道禁用）", emb_path)
             return None
         try:
+            import numpy as np
+
             matrix = np.load(emb_path, mmap_mode=None)
             if not asin_path.exists():
                 logger.warning("[blair] asins 映射缺失: %s（稠密通道禁用）", asin_path)
@@ -57,7 +61,9 @@ class BlairEmbeddingStore:
             logger.info("[blair] BLaIR embeds loaded: %d x %d (%s)", *matrix.shape, emb_path.name)
             return cls(matrix.astype(np.float32), asins, asin_index)
         except Exception as exc:
-            logger.warning("[blair] 加载离线向量失败: %s（稠密通道禁用）", exc)
+            logger.warning(
+                "[blair] 加载离线向量失败: %s（安装 numpy 以启用稠密通道）", exc
+            )
             return None
 
 
@@ -109,6 +115,8 @@ class BlairQueryEncoder:
         if model is False or not text:
             return None
         try:
+            import numpy as np
+
             if isinstance(model, dict):
                 import torch
 
@@ -127,5 +135,5 @@ class BlairQueryEncoder:
             vec = model.encode([text], normalize_embeddings=True)[0]
             return np.asarray(vec, dtype=np.float32)
         except Exception as exc:
-            logger.warning("[blair] 查询编码失败: %s", exc)
+            logger.warning("[blair] 查询编码失败: %s（安装模型依赖以启用稠密通道）", exc)
             return None

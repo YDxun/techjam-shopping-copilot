@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 _ROOT = Path(__file__).resolve().parent.parent
 _FIELD_MAPPING_PATH = _ROOT / "data" / "analysis" / "field_mapping.json"
 _VOCAB_PATH = _ROOT / "data" / "analysis" / "vocab.json"
+_ASSET_VOCAB_PATH = _ROOT / "data" / "assets" / "vocab_v2_clean.json"
 
 # 约束属性 -> vocab 字典名（category 在 vocab 里叫 category_product_type）
 _VOCAB_ATTR_MAP = {
@@ -33,8 +34,8 @@ _VOCAB_ATTR_MAP = {
 }
 
 _SINGLE_TOKEN_RE = re.compile(r"[a-z0-9%]+")
-_mapping_cache: dict[str, Any] | None = None
-_vocab_cache: dict[str, Any] | None = None
+_mapping_cache: dict[Path, dict[str, Any]] = {}
+_vocab_cache: dict[Path, dict[str, Any] | None] = {}
 
 
 def _contains(text: str, term: str) -> bool:
@@ -51,17 +52,19 @@ def _contains(text: str, term: str) -> bool:
 # ---------------------------------------------------------------------------
 def load(path: str | Path | None = None) -> dict[str, Any]:
     """读取 field_mapping.json（惰性缓存）；文件缺失时返回最小默认表。"""
-    global _mapping_cache
-    if _mapping_cache is not None:
-        return _mapping_cache
-    p = Path(path) if path else _FIELD_MAPPING_PATH
+    p = (Path(path) if path else _FIELD_MAPPING_PATH).resolve()
+    cached = _mapping_cache.get(p)
+    if cached is not None:
+        return cached
     if p.exists():
         try:
-            _mapping_cache = json.loads(p.read_text(encoding="utf-8"))
-            return _mapping_cache
+            loaded = json.loads(p.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                _mapping_cache[p] = loaded
+                return loaded
         except Exception as exc:
             logger.warning("[field_mapping] 加载失败（%s），回退默认表", exc)
-    _mapping_cache = {
+    fallback = {
         "attributes": {
             "material": {
                 "lookup_fields": [{"field": "title", "weight": 1.0}],
@@ -71,7 +74,8 @@ def load(path: str | Path | None = None) -> dict[str, Any]:
         },
         "default": {"tolerance": "lenient", "missing_policy": "soft_unmet"},
     }
-    return _mapping_cache
+    _mapping_cache[p] = fallback
+    return fallback
 
 
 def attribute_entry(attribute: str) -> dict[str, Any]:
@@ -127,10 +131,21 @@ def field_texts(product: dict[str, Any]) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 # vocab 同义词扩展（"换种说法"鲁棒性）
 # ---------------------------------------------------------------------------
-def expand_with_vocab(attribute: str, value: str) -> list[str]:
+def expand_with_vocab(
+    attribute: str,
+    value: str,
+    *,
+    use_asset_vocab: bool = False,
+    vocab_path: str | Path | None = None,
+    asset_path: str | Path | None = None,
+) -> list[str]:
     """返回 [value] + 同义词（value 命中 vocab canonical 时扩展）。"""
     terms = [value]
-    vocab = _load_vocab()
+    vocab = _load_vocab(
+        use_asset_vocab=use_asset_vocab,
+        vocab_path=vocab_path,
+        asset_path=asset_path,
+    )
     dict_name = _VOCAB_ATTR_MAP.get(attribute)
     if dict_name is None or not vocab:
         return terms
@@ -142,26 +157,30 @@ def expand_with_vocab(attribute: str, value: str) -> list[str]:
     return terms
 
 
-def _load_vocab() -> dict[str, Any] | None:
-    """ASSET_VOCAB_EXPAND=1 时优先用 data/assets/vocab_v2_clean.json（去噪精修版）。"""
-    global _vocab_cache
-    if _vocab_cache is not None:
-        return _vocab_cache
-    import os
-
-    path = _VOCAB_PATH
-    if os.environ.get("ASSET_VOCAB_EXPAND", "0").strip().lower() in {"1", "true", "yes", "on"}:
-        alt = _ROOT / "data" / "assets" / "vocab_v2_clean.json"
-        if alt.exists():
-            path = alt
+def _load_vocab(
+    *,
+    use_asset_vocab: bool = False,
+    vocab_path: str | Path | None = None,
+    asset_path: str | Path | None = None,
+) -> dict[str, Any] | None:
+    """Load the resolved vocabulary selection without reading process-global environment."""
+    path = Path(vocab_path) if vocab_path is not None else _VOCAB_PATH
+    if use_asset_vocab:
+        candidate = Path(asset_path) if asset_path is not None else _ASSET_VOCAB_PATH
+        if candidate.exists():
+            path = candidate
+    path = path.resolve()
+    if path in _vocab_cache:
+        return _vocab_cache[path]
     if path.exists():
         try:
-            _vocab_cache = json.loads(path.read_text(encoding="utf-8"))
+            loaded = json.loads(path.read_text(encoding="utf-8"))
+            _vocab_cache[path] = loaded if isinstance(loaded, dict) else None
         except Exception:
-            _vocab_cache = None
+            _vocab_cache[path] = None
     else:
-        _vocab_cache = None
-    return _vocab_cache
+        _vocab_cache[path] = None
+    return _vocab_cache[path]
 
 
 # ---------------------------------------------------------------------------

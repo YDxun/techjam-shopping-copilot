@@ -107,8 +107,9 @@ class RecognitionResult:
     confidence: float
     source: RecognitionSource
     ambiguities: tuple[str, ...]
-    # 边界措辞 "I don't have a preference for X; please use your judgment."：
-    # 仅表示对 X 无偏好，不表示信息枯竭，policy 据此区分是否停止提问。
+    # Boundary wording "I don't have a preference for X; please use your judgment.":
+    # only means no preference for X, not information exhaustion; the policy uses this to decide
+    # whether to stop asking.
     boundary_signal: bool = False
     # 只由输入消息中已验证的明确结束措辞派生；不接受模型自报的结束标记。
     explicit_no_more_preferences: bool = False

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import hashlib
 import logging
 import math
+import random
 import threading
 from dataclasses import replace
 from types import MappingProxyType
@@ -20,16 +22,73 @@ from agent.dialogue.models import (
 from config.models import DecisionConfig
 
 QUESTION_MESSAGES = {
-    "category": "What type of product are you looking for?",
-    "material": "Do you have a material preference?",
-    "feature": "Are there any specific features you need?",
-    "color": "Do you have a color preference?",
-    "size": "What size or fit do you need?",
-    "style": "Do you have a preferred style or fit?",
-    "use_case": "What will you use it for?",
-    "budget": "Do you have a budget in mind?",
-    "brand": "Do you have a preferred brand?",
-    "other": "What else matters most for your choice?",
+    "category": [
+        "What type of product are you looking for?",
+        "Which product category are you browsing?",
+        "What kind of item do you have in mind?",
+        "Can you tell me what kind of item you're shopping for?",
+    ],
+    "material": [
+        "Do you have a material preference?",
+        "What material are you looking for?",
+        "Any fabric or material in mind?",
+        "Is there a particular fabric you prefer, like cotton or leather?",
+        "What kind of material should I focus on for you?",
+    ],
+    "feature": [
+        "Are there any specific features you need?",
+        "What features matter most to you?",
+        "Any must-have features I should know about?",
+        "Are there any particular features that are essential for you?",
+        "What would make the perfect item for you — any key features?",
+    ],
+    "color": [
+        "Do you have a color preference?",
+        "What color would you like?",
+        "Any particular color in mind?",
+        "Is there a specific color you're hoping to find?",
+        "What color are you leaning toward?",
+    ],
+    "size": [
+        "What size or fit do you need?",
+        "Which size works best for you?",
+        "What size are you looking for?",
+        "Do you have a preferred size or fit?",
+        "What size should I keep in mind for you?",
+    ],
+    "style": [
+        "Do you have a preferred style or fit?",
+        "What style or fit do you prefer?",
+        "Any style you have in mind?",
+        "What kind of look or style are you going for?",
+    ],
+    "use_case": [
+        "What will you use it for?",
+        "What is the occasion or use case?",
+        "How do you plan to use it?",
+        "Where are you planning to wear or use it?",
+        "What activity or occasion is this for?",
+    ],
+    "budget": [
+        "Do you have a budget in mind?",
+        "What is your price range?",
+        "Any budget you would like to stay within?",
+        "Roughly how much were you hoping to spend?",
+        "Is there a price range I should stay within?",
+    ],
+    "brand": [
+        "Do you have a preferred brand?",
+        "Any brand you prefer?",
+        "Are you looking for a specific brand?",
+        "Is there a particular brand you like?",
+    ],
+    "other": [
+        "What else matters most for your choice?",
+        "Is there anything else that's important to you?",
+        "Any other requirements I should know about?",
+        "What else would help me narrow it down for you?",
+        "Anything else you'd like me to consider?",
+    ],
 }
 
 logger = logging.getLogger(__name__)
@@ -42,6 +101,7 @@ class QuestionPolicy:
         self.config = config
         self.hybrid_policy = HybridQuestionPolicy(config.hybrid_question_policy)
         self._local = threading.local()
+        self._last_template: dict[tuple[str, str], str] = {}
 
     @property
     def last_components(self) -> Mapping[str, Mapping[str, float]]:
@@ -435,10 +495,24 @@ class QuestionPolicy:
 
     def message_for(self, decision: QuestionDecision, state: DialogueState) -> str:
         if decision.should_ask and decision.ask_attribute:
-            return QUESTION_MESSAGES[decision.ask_attribute]
+            templates = QUESTION_MESSAGES[decision.ask_attribute]
+            return self._select_template(templates, state, decision.ask_attribute)
         if state.category:
             return f"Here are my best matches for {state.category} — please take a look."
         return "Here are my best matches for you — please take a look."
+
+    def _select_template(
+        self, templates: list[str], state: DialogueState, attribute: str
+    ) -> str:
+        if self.config.question_template_mode == "rotation":
+            return templates[(max(0, state.turn - 1)) % len(templates)]
+        key = f"{state.session_id}|{state.turn}|{attribute}".encode()
+        chosen = random.Random(hashlib.sha256(key).digest()).choice(templates)
+        last = self._last_template.get((state.session_id, attribute))
+        if last is not None and len(templates) > 1 and chosen == last:
+            chosen = templates[(templates.index(chosen) + 1) % len(templates)]
+        self._last_template[(state.session_id, attribute)] = chosen
+        return chosen
 
     def _guardrail(self, state: DialogueState) -> str | None:
         if state.no_more_preferences:

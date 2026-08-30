@@ -1,8 +1,11 @@
-"""配置-环境-性能查找表（LUT）：加载 data/assets/env_config_lut.json，按环境推荐最优配置。
+"""Config-environment-performance lookup table (LUT): loads data/assets/env_config_lut.json and
+    recommends the best config per environment.
 
-- load_lut(): 惰性加载静态资产（缺失返回 None，RuntimeController 回退默认）；
-- env_fingerprint(): 由探测结果生成环境指纹字符串；
-- recommend(): 返回该环境下 technical_score 最高（且延迟/内存达标）的 config_id。
+- load_lut(): lazily loads the static asset (missing -> None, RuntimeController falls back to
+defaults);
+- env_fingerprint(): builds the environment-fingerprint string from probe results;
+- recommend(): returns the config_id with the highest technical_score (meeting latency/memory
+budgets) for that environment.
 """
 
 from __future__ import annotations
@@ -19,25 +22,25 @@ _lut_cache: dict[str, Any] | None = None
 
 
 def load_lut(path: str | Path | None = None) -> dict[str, Any] | None:
-    """读取 LUT（惰性缓存）；文件缺失/损坏 → None（回退默认策略）。"""
+    """Read the LUT (lazy cache); missing/corrupt -> None (fall back to the default strategy)."""
     global _lut_cache
     if _lut_cache is not None:
         return _lut_cache
     p = Path(path) if path else _LUT_PATH
     if not p.exists():
-        logger.warning("[lut] %s 不存在 → 使用默认策略（保底）", p)
+        logger.warning("[lut] %s does not exist -> use the default strategy (baseline)", p)
         _lut_cache = {}
         return _lut_cache
     try:
         _lut_cache = __import__("json").loads(p.read_text(encoding="utf-8"))
     except Exception as exc:
-        logger.warning("[lut] 加载失败（%s）→ 使用默认策略", exc)
+        logger.warning("[lut] load failed (%s) -> use the default strategy", exc)
         _lut_cache = {}
     return _lut_cache
 
 
 def env_fingerprint(*, device: str, dense: bool, llm: bool, network: bool) -> str:
-    """环境指纹：'device=cuda;dense=yes;llm=no;network=no'。"""
+    """Environment fingerprint: 'device=cuda;dense=yes;llm=no;network=no'."""
     return (
         f"device={device};dense={'yes' if dense else 'no'};"
         f"llm={'yes' if llm else 'no'};network={'yes' if network else 'no'}"
@@ -50,7 +53,8 @@ def recommend(
     max_latency_ms: float | None = None,
     max_memory_mb: float | None = None,
 ) -> dict[str, Any] | None:
-    """按环境指纹返回最优配置档案（score 最高且延迟/内存达标）；无匹配 → None。"""
+    """Return the best config profile for an environment fingerprint (highest score meeting
+        latency/memory); None when unmatched."""
     data = lut if lut is not None else load_lut()
     env_entry = (data or {}).get("environments", {}).get(fingerprint)
     if not env_entry:

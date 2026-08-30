@@ -1,5 +1,5 @@
-"""通用会话/文本工具（Pillar II/III：槽位解析、约束类型归类、检索词构建）。"""
-
+"""General session/text utilities (Pillar II/III: slot parsing, constraint-type classification,
+    query-term construction)."""
 from __future__ import annotations
 
 import re
@@ -32,7 +32,7 @@ _BUDGET_RE = re.compile(r"(?:budget|under|<=|\\$)\s*\d", re.I)
 
 
 def tokenize(text: str, keep_stopwords: bool = False) -> list[str]:
-    """小写 token 化，默认去除停用词（用于检索与覆盖度匹配）。"""
+    """Lowercase tokenization with default stop-word removal (for retrieval/coverage)."""
     tokens = [t.lower() for t in TOKEN_RE.findall(text or "")]
     if keep_stopwords:
         return tokens
@@ -40,17 +40,18 @@ def tokenize(text: str, keep_stopwords: bool = False) -> list[str]:
 
 
 def normalize(text: str) -> str:
-    """约束/短语规范化：去首尾标点、压缩空白、转小写。"""
+    """Normalize a constraint/phrase: strip edge punctuation, collapse whitespace, lowercase."""
     return re.sub(r"\s+", " ", (text or "").strip(" -;,.\t\n")).strip().lower()
 
 
 def strip_constraint_prefix(value: str) -> str:
-    """剥掉 'Material:' / 'color:' 等前缀，保留真实取值词。"""
+    """Strip prefixes like 'Material:' / 'color:', keeping the actual value words."""
     return _PREFIX_RE.sub("", value or "").strip(" -;,.\t\n")
 
 
 def classify_attribute(value: str) -> str:
-    """把约束取值归类为官方 ask_attribute 集合（与评估器逻辑镜像，但自包含）。"""
+    """Classify a constraint value into the official ask_attribute set (mirrors the evaluator logic
+        but self-contained)."""
     lowered = (value or "").lower()
     if _BUDGET_RE.search(lowered) or "budget" in lowered:
         return "budget"
@@ -70,29 +71,31 @@ def classify_attribute(value: str) -> str:
 
 
 def split_values(text: str) -> list[str]:
-    """把 'X; Y; Z' 消息拆成多条约束取值。"""
+    """Split a 'X; Y; Z' message into multiple constraint values."""
     return [v.strip() for v in (text or "").split(";") if v.strip()]
 
 
 def constraint_key(value: str) -> str:
-    """约束去重键：规范化 + 去前缀。"""
+    """Constraint dedup key: normalized + prefix-stripped."""
     return normalize(strip_constraint_prefix(value))
 
 
 def group_tokens(value: str, max_tokens: int = 6) -> tuple[str, ...]:
-    """约束值的检索词元组：保留 '%'（如 100% cotton），去停用词，截断防噪声。"""
+    """Query-term tuple for a constraint value: keeps '%' (e.g. 100% cotton), removes stop words,
+        truncates to avoid noise."""
     toks = tokenize(strip_constraint_prefix(value))
     return tuple(dict.fromkeys(toks[:max_tokens]))
 
 
 def phrase_exists(lower_text: str, value: str) -> bool:
-    """约束原文（去前缀、截断）是否作为子串出现在商品文本中。"""
+    """Whether the constraint text (prefix-stripped, truncated) appears as a substring in the
+        product text."""
     key = constraint_key(value)[:180]
     return len(key) >= 3 and key in lower_text
 
 
 def all_tokens_in(lower_text: str, tokens: Iterable[str]) -> bool:
-    """一组 token 是否全部命中商品文本（组内 AND）。"""
+    """Whether all tokens in a group hit the product text (AND within the group)."""
     toks = list(tokens)
     return bool(toks) and all(t in lower_text for t in toks)
 

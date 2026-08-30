@@ -2,7 +2,7 @@
   "meta": {
     "version": "1.0.0",
     "built_by": "scripts/build_index.py",
-    "method": "种子词表 + 目录 title/features 反推计数 + 公开集约束校准（data_1.md 三步法）",
+    "method": "seed vocabulary + catalog title/features reverse counts + public-set constraint calibration (three-step method from data_1.md)",
     "date": "2026-08-28",
     "metadata_v2": {
       "built_from": "vocab(1).json",

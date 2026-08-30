@@ -3,7 +3,7 @@
   "generated_by": "scripts/build_field_mapping.py (manual finalize)",
   "generated_at": "2026-08-29",
   "source_stats": "data/analysis/field_mapping_raw.json",
-  "notes": "属性→去哪找+多严 的静态表。消费方：agent/reranker.py 约束覆盖打分、agent/retriever.py 结构化路由、retrieval_pipeline 通道1。权重来自全量 50k 商品按字段覆盖统计；details.<Key> 命中即高置信（authoritative）。",
+  "notes": "Static table of attribute -> where to look + how strict. Consumers: agent/reranker.py constraint-coverage scoring, agent/retriever.py structured routing, and retrieval_pipeline channel 1. Weights come from full-50k per-field coverage statistics; a hit on details.<Key> is high confidence (authoritative).",
   "attributes": {
     "material": {
       "lookup_fields": [

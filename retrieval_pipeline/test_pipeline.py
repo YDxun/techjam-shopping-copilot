@@ -1,8 +1,11 @@
-﻿"""检索管线演示：构造模拟 session_state，跑通第4-6步完整链路，打印 Top-10 asin。
+"""Retrieval-pipeline demo: build a mock session_state, run the full steps 4-6 chain, and print
+    the Top-10 asins.
 
-运行：python retrieval_pipeline/test_pipeline.py
-（默认使用竞赛冻结目录 data/catalog.jsonl；离线 npy 不存在时稠密通道自动禁用；
- FlagEmbedding 未安装时重排自动降级 fused 排序——演示链路不依赖任何付费 API。）
+Run: python retrieval_pipeline/test_pipeline.py
+(Uses the frozen catalog data/catalog.jsonl by default; the dense channel auto-disables when the
+offline npy is missing;
+ reranking auto-degrades to fused ordering without FlagEmbedding -- the demo chain depends on no
+ paid API.)
 """
 from __future__ import annotations
 
@@ -33,17 +36,18 @@ def show(session: SessionState, pipeline: RetrievalPipeline, label: str) -> None
 
 
 def main() -> None:
-    pipeline = RetrievalPipeline()   # 复用同一实例（索引只建一次）
+    pipeline = RetrievalPipeline()   # reuse one instance (index built once)
 
-    # 场景A：普通购买会话（硬过滤）
+    # scenario A: normal buying session (hard filter)
     show(SessionState(
         constraints={"material": "cotton", "color": "black"},
         recovery_mode=False,
         strategy_config=StrategyConfig(retrieval_pool_size=50),
         user_raw_query="I'm looking for T-Shirts. A key requirement is: cotton.",
-    ), pipeline, "普通模式（第5步-通道1 硬过滤）")
+    ), pipeline, "normal mode (step 5 channel 1 hard filter)")
 
-    # 场景B：RECOVER 模式（连续 miss>=2）→ 惩罚打分 / 同义词 / 变体 / 大候选池
+    # scenario B: RECOVER mode (miss streak >= 2) -> penalty scoring / synonyms / variants / larger
+    # pool
     show(SessionState(
         constraints={"material": "cotton", "color": "black", "budget_max": 40},
         recovery_mode=True,
@@ -54,15 +58,15 @@ def main() -> None:
             enable_synonym=True,
         ),
         user_raw_query="I'm looking for a cotton jumper under $50.",
-    ), pipeline, "RECOVER 模式（惩罚打分+同义词+变体+池100）")
+    ), pipeline, "RECOVER mode (penalty scoring + synonyms + variants + pool 100)")
 
-    # 场景C：override 已清空约束 → 只用 user_raw_query
+    # scenario C: override cleared the constraints -> only user_raw_query
     show(SessionState(
         constraints={},
         recovery_mode=False,
         strategy_config=StrategyConfig(),
         user_raw_query="Actually, ignore my earlier preference. What I need is: leather.",
-    ), pipeline, "override 清空约束（仅原始 query）")
+    ), pipeline, "override cleared constraints (raw query only)")
 
 
 if __name__ == "__main__":

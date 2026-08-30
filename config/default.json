@@ -34,6 +34,7 @@
   "decision": {
     "max_questions": 3,
     "ask_other_first": true,
+  "question_template_mode": "random",
     "ask_utility": {
       "normalization": "clamp_0_1",
       "minimum_ask_utility": 0.2,

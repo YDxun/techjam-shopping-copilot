@@ -80,7 +80,7 @@ def env_with_rerank(enabled: bool = True, candidates: int = 12) -> object:
         llm=SimpleNamespace(
             rerank_enabled=enabled,
             rerank_candidates=candidates,
-            rerank_backend="chat",  # 这些测试测旧 chat LLM 语义重排路径
+            rerank_backend="chat",  # these tests cover the legacy chat LLM semantic-rerank path
         )
     )
 

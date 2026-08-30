@@ -1,8 +1,8 @@
 ﻿{
   "meta": {
     "version": "0.1.0",
-    "description": "人工种子词表（第1步输入）。由 scripts/build_index.py 做目录反推 + 公开集校准后生成最终 vocab.json",
-    "built_from": "data_1.md 任务书 第1步"
+    "description": "Hand-curated seed vocabulary (step-1 input). scripts/build_index.py applies catalog reverse counts + public-set calibration to produce the final vocab.json",
+    "built_from": "data_1.md task spec, step 1"
   },
   "material": {
     "cotton": ["cotton", "100% cotton", "cotton blend", "pure cotton", "soft cotton", "combed cotton", "organic cotton", "pima cotton", "cotton spandex"],

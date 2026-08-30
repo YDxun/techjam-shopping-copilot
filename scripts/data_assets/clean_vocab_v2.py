@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 
 # ============================================================
-# 路径
+# paths
 # ============================================================
 
 INPUT_PATH = Path("vocab_v2.json")
@@ -14,16 +14,16 @@ REPORT_PATH = Path("vocab_cleanup_report.json")
 
 
 # ============================================================
-# 明确确认过的噪声
+# explicitly confirmed noise
 #
-# 注意：
-# 不是只要来自 public_set 就删除。
+# note:
+# originating from the public set alone is not a reason to delete.
 #
-# 必须同时满足：
-# 1. canonical 在对应黑名单
-# 2. 来源仅 public_set
+# all of the following must hold:
+# 1. the canonical is on the matching blacklist
+# 2. its only source is the public set
 # 3. product_count == 0
-# 4. 没有 metadata_structured 支持
+# 4. no metadata_structured support
 # ============================================================
 
 NOISE = {
@@ -99,20 +99,20 @@ NOISE = {
         "strong",
         "registered",
     },
-    # Size 不做大规模黑名单清洗。
+    # Size is not bulk-cleaned by blacklist.
     #
-    # 前面已经做了 context-aware matcher，
-    # 所以这里保持保守。
+    # a context-aware matcher already ran,
+    # so stay conservative here.
     "size": set(),
-    # Style 暂时不动。
+    # Style is left untouched for now.
     "style": set(),
-    # Brand 不动。
+    # Brand is left untouched.
     "brand": set(),
 }
 
 
 # ============================================================
-# 工具
+# helpers
 # ============================================================
 
 
@@ -139,7 +139,7 @@ def save_json(path, data):
 
 
 # ============================================================
-# 判断来源
+# determine the source
 # ============================================================
 
 
@@ -150,7 +150,7 @@ def get_sources(info):
 
     sources = info.get("sources")
 
-    # metadata 新增项使用 source
+    # metadata-added terms carry a source
     if sources is None:
         sources = info.get("source")
 
@@ -167,7 +167,7 @@ def get_sources(info):
 
 
 # ============================================================
-# 判断是否有 metadata support
+# whether metadata support exists
 # ============================================================
 
 
@@ -216,7 +216,7 @@ def get_product_count(info):
 
 
 # ============================================================
-# 是否只有 public_set 来源
+# whether the only source is the public set
 # ============================================================
 
 
@@ -228,7 +228,7 @@ def public_set_only(info):
 
 
 # ============================================================
-# 是否允许删除
+# whether deletion is allowed
 # ============================================================
 
 
@@ -236,19 +236,19 @@ def should_remove(attr, canonical, info):
 
     canonical_norm = normalize(canonical)
 
-    # 1. 必须在明确黑名单
+    # 1. must be on an explicit blacklist
     if canonical_norm not in NOISE.get(attr, set()):
         return (False, "not_in_noise_list")
 
-    # 2. metadata 支持则绝不删
+    # 2. never delete with metadata support
     if has_metadata_support(info):
         return (False, "has_metadata_support")
 
-    # 3. catalog 中真实出现过则不删
+    # 3. never delete if it really appears in the catalog
     if get_product_count(info) > 0:
         return (False, "has_catalog_product_support")
 
-    # 4. 必须只有 public_set 来源
+    # 4. the only source must be the public set
     if not public_set_only(info):
         return (False, "not_public_set_only")
 
@@ -256,10 +256,10 @@ def should_remove(attr, canonical, info):
 
 
 # ============================================================
-# 读取
+# load
 # ============================================================
 
-print("读取 vocab_v2.json...")
+print("loading vocab_v2.json...")
 
 original = load_json(INPUT_PATH)
 
@@ -295,7 +295,7 @@ report = {
 
 
 # ============================================================
-# 清洗
+# clean
 # ============================================================
 
 for attr, noise_terms in NOISE.items():
@@ -304,7 +304,7 @@ for attr, noise_terms in NOISE.items():
     if not isinstance(dictionary, dict):
         continue
 
-    # canonical normalize -> 实际 key
+    # canonical normalize -> actual key
     normalized_keys = {normalize(key): key for key in dictionary.keys()}
 
     for noise_term in sorted(noise_terms):
@@ -352,10 +352,10 @@ for attr, noise_terms in NOISE.items():
 
 
 # ============================================================
-# 清洗后 synonym 冲突检查
+# synonym-conflict check after cleaning
 #
-# 同一个 attribute 内：
-# synonym / canonical term 不应该映射多个 canonical。
+# within the same attribute:
+# a synonym/canonical term must not map to multiple canonicals.
 # ============================================================
 
 term_owners = {}
@@ -401,7 +401,7 @@ for attr, dictionary in dictionaries.items():
 
 
 # ============================================================
-# 更新 provenance
+# update provenance
 # ============================================================
 
 cleaned.setdefault("meta", {})
@@ -416,7 +416,7 @@ cleaned["meta"]["cleanup"] = {
 
 
 # ============================================================
-# 最终 summary
+# final summary
 # ============================================================
 
 removed_by_attr = {}
@@ -441,7 +441,7 @@ report["summary"] = {
 
 
 # ============================================================
-# 保存
+# save
 # ============================================================
 
 save_json(OUTPUT_PATH, cleaned)
@@ -460,14 +460,14 @@ print("VOCAB V2 CLEANUP COMPLETE")
 print("=" * 75)
 
 
-print(f"输入：{INPUT_PATH}")
+print(f"input: {INPUT_PATH}")
 
-print(f"输出：{OUTPUT_PATH}")
+print(f"output: {OUTPUT_PATH}")
 
-print(f"报告：{REPORT_PATH}")
+print(f"report: {REPORT_PATH}")
 
 
-print("\n清洗摘要：")
+print("\ncleanup summary:")
 
 print(f"removed:   {report['summary']['removed']}")
 
@@ -478,14 +478,14 @@ print(f"not found: {report['summary']['not_found']}")
 print(f"duplicate terms: {report['summary']['duplicate_terms_after_cleanup']}")
 
 
-print("\n按属性删除：")
+print("\ndeleting by attribute:")
 
 for attr, count in removed_by_attr.items():
     print(f"{attr:<15}{count:>5}")
 
 
 # ============================================================
-# 删除内容预览
+# deletion preview
 # ============================================================
 
 print("\nRemoved canonicals:")
@@ -496,15 +496,15 @@ for row in report["removed"]:
 
 
 # ============================================================
-# 冲突警告
+# conflict warnings
 # ============================================================
 
 if duplicate_terms:
     print()
-    print("WARNING: 仍存在 synonym/canonical ownership 冲突。")
+    print("WARNING: synonym/canonical ownership conflicts remain.")
 
-    print("这些冲突没有被自动修改，请查看 vocab_cleanup_report.json。")
+    print("these conflicts were not auto-fixed; see vocab_cleanup_report.json.")
 
 
 print()
-print("原 vocab_v2.json 未修改。")
+print("the original vocab_v2.json was not modified.")

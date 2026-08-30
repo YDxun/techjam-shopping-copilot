@@ -1,4 +1,5 @@
-"""自主能力（环境自感知 + 自适应决策 + LLM 回退）单元测试。"""
+"""Unit tests for autonomous capability (environment awareness + adaptive decisions + LLM
+    fallback)."""
 
 from __future__ import annotations
 
@@ -11,7 +12,7 @@ from llm.base import DisabledLLMClient, LLMResult, LLMState, LLMStatus
 
 
 class _FakeLLM:
-    """可编程的假 LLM 客户端：控制状态与返回内容，无网络。"""
+    """Programmable fake LLM client: controls state and returned content; no network."""
 
     def __init__(self, state: LLMState = LLMState.AVAILABLE, reply: str = "") -> None:
         self._state = LLMStatus(state, "deepseek", "deepseek-chat")
@@ -74,7 +75,7 @@ class RuntimeControllerTest(unittest.TestCase):
         env = EnvConfig.from_env(environ={"LLM_INTENT_ENABLE": "true"})
         d = RuntimeController(env, self._profile("available")).decide()
         self.assertTrue(d.use_llm_intent)
-        self.assertFalse(d.use_llm_clarify)  # 未开启
+        self.assertFalse(d.use_llm_clarify)  # not enabled
 
     def test_retrieval_auto_falls_back_to_bm25(self) -> None:
         env = EnvConfig.from_env(environ={"RETRIEVAL_BACKEND": "auto"})

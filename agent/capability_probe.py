@@ -1,19 +1,27 @@
-"""环境与模型能力探测（Agent 自主决策的"感知层"）。
+"""Environment & model capability probe (the "perception layer" of the agent's autonomous
+    decisions).
 
-探测项：
-- 设备：cuda / cpu（torch 可用时）
-- LLM：对配置的 provider（deepseek/openai/none）执行健康检查 initialize()，
-  得到 available / disabled / unavailable 三态（真实探测网络+鉴权，超时/熔断由客户端保证）；
-  无 key → disabled（不发网络请求）。
-- 稠密检索（BLaIR）：transformers/sentence-transformers 任一可导入，且离线商品向量
-  npy（data/offline_blair_embeds.npy，scripts/encode_catalog_blair.py 产物）存在。
-  模型实际加载仍由 retriever 懒加载并失败回退（环境自感知：缺任一环节 → 回退 BM25）。
-- 交叉编码重排：FlagEmbedding 可导入，且 bge-reranker-v2-m3 已本地缓存或可下载
-  （模型实际加载失败仍由 reranker 降级 fused 排序）。
-- 可选网络探测：LLM 未配置时，若 CAPABILITY_NETWORK_PROBE=1 则用 httpx 探测外网连通性。
+Probed capabilities:
+- Device: cuda / cpu (when torch is importable)
+- LLM: run the health-check initialize() against the configured provider (deepseek/openai/none),
+   yielding available / disabled / unavailable (real network + auth probe; timeout/circuit-break
+   handled by the client);
+   no key -> disabled (no network request).
+- Dense retrieval (BLaIR): transformers or sentence-transformers importable AND the offline
+product-vector
+  npy (data/offline_blair_embeds.npy, produced by scripts/encode_catalog_blair.py) exists.
+  Actual model loading stays lazy in the retriever with failure fallback (environment-aware: any
+  missing piece -> fall back to BM25).
+- Cross-encoder rerank: FlagEmbedding importable AND bge-reranker-v2-m3 already cached locally or
+downloadable
+  (a real load failure still degrades to fused-order ranking in the reranker).
+- Optional network probe: when the LLM is unconfigured and CAPABILITY_NETWORK_PROBE=1, probe
+external connectivity with httpx.
 
-设计定位（团队特色）：Agent 启动时做一次探测，runtime_controller 依据探测结果
-自主决定"LLM/模型能不能用、用不用"，全部可配置开关、默认关、失败回退规则。
+Design (team highlight): the agent probes once at startup; runtime_controller then decides
+autonomously
+"whether the LLM/models are usable and whether to use them"; all configurable switches, off by
+default, rule fallback on failure.
 """
 
 from __future__ import annotations
@@ -38,24 +46,24 @@ def _spec_available(name: str) -> bool:
 
 @dataclass
 class CapabilityProfile:
-    """一次探测的完整结果。"""
+    """Complete result of one probe."""
 
     device: str = "cpu"  # cuda / cpu
-    llm_provider: str = "none"  # 配置的 provider
-    llm_model: str = ""  # 配置的模型名
+    llm_provider: str = "none"  # configured provider
+    llm_model: str = ""  # configured model name
     llm_state: str = "disabled"  # available / disabled / unavailable
-    llm_error: str = ""  # 失败原因（脱敏）
-    sdk_available: bool = False  # openai SDK 可导入
-    transformers_available: bool = False  # transformers 可导入（BLaIR 查询编码）
-    dense_encoder_available: bool = False  # transformers / sentence-transformers 任一可导入
-    blair_npy_ready: bool = False  # 离线商品向量 npy 存在（预先 BLaIR 编码产物）
-    dense_available: bool = False  # 稠密通道真正可用（编码器 + npy 都在）
-    reranker_available: bool = False  # FlagEmbedding 可导入 + 模型可获取
-    reranker_model_cached: bool = False  # bge-reranker-v2-m3 是否已本地缓存
-    rerank_backend: str = "text"  # 重排后端 text/chat/auto
-    text_rerank_available: bool = False  # qwen3-rerank MaaS 真实探测可用
-    text_rerank_error: str = ""  # 探测失败原因（脱敏）
-    network_available: bool = False  # 外网连通性（探测到）
+    llm_error: str = ""  # failure reason (sanitized)
+    sdk_available: bool = False  # openai SDK importable
+    transformers_available: bool = False  # transformers importable (BLaIR query encoding)
+    dense_encoder_available: bool = False  # transformers or sentence-transformers importable
+    blair_npy_ready: bool = False  # offline product-vector npy exists (pre-computed BLaIR encoding)
+    dense_available: bool = False  # dense channel truly usable (encoder + npy both present)
+    reranker_available: bool = False  # FlagEmbedding importable + model obtainable
+    reranker_model_cached: bool = False  # whether bge-reranker-v2-m3 is cached locally
+    rerank_backend: str = "text"  # rerank backend text/chat/auto
+    text_rerank_available: bool = False  # qwen3-rerank MaaS truly probed available
+    text_rerank_error: str = ""  # probe failure reason (sanitized)
+    network_available: bool = False  # external connectivity (probed)
     notes: list[str] = field(default_factory=list)
 
     @property
@@ -77,7 +85,7 @@ class CapabilityProfile:
 
 
 class CapabilityProbe:
-    """启动期一次性环境探测（结果缓存，避免重复健康检查）。"""
+    """One-time environment probe at startup (result cached to avoid repeated health checks)."""
 
     def __init__(self, env: EnvConfig, llm_client: LLMClient) -> None:
         self.env = env
@@ -90,25 +98,29 @@ class CapabilityProbe:
         profile = CapabilityProfile()
         profile.device = self._detect_device()
 
-        # SDK / 模型库可用性（导入级探测，模型实际加载仍由下游懒加载+回退）
+        # SDK / model-lib availability (import-level probe; actual model loading stays lazy
+        # downstream with fallback)
         profile.sdk_available = _spec_available("openai")
         profile.transformers_available = _spec_available("transformers")
         profile.dense_encoder_available = profile.transformers_available or _spec_available(
             "sentence_transformers"
         )
         profile.blair_npy_ready = self._blair_npy_exists()
-        # 稠密通道：编码器 + 离线商品向量 都就绪才算可用（BLaIR 稠密检索）
+        # Dense channel: usable only when the encoder + offline product vectors are both ready
+        # (BLaIR dense retrieval)
         profile.dense_available = profile.dense_encoder_available and profile.blair_npy_ready
-        # 重排模型可用性：RexReranker/Qwen3-Reranker（生成式）→ transformers 可导入；
-        # bge-reranker-v2-m3 等交叉编码 → FlagEmbedding 可导入。
+        # Reranker-model availability: RexReranker/Qwen3-Reranker (generative) -> transformers
+        # importable;
+        # cross-encoders like bge-reranker-v2-m3 -> FlagEmbedding importable.
         if is_generation_reranker(self.env.reranker_model):
             profile.reranker_available = _spec_available("transformers")
         else:
             profile.reranker_available = _spec_available("FlagEmbedding")
         profile.reranker_model_cached = self._reranker_model_cached()
 
-        # qwen3-rerank 文本重排（MaaS）：backend=text/auto 时做真实探测
-        # （key/base_url 缺失→disabled 不发网络；配置了但调用失败→unavailable）
+        # qwen3-rerank text rerank (MaaS): real probe when backend is text/auto
+        # (missing key/base_url -> disabled, no network; configured but failing calls ->
+        # unavailable)
         profile.rerank_backend = self.env.llm.rerank_backend
         if profile.rerank_backend in ("text", "auto"):
             try:
@@ -120,11 +132,11 @@ class CapabilityProbe:
                 st = rc.initialize()
                 profile.text_rerank_available = st.state == RerankState.AVAILABLE
                 profile.text_rerank_error = st.error_message
-            except Exception as exc:  # 探测本身异常不阻塞启动
+            except Exception as exc:  # a probe exception never blocks startup
                 profile.text_rerank_available = False
                 profile.text_rerank_error = str(exc)[:120]
 
-        # LLM 健康检查（真实网络+鉴权探测；无 key 立即 disabled，不发请求）
+        # LLM health check (real network + auth probe; no key -> immediately disabled, no request)
         status = self.llm_client.initialize()
         profile.llm_provider = status.provider or self.env.llm_backend
         profile.llm_model = status.model or self.env.llm_model
@@ -132,13 +144,13 @@ class CapabilityProbe:
         profile.llm_error = status.error_message or ""
         profile.network_available = profile.llm_available
 
-        # 可选外网探测（LLM 不可用时仍想了解网络状态）
+        # Optional external-network probe (still learn network status when the LLM is unavailable)
         if not profile.llm_available and _network_probe_enabled():
             profile.network_available = self._network_probe()
 
         profile.notes.append(
-            "LLM 可用性由客户端健康检查决定；稠密通道=BLaIR查询编码器+离线npy双就绪；"
-            "重排=FlagEmbedding可导入（加载失败仍会回退 fused 排序）"
+            "LLM availability is decided by the client health check; dense channel requires both the BLaIR query encoder and the offline npy;"  # noqa: E501
+            "rerank requires FlagEmbedding importable (load failures still fall back to fused ordering)"  # noqa: E501
         )
         self._profile = profile
         logger.info("[capability] %s", profile.summary())
@@ -154,7 +166,8 @@ class CapabilityProbe:
             return "cpu"
 
     def _blair_npy_exists(self) -> bool:
-        """离线商品向量 npy 是否已生成（scripts/encode_catalog_blair.py 产物）。"""
+        """Whether the offline product-vector npy exists (output of
+            scripts/encode_catalog_blair.py)."""
         from pathlib import Path
 
         path = Path(self.env.blair_offline_embedding_path)
@@ -162,7 +175,8 @@ class CapabilityProbe:
         return emb.exists()
 
     def _reranker_model_cached(self) -> bool:
-        """配置的重排模型是否已下载到本地 HF 缓存（可离线加载）。"""
+        """Whether the configured reranker model is already in the local HF cache (loadable
+            offline)."""
         try:
             from huggingface_hub import scan_cache_dir
 

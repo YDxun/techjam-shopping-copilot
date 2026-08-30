@@ -1,13 +1,15 @@
-﻿"""官方入口：直接复用新 Agent（避免官方评估器跑到旧 BM25 基线）。
+"""Official entrypoint: directly re-exports the new Agent (so the official evaluator never runs
+    the old BM25 baseline).
 
-官方评估器 `evaluator/local_evaluator.py` 固定从本模块导入 `Agent`：
+The official evaluator `evaluator/local_evaluator.py` always imports `Agent` from this module:
     from starter.agent import Agent
 
-此处仅做"再导出"（re-export），不改动官方评估器任何一行。
-新的完整实现位于 `agent/main_agent.py`；旧 BM25 基线保留在 git 历史中。
+this module only re-exports; not a single line of the official evaluator is changed.
+The full implementation lives in `agent/main_agent.py`; the old BM25 baseline stays in git history.
 
-注意：依赖模块（agent/dialogue/、agent/capability_probe.py、agent/runtime_controller.py 等）
-必须随提交包一起提供，否则干净检出下本入口 import 会失败。
+Note: the dependency modules (agent/dialogue/, agent/capability_probe.py,
+agent/runtime_controller.py etc.)
+must ship with the submission, otherwise this entrypoint fails to import in a clean checkout.
 """
 from __future__ import annotations
 

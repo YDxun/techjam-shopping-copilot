@@ -26,8 +26,10 @@ class StateReducer:
         if max_evidence_length <= 0:
             raise ValueError("max_evidence_length must be > 0")
         self.max_evidence_length = max_evidence_length
-        # 保守模式（默认）：override 时旧偏好降级为 soft 弱信号保留（目标商品往往同时满足新旧约束，
-        # 旧信号有助于排序，与 0.995 HR 基线行为一致）；override_erase=True 时激进清空旧约束。
+        # Conservative mode (default): on override, old preferences downgrade to weak soft signals
+        # and stay (targets often satisfy both old and new constraints,
+        # and the old signals help ranking, matching the 0.995 HR baseline); override_erase=True
+        # clears old constraints aggressively.
         self.override_erase = override_erase
 
     def new_state(self, session_id: str, user_profile: dict | None) -> DialogueState:
@@ -59,10 +61,13 @@ class StateReducer:
                 removed.extend(active)
                 active = []
             else:
-                # 保守保留：旧 hard 约束降级为 soft 弱信号。override 时旧约束多数本就是 soft
-                # （如 "Buckle closure"），且目标商品同时含新旧值文本——旧约束原始 token 是
-                # 复合信号，A/B 证明剔除会掉 MRR（见 README override 设计）。
-                # 同义词扩展在 intent_router 里按 intent_version 门控，override 后停止。
+                # Conservative keep: old hard constraints downgrade to soft weak signals. During an
+                # override, most old constraints are already soft
+                # (e.g. "Buckle closure"), and the target contains both old and new value text --
+                # the old constraint's raw tokens are
+                # a compound signal; A/B shows dropping them hurts MRR (see README override design).
+                # Synonym expansion is gated by intent_version in intent_router and stops after an
+                # override.
                 active = [
                     replace(c, strength=ConstraintStrength.SOFT) if c.hardness == 2 else c
                     for c in active

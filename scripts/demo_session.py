@@ -1,12 +1,12 @@
-"""竞赛交付物：Demo 会话（赛题硬性要求）。
+"""Competition deliverable: demo session (hard task requirement).
 
-用官方评估器跑 1 个 public 会话，逐轮打印
+Runs one public session through the official evaluator, printing per-turn
 [turn / user_message / ask_attribute / message / top-10 parent_asin]，
-并把逐字日志保存到 docs/demo_session.log。
+and saving the verbatim log to docs/demo_session.log.
 
-不改评估器：复用 evaluator.local_evaluator 的 initial_message / customer_reply /
-materialize_hidden_fields / coarse_category / normalize_recommendations（只调用）。
-用法：python scripts/demo_session.py [--index 0] [--out docs/demo_session.log]
+Does not modify the evaluator: reuses evaluator.local_evaluator's initial_message / customer_reply /
+materialize_hidden_fields / coarse_category / normalize_recommendations (only calls them).
+Usage: python scripts/demo_session.py [--index 0] [--out docs/demo_session.log]
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ if str(ROOT) not in sys.path:
 
 from agent.main_agent import Agent  # noqa: E402
 from config.env_config import EnvConfig  # noqa: E402
-from evaluator.local_evaluator import (  # noqa: E402 官方评估器（只调用，不修改）
+from evaluator.local_evaluator import (  # noqa: E402 official evaluator (only called, never modified)
     catalog_index,
     coarse_category,
     customer_reply,
@@ -37,7 +37,7 @@ MAX_TURNS = 10
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--index", type=int, default=0, help="public 会话下标（默认 0）")
+    ap.add_argument("--index", type=int, default=0, help="public session index (default 0)")
     ap.add_argument("--out", default=str(ROOT / "docs" / "demo_session.log"))
     args = ap.parse_args()
 
@@ -63,9 +63,9 @@ def main() -> int:
     )
 
     lines: list[str] = []
-    lines.append(f"# Demo 会话（官方评估器，public 会话 {sample['sample_id']}）")
-    lines.append(f"# 场景: {sample['scenario_type']} | 目标: {target}")
-    lines.append(f"# 用户画像: {str(sample['user_profile'])[:200]}")
+    lines.append(f"# Demo session (official evaluator, public session {sample['sample_id']})")
+    lines.append(f"# Scenario: {sample['scenario_type']} | Target: {target}")
+    lines.append(f"# User profile: {str(sample['user_profile'])[:200]}")
     hit = None
 
     for turn in range(1, MAX_TURNS + 1):
@@ -99,11 +99,11 @@ def main() -> int:
         else:
             user_message, boundary_used = customer_reply(effective, ask, disclosed, boundary_used)
 
-    lines.append(f"\n# 结果: {'HIT at rank ' + str(hit) if hit else 'MISS'} (target={target})")
+    lines.append(f"\n# Result: {'HIT at rank ' + str(hit) if hit else 'MISS'} (target={target})")
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    print(f"\n日志写入: {out}")
+    print(f"\nLog written: {out}")
     return 0
 
 

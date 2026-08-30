@@ -1,8 +1,10 @@
-﻿"""数据访问：仅加载离线预计算数据（商品目录 + BLaIR 商品向量 npy）。
+"""Data access: only loads offline pre-computed data (product catalog + BLaIR product-vector npy).
 
-重点提醒：
-- BLaIR 商品向量由后续"离线预处理脚本"生成（本模块不写商品全量向量化逻辑）；
-- 本文件只提供"加载"接口；推理阶段只对用户查询文本做 embedding 编码（见 retriever_pipeline）。
+Important:
+- BLaIR product vectors are produced by a separate "offline preprocessing script" (this module never
+implements full product vectorization);
+- this file only provides "load" interfaces; at inference only the user query text is embedded (see
+retriever_pipeline).
 """
 from __future__ import annotations
 
@@ -16,16 +18,17 @@ logger = logging.getLogger(__name__)
 
 
 class CatalogStore:
-    """竞赛冻结产品目录内存态存储（parent_asin → 元数据 + 检索文本）。"""
+    """In-memory store of the frozen competition catalog (parent_asin -> metadata + retrieval
+        text)."""
 
     def __init__(self, products: dict[str, dict], search_text: dict[str, str]) -> None:
         self.products = products
-        self.search_text = search_text          # asin -> 小写检索文本（title/features/...）
+        self.search_text = search_text          # asin -> lowercase retrieval text (title/features/...)  # noqa: E501
         self.ids = list(products.keys())
         self.id_set = set(products.keys())
 
     def valid_asin(self, asin: str) -> bool:
-        """硬性约束 8：只允许目录内真实 parent_asin。"""
+        """Hard constraint 8: only real parent_asins from the catalog are allowed."""
         return asin in self.id_set
 
     def get(self, asin: str) -> dict | None:
@@ -36,10 +39,10 @@ class CatalogStore:
 
 
 def load_catalog(path: str | Path) -> CatalogStore:
-    """加载竞赛冻结产品目录（只读，不修改）。"""
+    """Load the frozen competition catalog (read-only; never modified)."""
     path = Path(path)
     if not path.exists():
-        raise FileNotFoundError(f"产品目录不存在: {path}（可用 PRODUCT_CATALOG_PATH 指定）")
+        raise FileNotFoundError(f"catalog does not exist: {path} (use PRODUCT_CATALOG_PATH to point elsewhere)")  # noqa: E501
     products: dict[str, dict] = {}
     search_text: dict[str, str] = {}
     with path.open(encoding="utf-8") as handle:
@@ -66,11 +69,11 @@ def _build_search_text(p: dict) -> str:
 
 
 class BlairEmbeddingStore:
-    """BLaIR 商品向量存储：只加载离线预计算 npy，不生成向量。
+    """BLaIR product-vector store: only loads the offline pre-computed npy; never generates vectors.
 
-    npy 文件格式约定（由离线预处理脚本生成）：
-      - embeds.npy : float32 [N, dim]，行序与 asins.npy 一致
-      - asins.npy  : object/str 数组 [N]
+    npy file-format convention (produced by the offline preprocessing script):
+      - embeds.npy : float32 [N, dim], row order matches asins.npy
+      - asins.npy  : object/str array [N]
     """
 
     def __init__(self, matrix: np.ndarray, asins: list[str], asin_index: dict[str, int]) -> None:
@@ -85,26 +88,27 @@ class BlairEmbeddingStore:
 
     @classmethod
     def load(cls, path: str | Path) -> "BlairEmbeddingStore | None":
-        """加载离线商品向量；文件缺失/格式错误返回 None（稠密通道自动禁用）。"""
+        """Load the offline product vectors; missing/malformed -> None (dense channel
+            auto-disabled)."""
         path = Path(path)
         emb_path = path if path.suffix == ".npy" else path.with_suffix(".npy")
         asin_path = emb_path.with_name(emb_path.stem + "_asins.npy")
         if not emb_path.exists():
-            logger.warning("[data_access] 离线商品向量不存在: %s（稠密通道禁用）", emb_path)
+            logger.warning("[data_access] offline product vectors missing: %s (dense channel disabled)", emb_path)  # noqa: E501
             return None
         try:
             matrix = np.load(emb_path, mmap_mode=None)
             if not asin_path.exists():
-                logger.warning("[data_access] asins 映射缺失: %s（稠密通道禁用）", asin_path)
+                logger.warning("[data_access] asins mapping missing: %s (dense channel disabled)", asin_path)  # noqa: E501
                 return None
             asins_raw = np.load(asin_path, allow_pickle=True)
             asins = [str(a) for a in asins_raw.tolist()]
             asin_index = {a: i for i, a in enumerate(asins)}
             if matrix.ndim != 2 or matrix.shape[0] != len(asins):
-                logger.warning("[data_access] 向量矩阵与 asins 行数不一致（稠密通道禁用）")
+                logger.warning("[data_access] vector matrix row count does not match asins (dense channel disabled)")  # noqa: E501
                 return None
             logger.info("[data_access] BLaIR embeds loaded: %d x %d", *matrix.shape)
             return cls(matrix.astype(np.float32), asins, asin_index)
         except Exception as exc:
-            logger.warning("[data_access] 加载离线向量失败: %s（稠密通道禁用）", exc)
+            logger.warning("[data_access] failed to load offline vectors: %s (dense channel disabled)", exc)  # noqa: E501
             return None

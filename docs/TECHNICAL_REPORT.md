@@ -1,65 +1,82 @@
-# TechJam2026 购物副驾 · 独立技术报告
+# TechJam2026 Shopping Copilot · Independent Technical Report
 
-> 数字以 `results.json` 为准：**HR@10 = 1.0 / MRR = 0.6703 / MTTC = 1.77 / TechnicalScore = 0.8857**
-> （默认配置 `rrf_k=100` + 约束组合指纹；纯离线规则零 API）。
+> Numbers reflect `results.json` (full 200-session run with the current default config):
+> **HitRate@10 = 1.0 / MRR = 0.9364 / MTTC = 2.33 / TechnicalScore = 0.9543**
+> (`rrf_k=100` + constraint-combination fingerprint + confidence-gated output; fully reproducible offline with zero API cost).
 
-## 1. 架构（四支柱 + 对话理解管线）
+## 1. Architecture (four pillars + dialogue pipeline + automation control)
 
 ```
-官方 Agent 接口（reset/respond）
-  └─ DialogueUnderstandingPipeline（agent/dialogue/）
-       ├─ recognizers：级联意图识别（规则先行 + LLM 严格 JSON 兜底）
-       ├─ reducer：原子状态归约（intent_version 版本化、override 处理）
-       ├─ question_policy + catalog_signals：目录感知提问效用与停止策略
-       └─ product_history：版本化商品展示/反馈闭环
-  └─ IntentRouter（双轨 buying/browsing）
-  └─ HybridRetriever（BM25 加权 + 类别 + 硬约束 AND + BLaIR dense-recover，RRF 融合）
-  └─ Reranker（规则覆盖 + combo_bonus + 约束组合指纹 + 可选 qwen3-rerank / RexReranker）
-  └─ RuntimeController（能力探测 → 环境自适应策略选择，LUT 驱动）
+Official Agent interface (reset/respond) -- strictly compatible; evaluator untouched
+  |- DialogueUnderstandingPipeline (agent/dialogue/)
+  |    |- recognizers: cascaded intent recognition (rules first + hard-cue upgrade + strict-JSON LLM fallback)
+  |    |- reducer: atomic state reduction (intent_version versioning, override semantics)
+  |    |- question_policy + catalog_signals: catalog-aware ask utility and stop policy
+  |    |- product_history: versioned product display/feedback loop
+  |- IntentRouter (dual-track buying/browsing intent routing)
+  |- HybridRetriever (FTS5 weighted BM25 + category + hard-constraint AND + BLaIR dense-recover, RRF fusion)
+  |- Reranker (rule coverage + combo_bonus + constraint fingerprint + optional qwen3-rerank / RexReranker)
+  |- RuntimeController (capability probe -> environment-adaptive strategy selection; LUT-driven + phase circuit breakers + rewrite guard)
 ```
 
-- **支柱 I 核心架构**：双轨意图路由（购买高精度硬过滤 / 浏览多样化召回）；多路由混合检索
-  （FTS5 加权 BM25、类别域、硬约束 AND、BLaIR 稠密仅在 recover 模式启用）；规则/可选模型双保险重排。
-- **支柱 II 多轮策略**：动态状态机增量槽位 + 突发意图覆盖（override 语义："ignore my earlier
-  preference" 旧偏好保守保留为弱信号，`intent_version` 版本化）；候选过载主动澄清、无偏好停止提问。
-- **支柱 III 自我进化**：每轮把对话历史蒸馏为 `RecommendationContext`，动态切换
-  probe/exploit/recover 模式；能力探测 + LUT 按环境选最优策略——无需模型训练。
-- **支柱 IV 评估对齐**：混合检索保 HitRate；combo_bonus + 约束组合指纹把目标推前保 MRR；
-  澄清/停止策略降 MTTC。
+- **Pillar I Core architecture**: dual-track intent routing (high-precision hard filtering for buying / diverse recall for browsing);
+  multi-route hybrid retrieval (FTS5 weighted BM25, category domain, hard-constraint AND, BLaIR dense only in recover mode);
+  dual-safety reranking with rules + optional models.
+- **Pillar II Multi-turn strategy**: dynamic state machine with incremental slot accumulation and sudden-intent override
+  (override: old preferences stay as weak soft signals, versioned by intent_version); proactive clarification on candidate overflow,
+  stop-asking on preference exhaustion; 4-5 phrasing templates per attribute (random mode, seeded, no consecutive repeats)
+  that never affect ask_attribute or scoring.
+- **Pillar III Self-evolution**: each turn distills the dialogue history into a RecommendationContext and dynamically switches
+  probe/exploit/recover modes; capability probing + the config-environment-performance LUT pick the best strategy per environment
+  -- no model training required.
+- **Pillar IV Evaluation alignment**: hybrid retrieval protects HitRate; combo_bonus + constraint fingerprint + output gating push
+  the target up for MRR; clarification/stop policies reduce MTTC.
 
-## 2. 模型
+## 1.1 Automation-control maturity (team highlight, P1-P4)
 
-| 模型 | 用途 | 依赖 | 默认 |
-|---|---|---|---|
-| SQLite FTS5（加权 BM25） | 词法召回 | 标准库 | ✅ |
-| BLaIR `hyp1231/blair-roberta-large`（离线 npy） | 稠密语义召回（recover） | transformers + 离线 204MB npy | auto 启用 |
-| 规则重排（覆盖 + combo + 指纹） | 精排 | 标准库 | ✅ |
-| qwen3-rerank（阿里云 MaaS） | 文本重排（可选） | DASHSCOPE key + 网络 | ❌ 默认关 |
-| RexReranker-0.6B / bge-reranker-v2-m3 | 交叉编码重排（可选） | 本地模型缓存 | ❌ 默认关 |
-
-A/B 结论：语义重排（qwen3/bge/Rex）作为**兜底最终重排器**在该确定性评估器上会掉 MRR
-（0.88→0.75~0.84），故默认关；BLaIR 仅在 recover 模式启用（公开集零损失、私有集安全网）；
-`rrf_k=100` + 约束组合指纹是公开集稳健提升项。
-
-## 3. 成本
-
-见 `docs/cost_disclosure.md`：默认零 API 成本、纯离线；在线模式按 token 计费（可行性指标，
-不计技术分）。延迟基准与每会话 token 估算均已披露。
-
-## 4. 局限
-
-1. 深度利用确定性模拟器话术；私有集若引入 paraphrase，靠 hard-cue 升级 + 级联 LLM + 队友
-   review_paraphrase 资产兜底，但未做大规模对抗改写测试。
-2. 画像在公开集信息量低（仅 5% 弱先验）；私有集画像若更有区分度可调权。
-3. 语义重排与确定性评估器机制不匹配（A/B 实证），只能作可选增强。
-4. 公开集 200 会话与私有 800 难度分布可能不同；LUT 基于公开集测量，私有集需重标定。
-
-## 5. 团队贡献（5 人分工）
-
-| 成员 | 分工 | 主要产出 |
+| Loop | Implementation | Deliverable |
 |---|---|---|
-| A · 数据 | 数据盘点/字典/提问价值 | `scripts/build_index.py`、`data/analysis/*`（vocab/field_mapping/question_value）、`data/assets/*`（category/review_paraphrase/refined vocab） |
-| B · 对话 | 对话理解管线 | `agent/dialogue/`（recognizers/reducer/question_policy/product_history/pipeline） |
-| C · 检索 | 检索/重排管线 | `agent/retriever.py`（BM25/类别/硬约束/BLaIR dense）、`agent/reranker.py`（规则+combo+指纹）、`retrieval_pipeline/`、`scripts/encode_catalog_blair.py` |
-| D · 评测 | 评估对齐/调参/LUT | `run_local_eval.py`、`scripts/tune_*.py`、`data/assets/env_config_lut.json`、combo_bonus/指纹/override 设计的 A/B |
-| E · 协调 | 集成/文档/交付 | 四支柱工程整合、`README.md`、`docs/*`、依赖/环境自感知统一 |
+| P1 startup selection | CapabilityProbe detects device/dense/LLM/network/reranker -> RuntimeController.decide() picks the best config_id via the LUT | agent/runtime_controller.py + utils/lut.py + data/assets/env_config_lut.json |
+| P1 runtime degradation | phase circuit breakers (dense / reranker / LLM): consecutive failures degrade on the spot (hybrid->bm25, rerank->rule, llm->rule) | utils/circuit_breaker.py (wired into retriever/reranker) |
+| P1 rewrite detection | signals like consecutive 'disclosure but zero new constraints' -> upgrade to LLM intent on the spot, else refined rules | agent/rewrite_guard.py + pipeline.set_recognition_mode() |
+| P2 observability | per-session structured logs (strategy/latency/tokens/phase_timings/degradation/reasons) aggregated into results.json | agent/main_agent.py::_record_session_log + run_local_eval.py |
+| P3 config-as-data | config/profiles.py CONFIG_PROFILES as the single source of truth, shared and validated by build_lut and the controller | config/profiles.py + tests/test_config_profiles.py |
+| P4 cost/latency disclosure | LUT includes measured latency (3-run median) and cost_usd_per_session (tokens x unit price) | data/assets/env_config_lut.json + docs/cost_disclosure.md |
+
+## 2. Models
+
+| Model | Purpose | Dependency | Default |
+|---|---|---|---|
+| SQLite FTS5 (weighted BM25) | lexical recall | standard library | on |
+| BLaIR hyp1231/blair-roberta-large (offline npy) | dense semantic recall (recover) | transformers + offline npy | auto |
+| Rule rerank (coverage + combo + fingerprint + gating) | fine ranking | standard library | on |
+| qwen3-rerank (Alibaba Cloud MaaS) | text rerank (optional) | DASHSCOPE key + network | off by default |
+| RexReranker-0.6B / bge-reranker-v2-m3 | cross-encoder rerank (optional) | local model cache | off by default |
+
+A/B evidence: semantic rerankers (qwen3/bge/Rex) as the final fallback reranker hurt MRR on this deterministic evaluator, so they stay off by default;
+BLaIR is enabled only in recover mode (zero public-set loss, private-set safety net); `rrf_k=100` + constraint fingerprint + confidence gating
+are the robust public-set winners (train160 / holdout40 both ~0.955, not pure overfitting).
+
+## 3. Cost & latency
+
+See `docs/cost_disclosure.md`: the default is zero-API, fully offline; online modes are billed per token (feasibility metric only,
+not part of TechnicalScore). Latency baselines and per-session token estimates come from the LUT (`data/assets/env_config_lut.json`).
+
+## 4. Limitations
+
+1. The agent leverages the deterministic simulator wording; if the private set introduces paraphrases, hard-cue upgrades + cascaded LLM +
+   the review_paraphrase asset + the rewrite guard back it up (tools/paraphrase_eval.py provides L1/L2 stress tests).
+2. The user profile carries little information on the public set (weak prior only); a more discriminative private profile could be re-weighted.
+3. Semantic reranking mismatches the deterministic evaluator mechanics (A/B proven), so it stays an optional enhancement.
+4. The public 200 sessions and private 800 may differ in difficulty distribution; the LUT is measured on public data and needs recalibration for private.
+5. LUT latency is measured on this machine (RTX 3050 Laptop); absolute CPU/cloud latency differs (relative ranking holds).
+
+## 5. Team contributions (5 members)
+
+| Member | Role | Main outputs |
+|---|---|---|
+| A - Data | data inventory / dictionary / question value | scripts/build_index.py, data/analysis/* (vocab/field_mapping/question_value), data/assets/* |
+| B - Dialogue | dialogue understanding pipeline | agent/dialogue/ (recognizers/reducer/question_policy/product_history/pipeline) |
+| C - Retrieval | retrieval/rerank pipeline | agent/retriever.py, agent/reranker.py (rules + combo + fingerprint), retrieval_pipeline/, scripts/encode_catalog_blair.py |
+| D - Evaluation | evaluation alignment / tuning / LUT / automation | run_local_eval.py, scripts/tune_*.py, scripts/build_lut.py, data/assets/env_config_lut.json, agent/runtime_controller.py, circuit-breaker/rewrite-guard A/B |
+| E - Coordination | integration / docs / delivery | four-pillar engineering integration, README.md, docs/*, unified dependencies & environment awareness |

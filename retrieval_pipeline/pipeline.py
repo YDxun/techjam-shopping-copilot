@@ -1,9 +1,8 @@
-"""检索管线编排入口（赛题第4步→第5步→第6步）。
+"""Retrieval-pipeline orchestration entrypoint (task steps 4 -> 5 -> 6).
 
-仅做检索管线；不实现 Agent respond/reset、不实现状态机、不修改评测器。
-上层拿到 reranked_top10 填入 respond() 的 recommendations 字段。
+Pipeline only; no Agent respond/reset, no state machine, no evaluator changes.
+The upper layer fills reranked_top10 into the recommendations field of respond().
 """
-
 from __future__ import annotations
 
 import logging
@@ -20,11 +19,10 @@ logger = logging.getLogger(__name__)
 
 
 class RetrievalPipeline:
-    """第4-6步完整链路：QueryBuilder → RetrieverPipeline → RerankerModule。"""
+    """Full steps 4-6 chain: QueryBuilder -> RetrieverPipeline -> RerankerModule."""
 
-    def __init__(
-        self, catalog_path: str | Path | None = None, blair_path: str | Path | None = None
-    ) -> None:
+    def __init__(self, catalog_path: str | Path | None = None,
+                 blair_path: str | Path | None = None) -> None:
         catalog_path = Path(catalog_path or config.PRODUCT_CATALOG_PATH)
         blair_path = Path(blair_path or config.BLAIR_OFFLINE_EMBEDDING_PATH)
 
@@ -37,14 +35,14 @@ class RetrievalPipeline:
 
     # ------------------------------------------------------------------
     def run(self, session_state: SessionState) -> PipelineOutput:
-        """执行第4-6步，返回 PipelineOutput。"""
-        # 第4步：构建查询
+        """Run steps 4-6 and return PipelineOutput."""
+        # step 4: build the query
         bundle = self.query_builder.build(session_state)
 
-        # 第5步：三通道检索 + RRF 融合
+        # step 5: three-channel retrieval + RRF fusion
         raw_fused = self.retriever.retrieve(bundle, session_state)
 
-        # 第6步：重排（bge-reranker-v2-m3，失败降级 fused 排序）
+        # step 6: rerank (bge-reranker-v2-m3; on failure degrade to fused-order ranking)
         reranked = self.reranker.rerank(raw_fused, bundle.main_query)
 
         return PipelineOutput(
@@ -53,10 +51,9 @@ class RetrievalPipeline:
         )
 
 
-def run_pipeline(
-    session_state: SessionState,
-    catalog_path: str | Path | None = None,
-    blair_path: str | Path | None = None,
-) -> PipelineOutput:
-    """便捷入口：一次性构建并运行（测试/上层可复用同一实例以省去重复建索引）。"""
+def run_pipeline(session_state: SessionState,
+                 catalog_path: str | Path | None = None,
+                 blair_path: str | Path | None = None) -> PipelineOutput:
+    """Convenience entry: build and run in one call (tests/upper layer can reuse one instance to
+        avoid rebuilding the index)."""
     return RetrievalPipeline(catalog_path, blair_path).run(session_state)

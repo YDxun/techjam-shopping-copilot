@@ -22,7 +22,7 @@ from agent.dialogue.models import (
     RecognitionResult,
     RecognitionSource,
 )
-from agent.dialogue.question_policy import QuestionPolicy
+from agent.dialogue.question_policy import QUESTION_MESSAGES, QuestionPolicy
 from config.models import (
     AskUtilityConfig,
     AskUtilityWeights,
@@ -157,6 +157,35 @@ def decision_config(
 
 
 class QuestionPolicyTest(unittest.TestCase):
+    def test_message_for_random_mode_is_reproducible_and_avoids_repeats(self) -> None:
+        decision = QuestionDecision(True, "other", "ask_other_first", 1.0, {})
+
+        def run() -> list[str]:
+            policy = QuestionPolicy(DecisionConfig())
+            messages = [
+                policy.message_for(
+                    decision, DialogueState(session_id="s1", user_profile={}, turn=turn)
+                )
+                for turn in range(1, 9)
+            ]
+            self.assertTrue(all(message in QUESTION_MESSAGES["other"] for message in messages))
+            self.assertTrue(
+                all(left != right for left, right in zip(messages, messages[1:], strict=False))
+            )
+            return messages
+
+        self.assertEqual(run(), run())
+
+    def test_message_for_rotation_mode_rotates_deterministically(self) -> None:
+        policy = QuestionPolicy(DecisionConfig(question_template_mode="rotation"))
+        decision = QuestionDecision(True, "material", "highest_ask_utility", 1.0, {})
+        templates = QUESTION_MESSAGES["material"]
+        for turn in range(1, len(templates) * 2 + 1):
+            message = policy.message_for(
+                decision, DialogueState(session_id="s1", user_profile={}, turn=turn)
+            )
+            self.assertEqual(message, templates[(turn - 1) % len(templates)])
+
     def test_no_more_preferences_is_a_hard_stop(self) -> None:
         state = DialogueState(
             session_id="s1",

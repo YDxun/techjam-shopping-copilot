@@ -1,12 +1,14 @@
 """Paraphrase robustness harness (tools/paraphrase_eval.py).
 
-重放官方会话循环，但对顾客消息施加两层改写（私有集可能出现的自然语言改写）：
-  L0 无改写（基线）
-  L1 模板改写：只改官方模板措辞，约束取值原样保留
-  L2 值同义改写：约束取值用 vocab 同义词替换（如 grey->gray / jumper->sweater）
-衡量 Agent 在改写下的 HR/MRR/MTTC/TS 退化程度。
+Replays the official session loop but applies two layers of paraphrase to customer messages
+(natural-language rewrites the private set may contain):
+  L0 no rewrite (baseline)
+  L1 template rewrite: only the official template wording changes; constraint values stay intact
+  L2 value-synonym rewrite: constraint values are replaced with vocab synonyms (e.g. grey->gray /
+  jumper->sweater)
+Measures how much the agent's HR/MRR/MTTC/TS degrade under paraphrases.
 
-用法（在仓库根）：
+Usage (from the repo root):
   python tools/paraphrase_eval.py --level L1 --llm 0
   python tools/paraphrase_eval.py --level L2 --llm 1 --key <DEEPSEEK_API_KEY>
 """
@@ -111,7 +113,7 @@ def paraphrase_l2(msg, seed):
     if not vocab:
         return out
     dicts = vocab.get("dictionaries", {})
-    # 收集 canonical->首个非自身同义词的映射
+    # build the canonical -> first non-self synonym mapping
     alias = {}
     for entries in dicts.values():
         for canonical, entry in entries.items():
@@ -214,7 +216,7 @@ def run_paraphrase(agent, samples, products, categories, level):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--level", choices=["L0", "L1", "L2"], default="L1")
-    parser.add_argument("--llm", type=int, default=0, help="1=启用 LLM 意图（需 --key）")
+    parser.add_argument("--llm", type=int, default=0, help="1=enable LLM intent (requires --key)")
     parser.add_argument("--key", default="", help="DEEPSEEK_API_KEY")
     parser.add_argument("--limit", type=int, default=0)
     args = parser.parse_args()

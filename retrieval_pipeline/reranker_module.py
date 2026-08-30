@@ -1,11 +1,10 @@
-"""模块3｜重排序（赛题第6步）：BAAI/bge-reranker-v2-m3 交叉编码器重排。
+"""Module 3: reranking (task step 6): BAAI/bge-reranker-v2-m3 cross-encoder rerank.
 
-- 优先 FlagEmbedding 加载 bge-reranker-v2-m3（自动从 HuggingFace 下载）；
-- device 自动选择 cuda / cpu（DEVICE=auto/cpu/cuda）；
-- 捕获 OOM / 模型加载失败 → 直接降级使用融合分 fused_score 排序（硬性约束 3）；
-- 输出 Top-10 唯一 parent_asin（硬性约束 8：目录内 ID）。
+- prefers loading bge-reranker-v2-m3 via FlagEmbedding (auto-downloaded from HuggingFace);
+- device auto-selected cuda / cpu (DEVICE=auto/cpu/cuda);
+- OOM / model-load failures -> directly degrade to fused_score ordering (hard constraint 3);
+- outputs Top-10 unique parent_asins (hard constraint 8: catalog IDs only).
 """
-
 from __future__ import annotations
 
 import logging
@@ -17,56 +16,56 @@ logger = logging.getLogger(__name__)
 
 
 class RerankerModule:
-    """第6步：cross-encoder 精排（失败自动降级）。"""
+    """Step 6: cross-encoder fine ranking (auto-degrade on failure)."""
 
-    def __init__(
-        self, catalog: CatalogStore, model_name: str | None = None, device: str | None = None
-    ) -> None:
+    def __init__(self, catalog: CatalogStore, model_name: str | None = None,
+                 device: str | None = None) -> None:
         self.catalog = catalog
         self.model_name = model_name or config.RERANKER_MODEL_NAME
         self.device = device or config.DEVICE
-        self._model = None  # None=未加载, False=加载失败, 其它=模型实例
+        self._model = None          # None=not loaded, False=load failed, otherwise=model instance
         self._load_model()
 
     # ------------------------------------------------------------------
     def _load_model(self) -> None:
-        """FlagEmbedding 加载 bge-reranker-v2-m3；失败置 False（降级）。"""
+        """Load bge-reranker-v2-m3 via FlagEmbedding; on failure set False (degrade)."""
         try:
             from FlagEmbedding import FlagReranker
-
             device = self._resolve_device()
-            use_fp16 = device == "cuda"
+            use_fp16 = (device == "cuda")
             self._model = FlagReranker(self.model_name, use_fp16=use_fp16, device=device)
             logger.info("[reranker] loaded %s on %s", self.model_name, device)
         except ImportError:
-            logger.warning("[reranker] FlagEmbedding 未安装 → 降级 fused_score 排序")
+            logger.warning("[reranker] FlagEmbedding not installed -> degrade to fused_score ordering")  # noqa: E501
             self._model = False
         except Exception as exc:
-            logger.warning("[reranker] 模型加载失败（%s）→ 降级 fused_score 排序", exc)
+            logger.warning("[reranker] model load failed (%s) -> degrade to fused_score ordering", exc)  # noqa: E501
             self._model = False
 
     def _resolve_device(self) -> str:
         if self.device == "auto":
             try:
                 import torch
-
                 return "cuda" if torch.cuda.is_available() else "cpu"
             except Exception:
                 return "cpu"
         return self.device
 
     # ------------------------------------------------------------------
-    def rerank(self, raw_candidates: list[tuple[str, float]], query_text: str) -> list[str]:
-        """输入融合候选 → 精排 → Top-10 唯一 parent_asin。"""
+    def rerank(self, raw_candidates: list[tuple[str, float]],
+               query_text: str) -> list[str]:
+        """Fused candidates -> fine ranking -> Top-10 unique parent_asins."""
         if not raw_candidates:
             return []
-        # 兜底顺序：融合分降序（模型不可用或重排失败时直接使用）
-        fallback_order = [a for a, _ in sorted(raw_candidates, key=lambda x: x[1], reverse=True)]
+        # fallback order: descending fused score (used directly when the model is unavailable or
+        # rerank fails)
+        fallback_order = [a for a, _ in
+                          sorted(raw_candidates, key=lambda x: x[1], reverse=True)]
 
         if self._model is False or not query_text:
             return self._dedup_top10(fallback_order)
 
-        # 构造 (query, product_text) 对
+        # build (query, product_text) pairs
         pairs: list[tuple[str, str]] = []
         for asin, _ in raw_candidates:
             product = self.catalog.get(asin)
@@ -78,23 +77,18 @@ class RerankerModule:
             return self._dedup_top10(fallback_order)
 
         try:
-            scores = self._score_pairs(pairs)  # cross-encoder 打分
-            ordered = [
-                a
-                for a, _ in sorted(
-                    zip([a for a, _ in raw_candidates], scores, strict=True),
-                    key=lambda x: x[1],
-                    reverse=True,
-                )
-            ]
+            scores = self._score_pairs(pairs)          # cross-encoder scoring
+            ordered = [a for a, _ in
+                       sorted(zip([a for a, _ in raw_candidates], scores, strict=True),
+                              key=lambda x: x[1], reverse=True)]
             return self._dedup_top10(ordered)
         except Exception as exc:
-            # OOM / 其它异常 → 降级
-            logger.warning("[reranker] 重排失败（%s）→ 降级 fused_score 排序", exc)
+            # OOM / other exceptions -> degrade
+            logger.warning("[reranker] rerank failed (%s) -> degrade to fused_score ordering", exc)
             return self._dedup_top10(fallback_order)
 
     def _score_pairs(self, pairs: list[tuple[str, str]]) -> list[float]:
-        """分批调用 FlagReranker.compute_score（无 GPU 时 CPU 自动运行）。"""
+        """Call FlagReranker.compute_score in batches (CPU automatically when no GPU)."""
         scores: list[float] = []
         batch: list[tuple[str, str]] = []
         for pair in pairs:
@@ -125,7 +119,7 @@ class RerankerModule:
 
     @staticmethod
     def _dedup_top10(ordered: list[str]) -> list[str]:
-        """去重 + 目录内校验 + Top-10。"""
+        """Dedup + catalog validation + Top-10."""
         seen: list[str] = []
         for a in ordered:
             if a not in seen:

@@ -1,13 +1,17 @@
-"""Pillar I：多路由混合检索（BM25 / 类别过滤 / 硬约束 AND / 稠密向量），RRF 融合。
+"""Pillar I: multi-route hybrid retrieval (BM25 / category filter / hard-constraint AND / dense
+    vectors) with RRF fusion.
 
-- BM25 路由：SQLite FTS5 + 多字段加权（title/features 高权重）。
-- 类别路由：品类词在 category 字段中的命中过滤。
-- 硬约束路由：对 hard 约束 token 组做 FTS "AND" 查询（索引级交集），
-  保证"必中"候选一定进入池子（提升 HitRate@K）。
-- 稠密路由：BLaIR（hyp1231/blair-roberta-large）离线预计算商品向量 npy +
-  推理阶段只编码用户查询（utils/blair.py，CLS pooling + L2 + 点积）；
-  离线 npy 缺失 / 编码器不可用 / 任何异常 → 自动回退 BM25（环境自感知）。
-- 融合：Reciprocal Rank Fusion（RRF）+ 并集候选池，交由重排模块精排。
+- BM25 route: SQLite FTS5 with multi-field weighting (title/features get higher weight).
+- Category route: filters by category tokens appearing in the category field.
+- Hard-constraint route: FTS "AND" query over the hard-constraint token groups (index-level
+intersection),
+   guaranteeing must-hit candidates enter the pool (raises HitRate@K).
+- Dense route: BLaIR (hyp1231/blair-roberta-large) offline pre-computed product vectors (npy) +
+   at inference only the user query is encoded (utils/blair.py, CLS pooling + L2 + dot product);
+   missing offline npy / unavailable encoder / any exception -> auto-fallback to BM25
+   (environment-aware).
+- Fusion: Reciprocal Rank Fusion (RRF) over the union candidate pool, handed to the reranker for
+fine ranking.
 """
 
 from __future__ import annotations
@@ -24,33 +28,38 @@ from config.env_config import EnvConfig
 from utils import blair as blair_utils
 from utils import session_utils as su
 from utils import shelf as shelf_utils
+from utils.circuit_breaker import PhaseCircuitBreaker
 
 logger = logging.getLogger(__name__)
 
 
 class HybridRetriever:
-    """混合检索器：索引构建一次，每轮多路由召回 + RRF 融合。"""
+    """Hybrid retriever: builds the index once, then per-turn multi-route recall + RRF fusion."""
 
     def __init__(
         self, catalog_path: str | Path, env: EnvConfig | None = None, backend: str | None = None
     ) -> None:
         self.catalog_path = Path(catalog_path)
         self.env = env or EnvConfig.from_env()
-        # backend 优先取显式传入（runtime_controller 已把 auto 解析为 hybrid/bm25）
+        # prefer the explicitly passed backend (runtime_controller already resolved auto ->
+        # hybrid/bm25)
         self.backend = backend or self.env.retrieval_backend
         if self.backend == "auto":
             self.backend = "hybrid" if self._dense_backend_available() else "bm25"
         elif self.backend in ("dense", "hybrid") and not self._dense_backend_available():
-            self.backend = "bm25"  # 环境自适应：BLaIR 稠密不可用自动回退 BM25
+            self.backend = "bm25"  # environment-aware: auto-fallback to BM25 when BLaIR dense is unavailable  # noqa: E501
         self._conn = sqlite3.connect(":memory:")
         self._products: dict[str, dict] = {}
         self._text_lower: dict[str, str] = {}
         self._cat_lower: dict[str, str] = {}
         self._shelf_of: dict[str, str] = {}
         self._by_shelf: dict[str, list[str]] = {}
-        self._dense = None  # 惰性加载的稠密模型
+        self._dense = None  # lazily loaded dense model
+        self._dense_breaker = PhaseCircuitBreaker(
+            "dense", failure_threshold=2
+        )  # P1: trips after consecutive failures -> hybrid -> bm25
         self._dense_matrix = None
-        self._retrieval_cfg = self.env.retrieval  # Step1：检索旋钮进 config
+        self._retrieval_cfg = self.env.retrieval  # Step 1: retrieval knobs moved into config
         self._bm25_weights_sql = (
             "bm25(products, "
             + ", ".join(str(float(w)) for w in self._retrieval_cfg.bm25_field_weights)
@@ -60,7 +69,7 @@ class HybridRetriever:
 
     # ------------------------------------------------------------------
     def _build_index(self) -> None:
-        """FTS5 全文索引（多字段加权），并缓存商品文本用于覆盖度匹配。"""
+        """FTS5 full-text index (multi-field weighted); caches product text for coverage."""
         cur = self._conn.cursor()
         cur.execute(
             "CREATE VIRTUAL TABLE products USING fts5("
@@ -90,7 +99,8 @@ class HybridRetriever:
         if batch:
             cur.executemany("INSERT INTO products VALUES (?,?,?,?,?,?,?)", batch)
         self._conn.commit()
-        # 货架索引：turn-1 品类 -> 候选货架（赛题机制：目标必在货架内，过滤零召回损失）
+        # Shelf index: turn-1 category -> candidate shelf (task mechanic: the target is always
+        # inside the shelf, so filtering costs zero recall)
         self._shelf_of, self._by_shelf = shelf_utils.build_shelf_index(self._products.values())
         logger.info(
             "[retriever] indexed %d products (backend=%s)", len(self._products), self.backend
@@ -103,11 +113,14 @@ class HybridRetriever:
         return importlib.util.find_spec(name) is not None
 
     def _dense_backend_available(self) -> bool:
-        """环境自感知：BLaIR 稠密通道是否真正可用（编码器可导入 + 离线 npy 存在）。
+        """Environment awareness: whether the BLaIR dense channel is truly usable (encoder
+            importable + offline npy present).
 
-        查询编码模型可用（transformers/sentence-transformers 任一）且离线商品向量
-        文件存在 → 稠密通道可用；否则回退 BM25。不做模型实际加载（避免启动开销，
-        实际加载失败仍由 _ensure_dense 兜底回退）。
+        The query encoder is importable (transformers or sentence-transformers) and the offline
+        product vectors
+        file exists -> dense channel usable; otherwise fall back to BM25. No real model loading here
+        (avoids startup cost;
+        actual load failures are still caught by _ensure_dense).
         """
         enc_ok = self._spec_available("transformers") or self._spec_available(
             "sentence_transformers"
@@ -136,16 +149,19 @@ class HybridRetriever:
         mode: str = "probe",
         shelf: str | None = None,
     ) -> list[dict]:
-        """多路由召回 + RRF 融合，返回候选（parent_asin + 融合分 + 路由命中标记）。"""
+        """Multi-route recall + RRF fusion; returns candidates (parent_asin + fusion score +
+            route-hit flags)."""
         pool: dict[str, dict] = {}
         self._route_bm25(route, pool, top_k=top_k * self._retrieval_cfg.bm25_limit_mult)
         self._route_category(route, pool, top_k=top_k)
-        self._route_constraints(route, pool, top_k=top_k)  # 硬约束 AND（保命中）
+        self._route_constraints(route, pool, top_k=top_k)  # hard-constraint AND (guarantees hits)
         if self.backend in ("dense", "hybrid"):
             self._route_dense(route, pool, top_k=top_k, mode=mode)
 
-        # 货架硬过滤（可选）：只保留品类货架内商品（目标必在货架内，零召回损失）。
-        # 匹配失败必须回退"不过滤"，任何异常都不能让整场 miss。
+        # Shelf hard filter (optional): keep only products inside the category shelf (target is
+        # always inside, zero recall loss).
+        # On any matching failure we must fall back to "no filter" -- no exception may miss the
+        # whole session.
         if shelf:
             try:
                 shelf_key = shelf_utils.match_shelf(shelf, self._by_shelf)
@@ -157,7 +173,7 @@ class HybridRetriever:
         ranked = sorted(pool.values(), key=lambda x: x["rrf"], reverse=True)
         return ranked[:top_k]
 
-    # -- 路由 1：BM25 多字段加权 ------------------------------------------
+    # -- Route 1: weighted multi-field BM25 ------------------------------------------
     def _route_bm25(self, route: IntentRoute, pool: dict, top_k: int) -> None:
         terms = route.query_terms
         if not terms:
@@ -174,7 +190,7 @@ class HybridRetriever:
         for rank, (asin,) in enumerate(rows, start=1):
             self._accumulate(pool, str(asin), 1.0 / (self._retrieval_cfg.rrf_k + rank), "bm25")
 
-    # -- 路由 2：类别过滤（品类域命中） ------------------------------------
+    # -- Route 2: category filter (domain hit) ------------------------------------
     def _route_category(self, route: IntentRoute, pool: dict, top_k: int) -> None:
         if not route.category_tokens:
             return
@@ -188,7 +204,8 @@ class HybridRetriever:
         for rank, (asin, _) in enumerate(hits[:top_k], start=1):
             self._accumulate(pool, asin, 1.0 / (self._retrieval_cfg.rrf_k + rank), "category")
 
-    # -- 路由 3：硬约束 AND（保证必中候选进池，Pillar I 高精度过滤） ----------
+    # -- Route 3: hard-constraint AND (guarantees must-hit candidates in pool; Pillar I precision
+    # filtering) ----------
     def _route_constraints(self, route: IntentRoute, pool: dict, top_k: int) -> None:
         for group in route.hard_groups:
             if not group:
@@ -203,7 +220,7 @@ class HybridRetriever:
                 continue
             for rank, (asin,) in enumerate(rows, start=1):
                 asin = str(asin)
-                # 与品类域交叉过滤（缩小 + 提升命中精度）
+                # cross-filter with the category domain (narrows the pool and raises precision)
                 if route.category_tokens:
                     frac = sum(
                         1 for t in route.category_tokens if t in self._cat_lower.get(asin, "")
@@ -216,15 +233,18 @@ class HybridRetriever:
                     1.0 / (self._retrieval_cfg.rrf_constraint_k + rank) + 0.1,
                     "constraint",
                 )
-        # 轻权重"召回补齐"路由：'（group）AND （cat1 OR cat2）'，低 RRF 权重，
-        # 只把此前被挤出 LIMIT 的强相关候选补进池（Pillar I 召回保障），不扰动主流排序
+        # Low-weight "recall top-up" route: '(group) AND (cat1 OR cat2)' with a low RRF weight,
+        # it only tops up strongly relevant candidates that were pushed out of LIMIT (Pillar I
+        # recall guarantee) without disturbing the main order
         self._route_constraint_recall(route, pool, top_k)
 
     def _route_constraint_recall(self, route: IntentRoute, pool: dict, top_k: int) -> None:
-        """品类折进 SQL 的硬约束召回：'(group) AND (cat1 OR cat2)'，ORDER BY bm25。
+        """Hard-constraint recall with the category folded into SQL: '(group) AND (cat1 OR cat2)',
+            ORDER BY bm25.
 
-        解决高频约束词（如 water resistant）命中过多、目标被 LIMIT 挤出池的问题；
-        低 RRF 权重（1/(60+rank)）保证只补漏、不反客为主。
+        Solves high-frequency constraint words (e.g. water resistant) matching too much and the
+        target being pushed out of the pool by LIMIT;
+        the low RRF weight (1/(60+rank)) ensures it only tops up misses and never dominates.
         """
         if not route.category_tokens:
             return
@@ -250,16 +270,20 @@ class HybridRetriever:
                     "constraint_recall",
                 )
 
-    # -- 路由 4：稠密向量（可选，离线本地 embedding） -----------------------
+    # -- Route 4: dense vectors (optional, offline local embeddings) -----------------------
     def _route_dense(self, route: IntentRoute, pool: dict, top_k: int, mode: str = "probe") -> None:
-        """BLaIR 稠密语义召回（模式自适应 + 硬约束回验）。
+        """BLaIR dense semantic recall (mode-adaptive + hard-constraint re-check).
 
-        - 仅 recover（连续 miss≥2，需扩召回）启用：probe/exploit 下语义候选会扰动
-          已对齐的规则排序（A/B：dense-on 时 boundary/browsing MRR 掉）；
-        - 硬约束覆盖回验：违反任一 hard 组的 dense 候选跳过（防语义噪音注入）；
-        - 权重 0.5x 降为纯"召回补充"，不反客为主。
+        - Enabled only in recover (miss streak >= 2, needs broader recall): under probe/exploit,
+        semantic candidates disturb
+          the aligned rule order (A/B: boundary/browsing MRR drops when dense is always on);
+        - Hard-constraint coverage re-check: dense candidates violating any hard group are skipped
+        (blocks semantic noise);
+        - weight 0.5x makes it a pure "recall supplement", never dominant.
         """
         if mode != "recover":
+            return
+        if self._dense_breaker.open:  # P1: already tripped -> skip dense now (in-process hybrid -> bm25)  # noqa: E501
             return
         encoder, store = self._ensure_dense()
         if encoder is None or store is None:
@@ -269,14 +293,14 @@ class HybridRetriever:
             qv = encoder.encode(query)
             if qv is None:
                 return
-            import numpy as np  # 局部导入，避免核心路径依赖
+            import numpy as np  # local import so the core path has no hard dependency
 
             sims = store.matrix @ qv
             order = np.argsort(-sims)[:top_k]
             for rank, idx in enumerate(order, start=1):
                 asin = store.asins[int(idx)]
                 if route.hard_groups and not self._dense_passes_hard(route.hard_groups, asin):
-                    continue  # 硬约束回验：不满足则跳过
+                    continue  # hard-constraint re-check: skip when not satisfied
                 self._accumulate(
                     pool,
                     asin,
@@ -285,21 +309,30 @@ class HybridRetriever:
                     / (self._retrieval_cfg.rrf_k + rank),
                     "dense",
                 )
-        except Exception as exc:  # 稠密路由任何异常都不影响主流程（环境自感知回退）
+            self._dense_breaker.record_success()  # P1: one success clears the failure streak
+        except Exception as exc:  # any dense-route exception never affects the main flow (environment-aware fallback)  # noqa: E501
             logger.warning("[retriever] dense route failed, fallback to bm25: %s", exc)
+            # P1: consecutive failures trip the breaker -> disable dense in-process (hybrid ->
+            # bm25), no more per-turn retries
+            if self._dense_breaker.record_failure(str(exc)):
+                self._dense = (None, None)
 
     def _dense_passes_hard(self, hard_groups: list[tuple[str, ...]], asin: str) -> bool:
-        """dense 候选硬约束覆盖回验：每个 hard 组（组内 AND）全部命中才放行。"""
+        """Hard-constraint coverage re-check for dense candidates: every hard group (AND within
+            group) must fully hit."""
         text = self._text_lower.get(asin, "")
         if not text:
             return False
         return all(all(tok in text for tok in group) for group in hard_groups)
 
     def _ensure_dense(self):
-        """惰性加载 BLaIR 查询编码器 + 离线商品向量 npy；失败返回 (None,None)。
+        """Lazily load the BLaIR query encoder + offline product-vector npy; on failure return
+            (None, None).
 
-        商品向量是 scripts/encode_catalog_blair.py 的离线产物，推理阶段只编码查询文本；
-        文件缺失 / 模型不可用 → (None, None)，稠密路由自动跳过（回退 BM25）。
+        Product vectors are the offline output of scripts/encode_catalog_blair.py; at inference only
+        the query text is encoded;
+        missing file / unavailable model -> (None, None), so the dense route auto-skips (fallback to
+        BM25).
         """
         if self._dense is not None:
             return self._dense
@@ -308,7 +341,7 @@ class HybridRetriever:
         if store is not None:
             encoder = blair_utils.BlairQueryEncoder(self.env.blair_query_encoder_model)
             if not encoder.ready:
-                logger.warning("[retriever] BLaIR 查询编码器不可用；稠密通道禁用（回退 BM25）")
+                logger.warning("[retriever] BLaIR query encoder unavailable; dense channel disabled (fallback to BM25)")  # noqa: E501
                 encoder = None
         if encoder is None or store is None:
             self._dense = (None, None)

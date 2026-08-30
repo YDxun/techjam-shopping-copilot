@@ -1,15 +1,19 @@
-"""TechJam2026 数据分析与字典构建（对齐 data_1.md 任务书第1阶段）。
+"""TechJam2026 data analysis & dictionary building (aligned with stage 1 of the data_1.md task
+    spec).
 
-只读官方 data/catalog.jsonl + data/public_set.jsonl，产出到 data/analysis/：
-  stats.json                    数据速览（字段覆盖/缺失/脏数据/品类/评分/价格）
-  vocab.json                    商品字典（种子 + 目录反推计数 + 公开集校准）
-  public_set_constraints.json   公开集约束分布 + 问属性收益统计
-  question_value_analysis.json  提问价值分析（每个问题能把候选缩小到多少件）
-  report.md                     人类可读报告（含"先问什么"建议表）
+Reads only the official data/catalog.jsonl + data/public_set.jsonl; writes to data/analysis/:
+  stats.json                    data overview (field coverage / missing / dirty / category / rating
+  / price)
+  vocab.json                    product dictionary (seeds + catalog reverse counts + public-set
+  calibration)
+  public_set_constraints.json   public-set constraint distribution + per-attribute ask gains
+  question_value_analysis.json  question-value analysis (how many candidates each question narrows
+  down to)
+  report.md                     human-readable report (including a "what to ask first"
+  recommendation table)
 
-用法：python scripts/build_index.py [--quick]
+Usage: python scripts/build_index.py [--quick]
 """
-
 from __future__ import annotations
 
 import argparse
@@ -42,7 +46,7 @@ _T0 = time.time()
 
 
 def log(msg: str) -> None:
-    print(f"[{time.time() - _T0:6.1f}s] {msg}")
+    print(f"[{time.time()-_T0:6.1f}s] {msg}")
 
 
 def load_jsonl(path: Path) -> list[dict]:
@@ -85,7 +89,7 @@ def norm_phrase(s: str) -> str:
 
 
 # ===========================================================================
-# 词频计数器：单词按 token 集合（词边界），短语按子串（带缓存）
+# term-frequency counter: words by token set (word boundary), phrases by substring (cached)
 # ===========================================================================
 class TermCounter:
     def __init__(self, tf_texts: list[str]) -> None:
@@ -104,10 +108,10 @@ class TermCounter:
 
 
 # ===========================================================================
-# Stage A｜数据速览
+# Stage A | data overview
 # ===========================================================================
 def stage_stats(rows: list[dict]) -> dict:
-    log("Stage A: 数据速览统计...")
+    log("Stage A: computing the data overview...")
     n = len(rows)
     keys = collections.Counter()
     for r in rows:
@@ -122,15 +126,7 @@ def stage_stats(rows: list[dict]) -> dict:
     store_counter = collections.Counter()
     dirty_store_examples = collections.Counter()
     dirty_store_set = {
-        "null",
-        "generic",
-        "unknown",
-        "(unknown)",
-        "n/a",
-        "none",
-        "-",
-        "na",
-        "unknown-",
+        "null", "generic", "unknown", "(unknown)", "n/a", "none", "-", "na", "unknown-"
     }
     for p in rows:
         title = str(p.get("title") or "")
@@ -192,13 +188,8 @@ def stage_stats(rows: list[dict]) -> dict:
 
     rating_hist = collections.Counter()
     for v in rating_avgs:
-        for bucket, lo, hi in (
-            ("<3.0", 0, 3.0),
-            ("3.0-3.5", 3.0, 3.5),
-            ("3.5-4.0", 3.5, 4.0),
-            ("4.0-4.5", 4.0, 4.5),
-            ("4.5-5.0", 4.5, 5.0),
-        ):
+        for bucket, lo, hi in (("<3.0", 0, 3.0), ("3.0-3.5", 3.0, 3.5), ("3.5-4.0", 3.5, 4.0),
+                               ("4.0-4.5", 4.0, 4.5), ("4.5-5.0", 4.5, 5.0)):
             if lo <= v < hi:
                 rating_hist[bucket] += 1
                 break
@@ -224,11 +215,8 @@ def stage_stats(rows: list[dict]) -> dict:
         "missing_dirty": {k: {"count": v, "ratio": round(v / n, 4)} for k, v in missing.items()},
         "price_stats": {
             "has_price_ratio": round(len(price_vals) / n, 4),
-            "median": q(price_vals, 0.5),
-            "p25": q(price_vals, 0.25),
-            "p75": q(price_vals, 0.75),
-            "min": q(price_vals, 0.0),
-            "max": q(price_vals, 1.0),
+            "median": q(price_vals, 0.5), "p25": q(price_vals, 0.25), "p75": q(price_vals, 0.75),
+            "min": q(price_vals, 0.0), "max": q(price_vals, 1.0),
         },
         "category_top_level": dict(top_level.most_common(15)),
         "category_second_level_top": dict(second_level.most_common(20)),
@@ -243,81 +231,22 @@ def stage_stats(rows: list[dict]) -> dict:
 
 
 # ===========================================================================
-# Stage B｜商品字典 vocab.json
+# Stage B | product dictionary vocab.json
 # ===========================================================================
 _TOKEN_RE = re.compile(r"[a-z0-9%]+", re.IGNORECASE)
-_STOPWORDS = frozenset(
-    {
-        "the",
-        "and",
-        "for",
-        "with",
-        "from",
-        "this",
-        "that",
-        "your",
-        "our",
-        "are",
-        "was",
-        "were",
-        "has",
-        "have",
-        "not",
-        "but",
-        "you",
-        "all",
-        "any",
-        "can",
-        "get",
-        "its",
-        "made",
-        "use",
-        "used",
-        "new",
-        "one",
-        "two",
-        "size",
-        "fits",
-        "item",
-        "also",
-        "just",
-        "into",
-        "over",
-        "under",
-        "very",
-        "well",
-        "will",
-        "more",
-        "most",
-        "some",
-        "than",
-        "then",
-        "they",
-        "them",
-        "these",
-        "those",
-        "like",
-        "look",
-        "great",
-        "good",
-        "best",
-        "high",
-        "low",
-        "set",
-        "each",
-        "day",
-        "days",
-        "wear",
-        "wearing",
-        "fit",
-        "feature",
-        "features",
-    }
-)
+_STOPWORDS = frozenset({
+    "the", "and", "for", "with", "from", "this", "that", "your", "our", "are",
+    "was", "were", "has", "have", "not", "but", "you", "all", "any", "can",
+    "get", "its", "made", "use", "used", "new", "one", "two", "size", "fits",
+    "item", "also", "just", "into", "over", "under", "very", "well", "will",
+    "more", "most", "some", "than", "then", "they", "them", "these", "those",
+    "like", "look", "great", "good", "best", "high", "low", "set", "each",
+    "day", "days", "wear", "wearing", "fit", "feature", "features",
+})
 
 
 def keep_public_term(term: str, ctype: str, freq: int) -> bool:
-    if ctype == "feature":  # feature 约束是长短语，token 不入词典
+    if ctype == "feature":          # feature constraints are long phrases; tokens never enter the dictionary  # noqa: E501
         return False
     if len(term) < 3 or term in _STOPWORDS:
         return False
@@ -328,10 +257,9 @@ def keep_public_term(term: str, ctype: str, freq: int) -> bool:
     return True
 
 
-def stage_vocab(
-    rows: list[dict], tf_texts: list[str], samples: list[dict], products: dict[str, dict]
-) -> dict:
-    log("Stage B: 商品字典构建（种子 + 目录反推 + 公开集校准）...")
+def stage_vocab(rows: list[dict], tf_texts: list[str], samples: list[dict],
+                products: dict[str, dict]) -> dict:
+    log("Stage B: building the product dictionary (seeds + catalog reverse counts + public-set calibration)...")  # noqa: E501
     seeds = json.loads(SEEDS.read_text(encoding="utf-8-sig"))
     tc = TermCounter(tf_texts)
     vocab: dict = {
@@ -339,14 +267,15 @@ def stage_vocab(
             "version": "1.0.0",
             "built_by": "scripts/build_index.py",
             "method": (
-                "种子词表 + 目录 title/features 反推计数 + 公开集约束校准（data_1.md 三步法）"
+                "seed vocabulary + catalog title/features reverse counts + "
+                "public-set constraint calibration (the three-step method in data_1.md)"
             ),
             "date": time.strftime("%Y-%m-%d"),
         },
         "dictionaries": {},
     }
 
-    # --- 1) 种子同义词 → 目录计数（单词按词边界，短语按子串）---
+    # --- 1) seed synonyms -> catalog counts (words by boundary, phrases by substring) ---
     for attr, entries in seeds.items():
         if attr in ("meta",):
             continue
@@ -368,7 +297,7 @@ def stage_vocab(
             }
         vocab["dictionaries"][attr] = attr_dict
 
-    # --- 2) 百分比材质组合反推（"67% Polyester, 33% Cotton" 类写法）---
+    # --- 2) reverse-derive percentage material blends (e.g. "67% Polyester, 33% Cotton") ---
     mat_tokens = set()
     for ent in seeds["material"].values():
         for syn in ent:
@@ -385,7 +314,8 @@ def stage_vocab(
         for (pct, name), cnt in sorted(comp.items(), key=lambda x: -x[1])[:30]
     ]
 
-    # --- 3) 公开集校准：收集模拟器实际披露约束，补漏进字典 ---
+    # --- 3) public-set calibration: collect constraints actually disclosed by the simulator and
+    # backfill the dictionary ---
     missing_terms: dict[str, dict] = collections.defaultdict(dict)
     for s in samples:
         tgt = str(s["ground_truth"]["parent_asin"])
@@ -394,7 +324,9 @@ def stage_vocab(
             ctype = classify_constraint(v)
             for term in {x.lower() for x in _TOKEN_RE.findall(v) if len(x) > 1}:
                 if not any(
-                    term in (syn or "") for syns in seeds.get(ctype, {}).values() for syn in syns
+                    term in (syn or "")
+                    for syns in seeds.get(ctype, {}).values()
+                    for syn in syns
                 ):
                     info = missing_terms[ctype].setdefault(term, {"count": 0, "examples": []})
                     info["count"] += 1
@@ -404,13 +336,8 @@ def stage_vocab(
         for term, info in terms.items():
             if not keep_public_term(term, ctype, info["count"]):
                 continue
-            entry = (
-                vocab["dictionaries"]
-                .setdefault(ctype, {})
-                .setdefault(
-                    term, {"canonical": term, "synonyms": [], "product_count": 0, "sources": []}
-                )
-            )
+            entry = vocab["dictionaries"].setdefault(ctype, {}).setdefault(term, {
+                "canonical": term, "synonyms": [], "product_count": 0, "sources": []})
             entry["synonyms"] = list(dict.fromkeys([*entry["synonyms"], term]))
             entry["synonym_counts"] = [{"term": term, "count": info["count"]}]
             entry["sources"] = list(dict.fromkeys([*entry["sources"], "public_set"]))
@@ -424,16 +351,13 @@ def stage_vocab(
 
 
 # ===========================================================================
-# Stage C｜公开集约束分布
+# Stage C | public-set constraint distribution
 # ===========================================================================
 def stage_public_set(samples: list[dict], products: dict[str, dict]) -> dict:
-    log("Stage C: 公开集约束分布...")
+    log("Stage C: public-set constraint distribution...")
     by_scenario = collections.defaultdict(
-        lambda: {
-            "hard": collections.defaultdict(collections.Counter),
-            "soft": collections.defaultdict(collections.Counter),
-        }
-    )
+        lambda: {"hard": collections.defaultdict(collections.Counter),
+                 "soft": collections.defaultdict(collections.Counter)})
     for s in samples:
         sc = s["scenario_type"]
         card = intent_card(products[str(s["ground_truth"]["parent_asin"])])
@@ -452,19 +376,11 @@ def stage_public_set(samples: list[dict], products: dict[str, dict]) -> dict:
 
 
 # ===========================================================================
-# Stage D｜提问价值分析
+# Stage D | question-value analysis
 # ===========================================================================
 _ALLOWED = (
-    "category",
-    "material",
-    "color",
-    "size",
-    "style",
-    "brand",
-    "budget",
-    "feature",
-    "use_case",
-    "other",
+    "category", "material", "color", "size", "style", "brand",
+    "budget", "feature", "use_case", "other",
 )
 _PREFIX_STRIP = re.compile(
     r"^\s*(material|color|size|style|feature|use[_-]?case|budget|brand|department)\s*[:：]\s*",
@@ -492,10 +408,9 @@ def _count_match(
     return cnt
 
 
-def stage_question_value(
-    samples: list[dict], products: dict[str, dict], texts: list[str], cat_texts: list[str]
-) -> dict:
-    log("Stage D: 提问价值分析（模拟每个问题能把候选缩小到多少件）...")
+def stage_question_value(samples: list[dict], products: dict[str, dict],
+                         texts: list[str], cat_texts: list[str]) -> dict:
+    log("Stage D: question-value analysis (simulate how many candidates each question narrows down to)...")  # noqa: E501
     asin_index = {a: i for i, a in enumerate(products)}
     rows = []
     for s in samples:
@@ -516,9 +431,7 @@ def stage_question_value(
 
         baseline_pool = _count_match(texts, cat_texts, base_keys, cat_tokens)
         row = {
-            "sample_id": s["sample_id"],
-            "scenario": sc,
-            "target": tgt,
+            "sample_id": s["sample_id"], "scenario": sc, "target": tgt,
             "base_pool": baseline_pool,
             "base_hit": (not base_keys) or all(k in tgt_text for k in base_keys),
             "asks": {},
@@ -528,12 +441,9 @@ def stage_question_value(
             reply, _ = customer_reply(eff, attr, d2, False)
             new_keys = sorted({norm_key(v) for v in d2})
             if not new_keys or new_keys == base_keys:
-                row["asks"][attr] = {
-                    "revealed": 0,
-                    "pool": baseline_pool,
-                    "hit": row["base_hit"],
-                    "boundary_reply": "don't have a preference" in reply.lower(),
-                }
+                row["asks"][attr] = {"revealed": 0, "pool": baseline_pool,
+                                     "hit": row["base_hit"],
+                                     "boundary_reply": "don't have a preference" in reply.lower()}
                 continue
             pool = _count_match(texts, cat_texts, new_keys, cat_tokens)
             hit = all(k in tgt_text for k in new_keys)
@@ -563,10 +473,8 @@ def stage_question_value(
         return out
 
     overall = agg(rows)
-    by_scenario = {
-        sc: agg([r for r in rows if r["scenario"] == sc])
-        for sc in ("buying", "browsing", "intent_override", "boundary")
-    }
+    by_scenario = {sc: agg([r for r in rows if r["scenario"] == sc])
+                   for sc in ("buying", "browsing", "intent_override", "boundary")}
     ranked = sorted(
         _ALLOWED,
         key=lambda a: (overall[a]["shrink_vs_base"], overall[a]["hit_potential"]),
@@ -574,68 +482,68 @@ def stage_question_value(
     )
     overall["recommended_ask_order"] = ranked
     overall["recommendation"] = (
-        f"优先问 {ranked[0]}（平均每轮把候选从 {overall['base_avg_pool']} 缩小到 "
+        f"ask {ranked[0]} first (shrinks the pool from {overall['base_avg_pool']} on average to "
         f"{overall[ranked[0]]['avg_pool']}，"
-        f"命中保持 {overall[ranked[0]]['hit_potential']}）；其次 {ranked[1]} / {ranked[2]}。"
-        "注：'other' 一次最多披露 2 条任意约束，信息量最大，通常最划算。"
+        f"with hit retention {overall[ranked[0]]['hit_potential']}); then {ranked[1]} / {ranked[2]}."  # noqa: E501
+        "Note: 'other' discloses up to 2 arbitrary constraints at once, carrying the most information and usually the best value."  # noqa: E501
     )
     return {"overall": overall, "by_scenario": by_scenario, "per_session": rows}
 
 
 # ===========================================================================
-# 报告
+# report
 # ===========================================================================
 def write_report(stats: dict, vocab: dict, pub: dict, qv: dict) -> str:
     m = stats["missing_dirty"]
     line = []
-    line.append("# TechJam2026 数据盘点 + 商品字典 + 提问价值分析报告\n")
-    line.append(f"- 生成时间：{time.strftime('%Y-%m-%d %H:%M:%S')}")
+    line.append("# TechJam2026 data inventory + product dictionary + question-value analysis report\n")  # noqa: E501
+    line.append(f"- generated at: {time.strftime('%Y-%m-%d %H:%M:%S')}")
     line.append(
-        f"- 数据源：`data/catalog.jsonl`（{stats['total_products']} 商品）"
-        f"+ `data/public_set.jsonl`（200 会话）\n"
+        f"- data sources: `data/catalog.jsonl` ({stats['total_products']} products)"
+        f"+ `data/public_set.jsonl` (200 sessions)\n"
     )
 
-    line.append("## 一、数据速览\n")
-    line.append("### 字段覆盖率")
-    line.append("| 字段 | 覆盖率 |")
+    line.append("## 1. Data overview\n")
+    line.append("### Field coverage")
+    line.append("| Field | Coverage |")
     line.append("|---|---|")
     for k, v in stats["field_coverage"].items():
         line.append(f"| `{k}` | {v:.1%} |")
-    line.append("\n### 缺失与脏数据")
-    line.append("| 问题 | 数量 | 占比 |")
+    line.append("\n### Missing & dirty data")
+    line.append("| Issue | Count | Share |")
     line.append("|---|---|---|")
     for k, v in m.items():
         line.append(f"| {k} | {v['count']} | {v['ratio']:.2%} |")
-    line.append("\n### 价格")
+    line.append("\n### Price")
     ps = stats["price_stats"]
     line.append(
-        f"- 有价格商品占比 **{ps['has_price_ratio']:.1%}**；中位数 ${ps['median']}，"
-        f"P25 ${ps['p25']}，P75 ${ps['p75']}，区间 ${ps['min']}–${ps['max']}"
+        f"- products with a price: **{ps['has_price_ratio']:.1%}**; median ${ps['median']},"
+        f"P25 ${ps['p25']}, P75 ${ps['p75']}, range ${ps['min']}-${ps['max']}"
     )
-    line.append("  → **budget 约束必须 lenient**：79% 商品无价格，不能用 budget 硬过滤\n")
-    line.append("### 品类分布（Top 二级品类）")
-    line.append("| 二级品类 | 数量 |")
+    line.append("  -> **budget constraints must be lenient**: 79% of products have no price, so budget can never be a hard filter\n")  # noqa: E501
+    line.append("### Category distribution (top second-level categories)")
+    line.append("| Second-level category | Count |")
     line.append("|---|---|")
     for k, v in list(stats["category_second_level_top"].items())[:20]:
         line.append(f"| {k} | {v} |")
-    line.append("\n### 评分分布")
-    line.append("| average_rating 区间 | 数量 |")
+    line.append("\n### Rating distribution")
+    line.append("| average_rating bucket | Count |")
     line.append("|---|---|")
     for k, v in stats["rating_avg_hist"].items():
         line.append(f"| {k} | {v} |")
-    line.append("\n| rating_number 区间 | 数量 |")
+    line.append("\n| rating_number bucket | Count |")
     line.append("|---|---|")
     for k, v in stats["rating_number_buckets"].items():
         line.append(f"| {k} | {v} |")
 
-    line.append("\n## 二、商品字典 vocab.json\n")
+    line.append("\n## 2. Product dictionary (vocab.json)\n")
     for attr, entries in vocab["dictionaries"].items():
         if attr in ("meta",):
             continue
         n_terms = len(entries)
         top_terms = sorted(entries.items(), key=lambda x: -x[1].get("product_count", 0))[:8]
-        line.append(f"### {attr}（{n_terms} 个标准词）")
-        line.append("| 标准词 | 同义词（带目录商品数） |")
+        line.append(f"### {attr} ({n_terms} canonical terms)")
+        line.append("| Canonical | Synonyms (catalog product counts) |")
         line.append("|---|---|")
         for canonical, ent in top_terms:
             syns = "、".join(
@@ -645,20 +553,20 @@ def write_report(stats: dict, vocab: dict, pub: dict, qv: dict) -> str:
             line.append(f"| {canonical} | {syns} |")
         line.append("")
     if vocab.get("composition_patterns_top"):
-        line.append("### 常见成分写法（百分比组合）")
-        line.append("| 写法 | 商品数 |")
+        line.append("### Common ingredient phrasings (percentage blends)")
+        line.append("| Phrasing | Product count |")
         line.append("|---|---|")
         for c in vocab["composition_patterns_top"][:15]:
             line.append(f"| {c['pattern']} | {c['product_count']} |")
         line.append("")
 
-    line.append("## 三、提问价值分析\n")
+    line.append("## 3. Question-value analysis\n")
     ov = qv["overall"]
-    line.append("### 总体（200 会话）")
-    line.append(f"- 不提问基线候选池均值：**{ov['base_avg_pool']}** 件")
+    line.append("### Overall (200 sessions)")
+    line.append(f"- baseline candidate-pool mean without asking: **{ov['base_avg_pool']}** items")
     line.append(
-        "\n| 问法 ask_attribute | 平均披露约束数 | 缩小后候选池(均值) | "
-        "中位池 | 命中保持率 | 相对基线缩小 |"
+        "\n| ask_attribute | Avg disclosed constraints | Shrunk pool (mean) | "
+        "Median pool | Hit retention | Shrink vs baseline |"
     )
     line.append("|---|---|---|---|---|---|")
     for attr in ov["recommended_ask_order"]:
@@ -667,24 +575,24 @@ def write_report(stats: dict, vocab: dict, pub: dict, qv: dict) -> str:
             f"| {attr} | {a['avg_revealed']} | {a['avg_pool']} | {a['median_pool']} "
             f"| {a['hit_potential']:.1%} | {a['shrink_vs_base']} |"
         )
-    line.append(f"\n### 先问什么建议\n{ov['recommendation']}\n")
-    line.append("### 分场景")
+    line.append(f"\n### What to ask first\n{ov['recommendation']}\n")
+    line.append("### Per scenario")
     for sc, d in qv["by_scenario"].items():
         best = sorted(
             [a for a in d if isinstance(d[a], dict)],
             key=lambda a: -d[a]["shrink_vs_base"],
         )[:3]
         line.append(
-            f"- **{sc}**（{d['n']} 会话）：先问 `{best[0]}`，"
-            f"候选池均值 {d['base_avg_pool']} → {d[best[0]]['avg_pool']}；"
-            f"次选 `{best[1]}` / `{best[2]}`"
+            f"- **{sc}** ({d['n']} sessions): ask `{best[0]}` first,"
+            f"mean pool {d['base_avg_pool']} -> {d[best[0]]['avg_pool']};"
+            f"next `{best[1]}` / `{best[2]}`"
         )
     return "\n".join(line)
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--quick", action="store_true", help="只用前 50 会话做提问价值分析（调试）")
+    ap.add_argument("--quick", action="store_true", help="use only the first 50 sessions for question-value analysis (debug)")  # noqa: E501
     args = ap.parse_args()
 
     OUT.mkdir(parents=True, exist_ok=True)
@@ -702,29 +610,29 @@ def main() -> None:
     (OUT / "stats.json").write_text(
         json.dumps(stats, indent=2, ensure_ascii=False), encoding="utf-8"
     )
-    log("stats.json 写入完成")
+    log("stats.json written")
 
     vocab = stage_vocab(rows, tf_texts, samples, products)
     (OUT / "vocab.json").write_text(
         json.dumps(vocab, indent=2, ensure_ascii=False), encoding="utf-8"
     )
-    log("vocab.json 写入完成")
+    log("vocab.json written")
 
     pub = stage_public_set(samples, products)
     (OUT / "public_set_constraints.json").write_text(
         json.dumps(pub, indent=2, ensure_ascii=False), encoding="utf-8"
     )
-    log("public_set_constraints.json 写入完成")
+    log("public_set_constraints.json written")
 
     qv = stage_question_value(samples, products, texts, cat_texts)
     (OUT / "question_value_analysis.json").write_text(
         json.dumps(qv, indent=2, ensure_ascii=False), encoding="utf-8"
     )
-    log("question_value_analysis 完成")
+    log("question_value_analysis done")
 
     report = write_report(stats, vocab, pub, qv)
     (OUT / "report.md").write_text(report, encoding="utf-8")
-    log(f"全部产出写入 {OUT}")
+    log(f"all outputs written to {OUT}")
 
 
 if __name__ == "__main__":

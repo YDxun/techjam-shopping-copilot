@@ -1,6 +1,6 @@
-"""边界测试（竞赛交付物）：空消息 / 最后一轮 / 并发会话隔离 / override 流程 / 推荐过滤。
+"""Edge-case tests (competition deliverable): empty message / last turn / concurrent-session isolation / override flow / recommendation filtering.
 
-用微型 catalog（5 商品）构建 Agent，避免全量 50k 建索引耗时；不改评估器、不改现有测试。
+Builds the agent with a tiny catalog (5 products) to avoid the 50k index build; never modifies the evaluator or existing tests.
 """
 
 from __future__ import annotations
@@ -117,7 +117,7 @@ class EdgeCaseTest(unittest.TestCase):
         rb = self.respond("e_b", "I need leather", turn=1)
         asins_a = [r["parent_asin"] for r in ra["recommendations"]]
         asins_b = [r["parent_asin"] for r in rb["recommendations"]]
-        # 会话 A 应优先推荐 cotton 商品，会话 B 应优先 leather（互不串扰）
+        # session A should rank the cotton item first and session B the leather item (no cross-talk)
         self.assertEqual(asins_a[0], "B000000001")  # cotton tee
         self.assertEqual(asins_b[0], "B000000003")  # leather wallet
 
@@ -131,7 +131,7 @@ class EdgeCaseTest(unittest.TestCase):
             turn=2,
         )
         recs = [r["parent_asin"] for r in r2["recommendations"]]
-        # override 后新意图（leather）优先，cotton 旧偏好不再主导
+        # after the override, the new intent (leather) leads and the old cotton preference no longer dominates
         self.assertIn("B000000003", recs[:3])
 
     def test_recommendations_unique_valid_and_bounded(self) -> None:
@@ -140,11 +140,11 @@ class EdgeCaseTest(unittest.TestCase):
             resp = self.respond("e_uniq", "I need leather", turn=turn)
             recs = [r["parent_asin"] for r in resp["recommendations"]]
             self.assertLessEqual(len(recs), 10)
-            self.assertEqual(len(recs), len(set(recs)))  # 去重
-            self.assertTrue(all(a in self.catalog_ids for a in recs))  # 目录内有效
+            self.assertEqual(len(recs), len(set(recs)))  # deduplicated
+            self.assertTrue(all(a in self.catalog_ids for a in recs))  # valid catalog IDs
 
     def test_invalid_duplicate_payload_tolerated(self) -> None:
-        # Agent 侧不产出重复/无效；评估器还会再过滤。这里验证 respond 结构稳定、无异常
+        # the agent never emits duplicates/invalid IDs; the evaluator filters again anyway. Here we check respond is stable and exception-free
         self.agent.reset("e_dup", {})
         resp = self.respond("e_dup", "cotton", turn=1)
         payload = resp.get("recommendations")

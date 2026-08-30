@@ -6,7 +6,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 # ============================================================
-# 配置
+# config
 # ============================================================
 
 REVIEWS_PATH = Path("Clothing_Shoes_and_Jewelry.jsonl.gz")
@@ -15,18 +15,18 @@ VOCAB_PATH = Path("vocab_metadata_v2.json")
 
 OUTPUT_PATH = Path("review_paraphrase_stats_full.json")
 
-# None = 全量
+# None = full
 MAX_REVIEWS = None
 
-# 每种表达最多保留多少个真实例子
+# max real examples kept per expression
 MAX_EXAMPLES = 20
 
-# 每多少条打印一次进度
+# progress print interval
 PROGRESS_EVERY = 500_000
 
 
 # ============================================================
-# 基础工具
+# helpers
 # ============================================================
 
 
@@ -53,10 +53,10 @@ def normalize(value):
 
 
 # ============================================================
-# 读取 vocab
+# load the vocab
 # ============================================================
 
-print("读取 vocab...")
+print("loading the vocab...")
 
 with VOCAB_PATH.open("r", encoding="utf-8") as f:
     vocab = json.load(f)
@@ -66,18 +66,18 @@ dictionaries = vocab.get("dictionaries", {})
 
 
 # ============================================================
-# 可信 Material
+# trusted Material
 #
-# 这里故意不用整个旧 material vocab。
+# deliberately not using the whole old material vocab.
 #
-# 排除：
+# excluded:
 # comfortable
 # quality
 # shoes
 # super
 # other
 # material
-# 等已经被 1M sample 证明是噪声的词。
+# words already proven to be noise by the 1M sample.
 # ============================================================
 
 TRUSTED_MATERIALS = {
@@ -171,7 +171,7 @@ MATERIAL_ALIASES = {
 
 
 # ============================================================
-# 可信 Color
+# trusted Color
 # ============================================================
 
 TRUSTED_COLORS = {
@@ -232,9 +232,9 @@ COLOR_ALIASES = {
 # ============================================================
 # Size/Fit phrase patterns
 #
-# 这些不是 size=S/M/L 的 synonyms。
+# these are not synonyms of size=S/M/L.
 #
-# 它们属于自然语言 fit intent。
+# they belong to natural-language fit intent.
 # ============================================================
 
 SIZE_FIT_PATTERNS = {
@@ -325,7 +325,7 @@ SIZE_FIT_PATTERNS = {
 
 
 # ============================================================
-# 编译 Size/Fit patterns
+# compile Size/Fit patterns
 # ============================================================
 
 COMPILED_SIZE_FIT = {}
@@ -367,7 +367,7 @@ COLOR_PATTERN = re.compile(
 # ============================================================
 # Color modifier patterns
 #
-# 用于发现：
+# used to discover:
 #
 # dark navy
 # light blue
@@ -422,7 +422,7 @@ ISH_COLOR_PATTERN = re.compile(
 # ============================================================
 # Material phrase patterns
 #
-# 这里找顾客自然表达。
+# here we look for natural customer phrasing.
 # ============================================================
 
 MATERIAL_PHRASE_PATTERNS = {
@@ -445,11 +445,11 @@ MATERIAL_PHRASE_PATTERNS = {
 
 
 # ============================================================
-# 否定检测
+# negation detection
 #
-# 注意：
-# 这里只做统计标记，
-# 不直接删除评论。
+# note:
+# only statistical tagging happens here,
+# no reviews are deleted directly.
 # ============================================================
 
 NEGATION_PATTERN = re.compile(
@@ -467,7 +467,7 @@ NEGATION_PATTERN = re.compile(
 
 
 # ============================================================
-# 统计器
+# counters
 # ============================================================
 
 total_reviews = 0
@@ -529,18 +529,18 @@ def get_context(text, start, end, window=100):
 
 
 # ============================================================
-# 开始
+# start
 # ============================================================
 
 print("=" * 75)
 print("FULL REVIEW PARAPHRASE MINING")
 print("=" * 75)
 
-print(f"输入：{REVIEWS_PATH}")
+print(f"input: {REVIEWS_PATH}")
 
-print(f"输出：{OUTPUT_PATH}")
+print(f"output: {OUTPUT_PATH}")
 
-print("模式：全量" if MAX_REVIEWS is None else f"上限：{MAX_REVIEWS:,}")
+print("mode: full" if MAX_REVIEWS is None else f"limit: {MAX_REVIEWS:,}")
 
 print()
 
@@ -549,7 +549,7 @@ start_time = time.time()
 
 
 # ============================================================
-# 扫描
+# scan
 # ============================================================
 
 with gzip.open(REVIEWS_PATH, "rt", encoding="utf-8") as f:
@@ -610,8 +610,8 @@ with gzip.open(REVIEWS_PATH, "rt", encoding="utf-8") as f:
 
                 add_example(f"size_fit::{label}", context, review)
 
-                # 同一 review 同一 label
-                # 只统计一次
+                # same review, same label
+                # counted only once
                 break
 
         # ====================================================
@@ -653,11 +653,11 @@ with gzip.open(REVIEWS_PATH, "rt", encoding="utf-8") as f:
             for match in pattern.finditer(full_text):
                 phrase = normalize(match.group(1))
 
-                # 太长或太短不要
+                # skip too-long/too-short spans
                 if len(phrase) < 2 or len(phrase) > 45:
                     continue
 
-                # 截断常见连接词
+                # truncate common connectors
                 phrase = re.split(
                     r"\b(?:"
                     r"and|but|because|"
@@ -729,7 +729,7 @@ with gzip.open(REVIEWS_PATH, "rt", encoding="utf-8") as f:
                 add_example(f"color_phrase::{phrase}", context, review)
 
         # ====================================================
-        # 进度
+# progress
         # ====================================================
 
         if total_reviews % PROGRESS_EVERY == 0:
@@ -738,21 +738,21 @@ with gzip.open(REVIEWS_PATH, "rt", encoding="utf-8") as f:
             speed = total_reviews / elapsed if elapsed > 0 else 0
 
             print(
-                f"\r已扫描 {total_reviews:,} reviews | {speed:,.0f}/s | 错误 {bad_lines:,}",
+                f"\rscanned {total_reviews:,} reviews | {speed:,.0f}/s | errors {bad_lines:,}",
                 end="",
                 flush=True,
             )
 
 
 # ============================================================
-# 扫描完成
+# scan complete
 # ============================================================
 
 elapsed = time.time() - start_time
 
 
 # ============================================================
-# 输出辅助
+# output helpers
 # ============================================================
 
 
@@ -928,7 +928,7 @@ output = {
 
 
 # ============================================================
-# 保存
+# save
 # ============================================================
 
 with OUTPUT_PATH.open("w", encoding="utf-8") as f:
@@ -938,7 +938,7 @@ with OUTPUT_PATH.open("w", encoding="utf-8") as f:
 
 
 # ============================================================
-# Terminal 最终摘要
+# terminal final summary
 # ============================================================
 
 print("\n\n")
@@ -948,11 +948,11 @@ print("=" * 75)
 
 print(f"Reviews：{total_reviews:,}")
 
-print(f"错误：{bad_lines:,}")
+print(f"errors: {bad_lines:,}")
 
 print(f"Verified：{verified_reviews:,} ({verified_reviews / total_reviews:.2%})")
 
-print(f"耗时：{elapsed / 60:.2f} 分钟")
+print(f"elapsed: {elapsed / 60:.2f} minutes")
 
 
 print("\nSize/Fit：")
@@ -979,6 +979,6 @@ for phrase, count in color_modifier_counts.most_common(15):
     print(f"{phrase:<30}{count:>12,}")
 
 
-print(f"\n输出：{OUTPUT_PATH}")
+print(f"\noutput: {OUTPUT_PATH}")
 
-print("\n没有修改 vocab_metadata_v2.json。")
+print("\nv vocab_metadata_v2.json was not modified.")

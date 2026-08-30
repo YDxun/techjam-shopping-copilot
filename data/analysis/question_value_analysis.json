@@ -84,7 +84,7 @@
       "brand",
       "budget"
     ],
-    "recommendation": "优先问 other（平均每轮把候选从 4930.7 缩小到 307.7，命中保持 0.99）；其次 feature / material。注：'other' 一次最多披露 2 条任意约束，信息量最大，通常最划算。"
+    "recommendation": "Ask other first (shrinks the pool from 4930.7 to 307.7 per turn on average while retaining a 0.99 hit rate); then feature / material. Note: 'other' discloses up to 2 arbitrary constraints at once, carrying the most information and usually the best value."
   },
   "by_scenario": {
     "buying": {

@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 
 # ============================================================
-# 配置
+# config
 # ============================================================
 
 VOCAB_PATH = Path("vocab(1).json")
@@ -14,26 +14,26 @@ OUTPUT_REPORT = Path("vocab_metadata_v2_report.json")
 
 
 # ============================================================
-# 这一版采用“保守白名单”
+# this version uses a conservative whitelist
 #
-# 原则：
-# 1. 已有 canonical 不删除
-# 2. 只加入明确可靠的新 canonical
-# 3. 只加入明确可靠的 synonym
-# 4. REVIEW / REJECT 不自动写入
-# 5. brand/style 本轮不扩
+# principles:
+# 1. never delete existing canonicals
+# 2. add only clearly reliable new canonicals
+# 3. add only clearly reliable synonyms
+# 4. REVIEW / REJECT are never auto-written
+# 5. brand/style are not expanded this round
 # ============================================================
 
 
 # ============================================================
 # MATERIAL
 #
-# 只选：
-# - Clothing / Shoes / Jewelry 中有明确检索价值
-# - metadata 有结构化证据
-# - 语义明确
+# only select:
+# - clear retrieval value within Clothing / Shoes / Jewelry
+# - structured evidence in the metadata
+# - unambiguous semantics
 #
-# 不因为频率高就全部加入。
+# high frequency alone is not sufficient.
 # ============================================================
 
 NEW_MATERIAL_CANONICALS = {
@@ -85,7 +85,7 @@ NEW_MATERIAL_CANONICALS = {
 # Material alias
 #
 # key   = canonical
-# value = 要补进去的 synonyms
+# value = synonyms to add
 # ============================================================
 
 MATERIAL_SYNONYMS = {
@@ -128,7 +128,7 @@ MATERIAL_SYNONYMS = {
 # ============================================================
 # COLOR
 #
-# 新增的必须是明确颜色。
+# additions must be unambiguous colors.
 # ============================================================
 
 NEW_COLOR_CANONICALS = {
@@ -161,14 +161,14 @@ COLOR_SYNONYMS = {
 # ============================================================
 # SIZE
 #
-# 不新增数字 size canonical。
-# 这里只补可靠的字母尺码和 alias。
+# never add numeric-size canonicals.
+# only reliable letter sizes and aliases are added here.
 #
-# review 文件已经证明：
+# the review file has already proven that:
 # xx-large -> xxl
 # 3x-large -> 3xl
 # 4x-large -> 4xl
-# 等表达是可靠的。
+# such expressions are reliable.
 # ============================================================
 
 NEW_SIZE_CANONICALS = {
@@ -213,7 +213,7 @@ SIZE_SYNONYMS = {
 
 
 # ============================================================
-# 工具函数
+# helper functions
 # ============================================================
 
 
@@ -238,8 +238,8 @@ def build_term_index(dictionary):
     """
     term -> canonical
 
-    canonical 自己以及所有 synonyms
-    都进入 index。
+    the canonical itself and all its synonyms
+    all enter the index.
     """
 
     index = {}
@@ -261,10 +261,10 @@ def build_term_index(dictionary):
 
 def candidate_evidence(review_data, attr, canonical):
     """
-    从 vocab_candidate_review.json 中
-    找到某个 canonical 的 metadata 证据。
+    from vocab_candidate_review.json,
+    find a canonical's metadata evidence.
 
-    只查 AUTO_ACCEPT。
+    only AUTO_ACCEPT entries are consulted.
     """
 
     rows = review_data.get("attributes", {}).get(attr, {}).get("AUTO_ACCEPT", [])
@@ -285,7 +285,7 @@ def candidate_evidence(review_data, attr, canonical):
 
 
 # ============================================================
-# 添加 canonical
+# add a canonical
 # ============================================================
 
 
@@ -298,7 +298,7 @@ def add_canonical(vocab, review_data, attr, canonical, report):
     canonical_norm = normalize(canonical)
 
     # --------------------------------------------------------
-    # 已经存在
+    # already exists
     # --------------------------------------------------------
 
     if canonical_norm in term_index:
@@ -315,12 +315,12 @@ def add_canonical(vocab, review_data, attr, canonical, report):
         return existing_canonical
 
     # --------------------------------------------------------
-    # 新建
+    # new
     # --------------------------------------------------------
 
     evidence = candidate_evidence(review_data, attr, canonical)
 
-    # 新 canonical 必须在 AUTO_ACCEPT 有证据
+    # a new canonical must have AUTO_ACCEPT evidence
     if not evidence:
         report["skipped_no_auto_accept_evidence"].append(
             {
@@ -354,7 +354,7 @@ def add_canonical(vocab, review_data, attr, canonical, report):
 
 
 # ============================================================
-# 添加 synonym
+# add a synonym
 # ============================================================
 
 
@@ -372,7 +372,7 @@ def add_synonym(vocab, attr, canonical, synonym, report):
         return
 
     # --------------------------------------------------------
-    # 找 canonical
+    # find the canonical
     # --------------------------------------------------------
 
     target = term_index.get(canonical_norm)
@@ -389,13 +389,13 @@ def add_synonym(vocab, attr, canonical, synonym, report):
         return
 
     # --------------------------------------------------------
-    # synonym 已经属于某个 canonical
+    # the synonym already belongs to a canonical
     # --------------------------------------------------------
 
     existing_owner = term_index.get(synonym_norm)
 
     if existing_owner is not None:
-        # 已经在正确 canonical 下
+        # already under the right canonical
         if existing_owner == target:
             report["synonym_already_present"].append(
                 {
@@ -407,8 +407,8 @@ def add_synonym(vocab, attr, canonical, synonym, report):
 
             return
 
-        # 冲突：
-        # synonym 已经属于另一个 canonical
+        # conflict:
+        # the synonym already belongs to another canonical
         report["synonym_conflicts"].append(
             {
                 "attribute": attr,
@@ -421,7 +421,7 @@ def add_synonym(vocab, attr, canonical, synonym, report):
         return
 
     # --------------------------------------------------------
-    # 确保结构
+    # ensure the structure
     # --------------------------------------------------------
 
     info = dictionary[target]
@@ -434,7 +434,7 @@ def add_synonym(vocab, attr, canonical, synonym, report):
     info.setdefault("synonyms", [])
 
     # --------------------------------------------------------
-    # 添加
+    # add
     # --------------------------------------------------------
 
     info["synonyms"].append(synonym)
@@ -449,25 +449,25 @@ def add_synonym(vocab, attr, canonical, synonym, report):
 
 
 # ============================================================
-# 读取
+# load
 # ============================================================
 
-print("读取原 vocab...")
+print("loading the original vocab...")
 
 with VOCAB_PATH.open("r", encoding="utf-8") as f:
     original_vocab = json.load(f)
 
 
-print("读取 metadata review...")
+print("loading the metadata review...")
 
 with REVIEW_PATH.open("r", encoding="utf-8") as f:
     review_data = json.load(f)
 
 
 # ============================================================
-# 深拷贝
+# deep copy
 #
-# 永远不直接修改原始 vocab 对象。
+# never modify the original vocab object directly.
 # ============================================================
 
 vocab_v2 = copy.deepcopy(original_vocab)
@@ -509,7 +509,7 @@ report = {
 # MATERIAL
 # ============================================================
 
-print("处理 material...")
+print("processing material...")
 
 
 for canonical in sorted(NEW_MATERIAL_CANONICALS):
@@ -517,8 +517,8 @@ for canonical in sorted(NEW_MATERIAL_CANONICALS):
 
 
 for canonical, synonyms in MATERIAL_SYNONYMS.items():
-    # 如果 canonical 不存在，
-    # 先尝试按 metadata 证据建立
+    # if the canonical does not exist,
+    # first try to create it from metadata evidence
     dictionary = ensure_dictionary(vocab_v2, "material")
 
     index = build_term_index(dictionary)
@@ -534,7 +534,7 @@ for canonical, synonyms in MATERIAL_SYNONYMS.items():
 # COLOR
 # ============================================================
 
-print("处理 color...")
+print("processing color...")
 
 
 for canonical in sorted(NEW_COLOR_CANONICALS):
@@ -557,7 +557,7 @@ for canonical, synonyms in COLOR_SYNONYMS.items():
 # SIZE
 # ============================================================
 
-print("处理 size...")
+print("processing size...")
 
 
 for canonical in sorted(NEW_SIZE_CANONICALS):
@@ -577,9 +577,9 @@ for canonical, synonyms in SIZE_SYNONYMS.items():
 
 
 # ============================================================
-# 给 vocab v2 添加 provenance
+# add provenance to vocab v2
 #
-# 不覆盖已有 meta。
+# do not overwrite existing meta.
 # ============================================================
 
 vocab_v2.setdefault("meta", {})
@@ -596,7 +596,7 @@ vocab_v2["meta"]["metadata_v2"] = {
 
 
 # ============================================================
-# 最终统计
+# final statistics
 # ============================================================
 
 report["summary"] = {
@@ -611,7 +611,7 @@ report["summary"] = {
 
 
 # ============================================================
-# 保存 vocab
+# save the vocab
 # ============================================================
 
 with OUTPUT_VOCAB.open("w", encoding="utf-8") as f:
@@ -621,7 +621,7 @@ with OUTPUT_VOCAB.open("w", encoding="utf-8") as f:
 
 
 # ============================================================
-# 保存 report
+# save the report
 # ============================================================
 
 with OUTPUT_REPORT.open("w", encoding="utf-8") as f:
@@ -631,7 +631,7 @@ with OUTPUT_REPORT.open("w", encoding="utf-8") as f:
 
 
 # ============================================================
-# Terminal 输出
+# terminal output
 # ============================================================
 
 print()
@@ -639,18 +639,18 @@ print("=" * 75)
 print("VOCAB METADATA V2 COMPLETE")
 print("=" * 75)
 
-print(f"原始 vocab：{VOCAB_PATH}")
+print(f"original vocab: {VOCAB_PATH}")
 
-print(f"新 vocab：  {OUTPUT_VOCAB}")
+print(f"new vocab:   {OUTPUT_VOCAB}")
 
-print(f"变更报告：  {OUTPUT_REPORT}")
+print(f"change report: {OUTPUT_REPORT}")
 
 
-print("\n变更摘要：")
+print("\nchange summary:")
 
 for key, value in report["summary"].items():
     print(f"{key:<38}{value:>6}")
 
 
 print()
-print("原 vocab 未修改。")
+print("the original vocab was not modified.")

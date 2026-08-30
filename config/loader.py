@@ -715,6 +715,9 @@ def _build_and_validate(data: Mapping[str, Any], selected_key: SecretValue) -> A
             ask_other_first=_bool_value(
                 decision_data.get("ask_other_first"), "decision.ask_other_first"
             ),
+            question_template_mode=_string_value(
+                decision_data.get("question_template_mode"), "decision.question_template_mode"
+            ),
             ask_utility=AskUtilityConfig(
                 weights=AskUtilityWeights(
                     **{
@@ -929,6 +932,11 @@ def _validate(config: AppConfig) -> None:
         config.decision.ask_utility.normalization,
         "decision.ask_utility.normalization",
         {"clamp_0_1"},
+    )
+    _in(
+        config.decision.question_template_mode,
+        "decision.question_template_mode",
+        {"random", "rotation"},
     )
     _in(config.llm.provider, "llm.provider", {"none", "deepseek", "openai"})
     _in(config.llm.rerank_backend, "llm.rerank_backend", {"text", "chat", "auto"})

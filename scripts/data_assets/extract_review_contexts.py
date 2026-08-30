@@ -6,7 +6,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 # ============================================================
-# 配置
+# config
 # ============================================================
 
 REVIEWS_PATH = Path("Clothing_Shoes_and_Jewelry.jsonl.gz")
@@ -15,21 +15,21 @@ VOCAB_PATH = Path("vocab_metadata_v2.json")
 
 OUTPUT_PATH = Path("review_context_candidates_sample.json")
 
-# 第一轮只跑 100 万条
+# round 1 processes only 1M rows
 MAX_REVIEWS = 1_000_000
 
-# anchor 左右保留多少字符
+# how many chars to keep on each side of an anchor
 CONTEXT_WINDOW = 100
 
-# 每个 anchor 最多保存多少真实例子
+# max real examples saved per anchor
 MAX_EXAMPLES_PER_ANCHOR = 20
 
-# 太短的 anchor 很容易误匹配
+# anchors that are too short over-match easily
 MIN_TERM_LENGTH = 3
 
 
 # ============================================================
-# 只处理这些属性
+# only these attributes are processed
 # ============================================================
 
 TARGET_ATTRIBUTES = [
@@ -40,10 +40,10 @@ TARGET_ATTRIBUTES = [
 
 
 # ============================================================
-# Size 特殊允许词
+# Size-specific allowed words
 #
-# s / m / l 虽然只有一个字符，
-# 但必须带 size context 才允许。
+# s / m / l are single-letter tokens,
+# but they are allowed only with size context.
 # ============================================================
 
 SIZE_SHORT_TERMS = {
@@ -59,7 +59,7 @@ SIZE_SHORT_TERMS = {
 
 
 # ============================================================
-# 通用工具
+# helpers
 # ============================================================
 
 
@@ -78,10 +78,10 @@ def normalize(value):
 
 
 # ============================================================
-# 读取 vocab
+# load the vocab
 # ============================================================
 
-print("读取 vocab...")
+print("loading the vocab...")
 
 with VOCAB_PATH.open("r", encoding="utf-8") as f:
     vocab = json.load(f)
@@ -91,7 +91,7 @@ dictionaries = vocab.get("dictionaries", {})
 
 
 # ============================================================
-# 建立 anchor → canonical
+# build anchor -> canonical
 # ============================================================
 
 anchor_map = {}
@@ -114,14 +114,14 @@ for attr in TARGET_ATTRIBUTES:
                 continue
 
             # --------------------------------
-            # 普通词至少 3 字符
+            # normal words need at least 3 chars
             # --------------------------------
 
             if len(term) < MIN_TERM_LENGTH:
                 continue
 
             # --------------------------------
-            # size 的短词单独允许
+            # short size words are allowed separately
             # --------------------------------
 
             if attr == "size" and term in SIZE_SHORT_TERMS:
@@ -137,24 +137,24 @@ for attr in TARGET_ATTRIBUTES:
             attribute_anchor_counts[attr] += 1
 
 
-print("\nAnchor 数量：")
+print("\nanchor count:")
 
 for attr in TARGET_ATTRIBUTES:
     print(f"{attr:<12}{attribute_anchor_counts[attr]:>8,}")
 
 
-print(f"\n总 anchor：{len(anchor_map):,}")
+print(f"\ntotal anchors: {len(anchor_map):,}")
 
 
 # ============================================================
-# 构建 regex
+# build the regex
 #
-# 长词优先，避免：
+# longer terms first, avoiding:
 #
 # stainless steel
 # steel
 #
-# 同时命中时优先长表达。
+# when multiple match, the longer expression wins.
 # ============================================================
 
 anchors = sorted(anchor_map.keys(), key=len, reverse=True)
@@ -167,10 +167,10 @@ ANCHOR_PATTERN = re.compile(r"(?<![a-z0-9])(" + "|".join(escaped) + r")(?![a-z0-
 
 
 # ============================================================
-# 否定/语境词
+# negation / context words
 #
-# 第一阶段不删除，
-# 只做标记。
+# phase 1 does not delete anything;
+# it only tags.
 # ============================================================
 
 NEGATION_PATTERN = re.compile(
@@ -196,7 +196,7 @@ SIZE_CONTEXT_PATTERN = re.compile(
 
 
 # ============================================================
-# 统计器
+# counters
 # ============================================================
 
 total_reviews = 0
@@ -216,7 +216,7 @@ size_context_hits = Counter()
 
 
 # ============================================================
-# 保存上下文样本
+# save context samples
 # ============================================================
 
 examples = defaultdict(list)
@@ -231,11 +231,11 @@ def add_example(key, record):
 
 
 # ============================================================
-# 开始扫描
+# start the scan
 # ============================================================
 
-print("\n开始扫描 reviews...")
-print(f"本轮上限：{MAX_REVIEWS:,}")
+print("\nscanning reviews...")
+print(f"this-round limit: {MAX_REVIEWS:,}")
 
 start = time.time()
 
@@ -268,7 +268,7 @@ with gzip.open(REVIEWS_PATH, "rt", encoding="utf-8") as f:
         full_text = (title + ". " + text).strip()
 
         # ====================================================
-        # 找 anchor
+        # find the anchor
         # ====================================================
 
         matches = list(ANCHOR_PATTERN.finditer(full_text))
@@ -278,7 +278,7 @@ with gzip.open(REVIEWS_PATH, "rt", encoding="utf-8") as f:
 
         reviews_with_anchor += 1
 
-        # 同一 review 内避免完全重复统计
+        # avoid fully duplicate counts within the same review
         seen_in_review = set()
 
         for match in matches:
@@ -330,7 +330,7 @@ with gzip.open(REVIEWS_PATH, "rt", encoding="utf-8") as f:
                     size_context_hits[(canonical, anchor)] += 1
 
                 # --------------------------------
-                # 保存真实例子
+                # save real examples
                 # --------------------------------
 
                 example_key = (attr, canonical, anchor)
@@ -350,7 +350,7 @@ with gzip.open(REVIEWS_PATH, "rt", encoding="utf-8") as f:
                 )
 
         # ====================================================
-        # 进度
+        # progress
         # ====================================================
 
         if total_reviews % 100000 == 0:
@@ -359,26 +359,26 @@ with gzip.open(REVIEWS_PATH, "rt", encoding="utf-8") as f:
             speed = total_reviews / elapsed if elapsed > 0 else 0
 
             print(
-                f"\r已扫描 "
+                f"\rscanned "
                 f"{total_reviews:,} reviews | "
                 f"{speed:,.0f}/s | "
-                f"有 anchor "
+                f"with anchor "
                 f"{reviews_with_anchor:,} | "
-                f"错误 {bad_lines:,}",
+                f"errors {bad_lines:,}",
                 end="",
                 flush=True,
             )
 
 
 # ============================================================
-# 完成
+# done
 # ============================================================
 
 elapsed = time.time() - start
 
 
 # ============================================================
-# 构造输出
+# build the output
 # ============================================================
 
 output = {
@@ -407,7 +407,7 @@ output = {
 
 
 # ============================================================
-# 每个属性整理
+# organize per attribute
 # ============================================================
 
 for attr in TARGET_ATTRIBUTES:
@@ -416,7 +416,7 @@ for attr in TARGET_ATTRIBUTES:
     for canonical, count in canonical_hits[attr].most_common():
         anchor_rows = []
 
-        # 找这个 canonical 的 anchors
+        # find this canonical's anchors
         relevant = []
 
         for (a, c, anchor), anchor_count in anchor_hits.items():
@@ -459,7 +459,7 @@ for attr in TARGET_ATTRIBUTES:
 
 
 # ============================================================
-# 保存
+# save
 # ============================================================
 
 with OUTPUT_PATH.open("w", encoding="utf-8") as f:
@@ -469,7 +469,7 @@ with OUTPUT_PATH.open("w", encoding="utf-8") as f:
 
 
 # ============================================================
-# Terminal 摘要
+# terminal summary
 # ============================================================
 
 print("\n\n")
@@ -477,25 +477,25 @@ print("=" * 75)
 print("REVIEW CONTEXT SAMPLE COMPLETE")
 print("=" * 75)
 
-print(f"扫描 reviews：{total_reviews:,}")
+print(f"scanned reviews: {total_reviews:,}")
 
-print(f"错误：{bad_lines:,}")
+print(f"errors: {bad_lines:,}")
 
-print(f"含 vocab anchor：{reviews_with_anchor:,}")
+print(f"reviews with vocab anchors: {reviews_with_anchor:,}")
 
 print(f"anchor review rate：{reviews_with_anchor / total_reviews:.2%}")
 
-print(f"总 anchor hits：{total_anchor_hits:,}")
+print(f"total anchor hits: {total_anchor_hits:,}")
 
-print(f"耗时：{elapsed / 60:.2f} 分钟")
+print(f"elapsed: {elapsed / 60:.2f} minutes")
 
 
-print("\n属性命中：")
+print("\nattribute hits:")
 
 for attr in TARGET_ATTRIBUTES:
     print(f"{attr:<12}{attribute_hits[attr]:>12,}")
 
 
-print(f"\n输出：{OUTPUT_PATH}")
+print(f"\noutput: {OUTPUT_PATH}")
 
-print("\n注意：当前没有向 vocab 自动添加任何 synonym。")
+print("\nnote: no synonyms were auto-added to the vocab.")

@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from pathlib import Path
 
 from agent.base_agent import BaseAgent
@@ -24,6 +25,7 @@ from agent.dialogue.pipeline import DialogueUnderstandingPipeline
 from agent.intent_router import IntentRouter
 from agent.reranker import Reranker
 from agent.retriever import HybridRetriever
+from agent.rewrite_guard import RewriteGuard
 from agent.runtime_controller import RuntimeController
 from config.env_config import EnvConfig
 from llm.base import DisabledLLMClient, LLMClient
@@ -89,11 +91,25 @@ class Agent(BaseAgent):
             catalog_resources=dialogue_catalog_resources,
         )
         self.router = IntentRouter(env=self.env)
+        self._rewrite_guard = RewriteGuard(llm_available=self.profile.llm_available)
+        self.session_logs: dict[str, dict[str, object]] = {}
 
     # ------------------------------------------------------------------
     def reset(self, session_id: str, user_profile: dict) -> None:
         """新会话开始：初始化独立会话状态（内存态），注入长期用户画像。"""
         self.dialogue.reset(session_id, user_profile)
+        self.session_logs[session_id] = {
+            "session_id": session_id,
+            "strategy": self.decisions.strategy,
+            "strategy_lut": self.decisions.strategy_lut,
+            "latency_ms": 0.0,
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "phase_timings": {"retrieve_ms": 0.0, "rerank_ms": 0.0},
+            "degradation": [],
+            "reasons": list(self.decisions.reasons),
+            "turns": [],
+        }
 
     def intent_recognition_statistics(self) -> dict[str, object]:
         """Expose local diagnostics without changing the official turn-response contract."""
@@ -127,6 +143,7 @@ class Agent(BaseAgent):
 
     # ------------------------------------------------------------------
     def _respond_impl(self, session_id: str, user_message: str, turn: int, top_k: int) -> dict:
+        started_at = time.perf_counter()
         pending = self.dialogue.interpret_turn(session_id, user_message, turn)
         context = pending.recommendation_context
 
@@ -148,12 +165,14 @@ class Agent(BaseAgent):
             else self.env.retrieval_pool_size
         )
         pool_size = max(self.env.retrieval_pool_size, configured_pool_size)
+        retrieve_started_at = time.perf_counter()
         candidates = self.retriever.search(
             route,
             top_k=pool_size,
             mode=context.retrieval_mode,
             shelf=context.category_phrase,
         )
+        retrieve_ms = (time.perf_counter() - retrieve_started_at) * 1000.0
 
         candidate_signals = None
         calculator = self.dialogue.candidate_signal_calculator
@@ -183,6 +202,7 @@ class Agent(BaseAgent):
         )
 
         # 3) 精排（Pillar I/IV）：规则 + 可选 LLM/bge，目标把目标商品推前
+        rerank_started_at = time.perf_counter()
         ranked = self.reranker.rerank(
             self.retriever,
             candidates,
@@ -193,6 +213,7 @@ class Agent(BaseAgent):
             use_reranker_model=self.decisions.use_reranker_model,
             use_llm_rerank=self.decisions.use_llm_rerank,
         )
+        rerank_ms = (time.perf_counter() - rerank_started_at) * 1000.0
         decision = turn_result.question_decision
         emit_k = top_k
         if self.env.emit_gate:
@@ -241,4 +262,74 @@ class Agent(BaseAgent):
             )
         except Exception:
             logger.warning("[diagnostics] decision trace capture failed")
+        try:
+            self._record_session_log(
+                session_id=session_id,
+                turn=turn,
+                turn_result=turn_result,
+                shown=shown,
+                started_at=started_at,
+                retrieve_ms=retrieve_ms,
+                rerank_ms=rerank_ms,
+            )
+        except Exception:
+            logger.warning("[observability] session log capture failed")
         return response
+
+    def _record_session_log(
+        self,
+        *,
+        session_id: str,
+        turn: int,
+        turn_result,
+        shown: list[str],
+        started_at: float,
+        retrieve_ms: float,
+        rerank_ms: float,
+    ) -> None:
+        log = self.session_logs.setdefault(
+            session_id,
+            {
+                "session_id": session_id,
+                "strategy": self.decisions.strategy,
+                "strategy_lut": self.decisions.strategy_lut,
+                "latency_ms": 0.0,
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "phase_timings": {"retrieve_ms": 0.0, "rerank_ms": 0.0},
+                "degradation": [],
+                "reasons": list(self.decisions.reasons),
+                "turns": [],
+            },
+        )
+        prompt_tokens = turn_result.prompt_tokens + self.reranker.last_usage["prompt_tokens"]
+        completion_tokens = (
+            turn_result.completion_tokens + self.reranker.last_usage["completion_tokens"]
+        )
+        log["latency_ms"] += (time.perf_counter() - started_at) * 1000.0
+        log["prompt_tokens"] += prompt_tokens
+        log["completion_tokens"] += completion_tokens
+        log["phase_timings"]["retrieve_ms"] += retrieve_ms
+        log["phase_timings"]["rerank_ms"] += rerank_ms
+        for breaker in (
+            getattr(self.retriever, "_dense_breaker", None),
+            getattr(self.reranker, "_rerank_breaker", None),
+        ):
+            if breaker is not None and getattr(breaker, "trip_reason", None):
+                reason = (
+                    f"{breaker.phase} tripped ({breaker.trip_count} times): "
+                    f"{breaker.trip_reason}"
+                )
+                if reason not in log["degradation"]:
+                    log["degradation"].append(reason)
+        log["turns"].append(
+            {
+                "turn": turn,
+                "ask_attribute": (
+                    turn_result.question_decision.ask_attribute
+                    if turn_result.question_decision.should_ask
+                    else None
+                ),
+                "recommendations": list(shown),
+            }
+        )

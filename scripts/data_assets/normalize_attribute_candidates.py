@@ -4,20 +4,20 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 # ============================================================
-# 配置
+# config
 # ============================================================
 
 CANDIDATE_PATH = Path("attribute_candidates.json")
 VOCAB_PATH = Path("vocab(1).json")
 OUTPUT_PATH = Path("vocab_candidate_review.json")
 
-# 如果你的文件实际叫 attribute_candidates(1).json，
-# 就把上面的 CANDIDATE_PATH 改成：
+# if your file is actually named attribute_candidates(1).json,
+# change CANDIDATE_PATH above to:
 # CANDIDATE_PATH = Path("attribute_candidates(1).json")
 
 
 # ============================================================
-# 基础工具
+# helpers
 # ============================================================
 
 
@@ -49,10 +49,10 @@ def clean_hyphen(value):
 
 
 # ============================================================
-# 读取文件
+# read the file
 # ============================================================
 
-print("读取文件...")
+print("reading the file...")
 
 with CANDIDATE_PATH.open("r", encoding="utf-8") as f:
     candidate_data = json.load(f)
@@ -65,7 +65,7 @@ dictionaries = vocab.get("dictionaries", {})
 
 
 # ============================================================
-# 建立现有 vocab term → canonical 映射
+# build the existing vocab term -> canonical mapping
 # ============================================================
 
 existing_map = defaultdict(dict)
@@ -88,7 +88,7 @@ for attr in [
 
 
 # ============================================================
-# 通用垃圾值
+# generic junk values
 # ============================================================
 
 COMMON_REJECT = {
@@ -134,9 +134,9 @@ MATERIAL_REJECT = COMMON_REJECT | {
 }
 
 
-# 明确的材料基础词。
-# 这些不是凭空造的，主要对应我们 metadata
-# 高频结构化候选中的基础材料类型。
+# explicit base material words.
+# these are not invented; they mainly correspond to high-frequency
+# base material types in our metadata candidates.
 KNOWN_MATERIALS = {
     "metal",
     "stainless steel",
@@ -209,7 +209,7 @@ KNOWN_MATERIALS = {
 }
 
 
-# 已知 alias → canonical
+# known alias -> canonical
 MATERIAL_ALIAS = {
     "aluminium": "aluminum",
     "pvc": "polyvinyl chloride",
@@ -230,7 +230,7 @@ MATERIAL_ALIAS = {
 
 
 # ============================================================
-# Material 配方解析
+# Material blend parsing
 # ============================================================
 
 PERCENTAGE = re.compile(r"\b\d{1,3}(?:\.\d+)?\s*%\s*")
@@ -249,7 +249,7 @@ def normalize_material_piece(piece):
 
     piece = clean_hyphen(piece)
 
-    # 一些常见无意义修饰
+    # some common meaningless modifiers
     piece = re.sub(r"^100 percent\s+", "", piece)
 
     piece = re.sub(r"^100-percent-", "", piece)
@@ -268,10 +268,10 @@ def split_material(value):
 
     raw = normalize_text(value)
 
-    # 先去百分比
+    # first strip percentages
     cleaned = PERCENTAGE.sub("", raw)
 
-    # 常见逗号、斜线、& 拆分
+    # split on commas, slashes, and &
     parts = MATERIAL_SEPARATORS.split(cleaned)
 
     output = []
@@ -316,7 +316,7 @@ COLOR_ALIAS = {
 }
 
 
-# 基础颜色 + metadata 中明显有价值的颜色
+# base colors + clearly valuable colors in the metadata
 KNOWN_COLORS = {
     "black",
     "white",
@@ -408,7 +408,7 @@ VALID_LETTER_SIZE = re.compile(
 )
 
 
-# 明显物理尺寸
+# obvious physical dimensions
 PHYSICAL_SIZE = re.compile(
     r"""
     (?:
@@ -438,7 +438,7 @@ def normalize_size(value):
 
 
 # ============================================================
-# 输出结构
+# output structure
 # ============================================================
 
 result = {
@@ -461,7 +461,7 @@ result = {
 
 
 # ============================================================
-# 辅助添加
+# helper for adding
 # ============================================================
 
 
@@ -483,7 +483,7 @@ def add_row(buckets, status, raw_value, normalized, count, fields, reason, canon
 # MATERIAL
 # ============================================================
 
-print("\n处理 MATERIAL...")
+print("\nprocessing MATERIAL...")
 
 material_buckets = {
     "AUTO_ACCEPT": [],
@@ -494,7 +494,7 @@ material_buckets = {
 material_candidates = candidate_data["attributes"]["material"]["top_new_candidates"]
 
 
-# 聚合基础 material
+# aggregate base materials
 material_aggregate = defaultdict(
     lambda: {
         "count": 0,
@@ -522,7 +522,7 @@ for row in material_candidates:
 
         continue
 
-    # 将组合值拆成基础材料
+    # split combined values into base materials
     for piece in pieces:
         if piece in MATERIAL_REJECT:
             continue
@@ -544,7 +544,7 @@ for canonical, data in material_aggregate.items():
 
     raw_examples = [x for x, _ in data["raw_values"].most_common(10)]
 
-    # 已存在 vocab
+    # already in the vocab
     if canonical in existing_map["material"]:
         status = "AUTO_ACCEPT"
 
@@ -552,7 +552,7 @@ for canonical, data in material_aggregate.items():
 
         target = existing_map["material"][canonical]
 
-    # 高可信基础材料
+    # high-confidence base materials
     elif canonical in KNOWN_MATERIALS and count >= 20:
         status = "AUTO_ACCEPT"
 
@@ -560,7 +560,7 @@ for canonical, data in material_aggregate.items():
 
         target = canonical
 
-    # 高频但未知
+    # high-frequency but unknown
     elif count >= 100:
         status = "REVIEW"
 
@@ -568,7 +568,7 @@ for canonical, data in material_aggregate.items():
 
         target = canonical
 
-    # 中频
+    # medium-frequency
     elif count >= 20:
         status = "REVIEW"
 
@@ -599,7 +599,7 @@ for canonical, data in material_aggregate.items():
 # COLOR
 # ============================================================
 
-print("处理 COLOR...")
+print("processing COLOR...")
 
 color_buckets = {
     "AUTO_ACCEPT": [],
@@ -626,7 +626,7 @@ for row in color_candidates:
 
         continue
 
-    # 已存在 vocab
+    # already in the vocab
     if value in existing_map["color"]:
         add_row(
             color_buckets,
@@ -641,7 +641,7 @@ for row in color_candidates:
 
         continue
 
-    # 明确颜色
+    # unambiguous colors
     if value in KNOWN_COLORS and count >= 20:
         add_row(
             color_buckets,
@@ -656,7 +656,7 @@ for row in color_candidates:
 
         continue
 
-    # 两色组合：
+    # two-color blends:
     # black/white
     # black/red
     if re.fullmatch(r"[a-z -]+/[a-z -]+", value):
@@ -702,7 +702,7 @@ for row in color_candidates:
 # SIZE
 # ============================================================
 
-print("处理 SIZE...")
+print("processing SIZE...")
 
 size_buckets = {
     "AUTO_ACCEPT": [],
@@ -722,7 +722,7 @@ for row in size_candidates:
 
     fields = row.get("fields", {})
 
-    # 明显物理尺寸
+    # obvious physical dimensions
     if PHYSICAL_SIZE.search(raw):
         add_row(
             size_buckets,
@@ -741,7 +741,7 @@ for row in size_candidates:
 
         continue
 
-    # 归一化后已有
+    # already present after normalization
     if value in existing_map["size"]:
         add_row(
             size_buckets,
@@ -756,7 +756,7 @@ for row in size_candidates:
 
         continue
 
-    # 标准字母尺码
+    # standard letter sizes
     if VALID_LETTER_SIZE.fullmatch(value):
         add_row(
             size_buckets,
@@ -771,8 +771,8 @@ for row in size_candidates:
 
         continue
 
-    # 纯数字可能是服装/鞋码，
-    # 但不能仅凭 details.Size 自动接受
+    # plain numbers may be apparel/shoe sizes,
+    # but must not be auto-accepted from details.Size alone
     if re.fullmatch(r"\d{1,2}(?:\.5)?", value):
         add_row(
             size_buckets,
@@ -813,7 +813,7 @@ for row in size_candidates:
 
 
 # ============================================================
-# 排序
+# sort
 # ============================================================
 
 
@@ -838,7 +838,7 @@ size_buckets = sort_buckets(size_buckets)
 
 
 # ============================================================
-# 保存
+# save
 # ============================================================
 
 result["attributes"]["material"] = material_buckets
@@ -853,7 +853,7 @@ with OUTPUT_PATH.open("w", encoding="utf-8") as f:
 
 
 # ============================================================
-# Terminal 摘要
+# terminal summary
 # ============================================================
 
 print("\n")
@@ -892,5 +892,5 @@ for attr in [
 
 
 print("\n")
-print(f"输出：{OUTPUT_PATH}")
-print("原 vocab 未修改。")
+print(f"output: {OUTPUT_PATH}")
+print("the original vocab was not modified.")

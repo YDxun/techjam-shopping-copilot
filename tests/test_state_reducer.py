@@ -174,7 +174,8 @@ class StateReducerTest(unittest.TestCase):
         self.assertTrue(result.applied)
         self.assertEqual(result.state.intent_version, 2)
         self.assertEqual(result.state.category, "shoes")
-        # 保守默认：旧 hard 约束降级为 soft 保留，新意图提升为 hard
+        # conservative default: old hard constraints downgrade to soft and stay; the new intent
+        # upgrades to hard
         self.assertEqual(
             {item.value: item.strength.value for item in result.state.active_constraints},
             {"casual": "soft", "cotton": "hard"},

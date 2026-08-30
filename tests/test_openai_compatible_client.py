@@ -1,16 +1,27 @@
 from __future__ import annotations
 
-import httpx
 import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+import httpx
 import openai
 
-from config.models import CircuitBreakerConfig, LLMConfig, ProviderConfig, ProviderConfigs, RetryConfig, SecretValue
+from config.models import (
+    CircuitBreakerConfig,
+    LLMConfig,
+    ProviderConfig,
+    ProviderConfigs,
+    RetryConfig,
+    SecretValue,
+)
 from llm.base import LLMErrorCategory, LLMState
 from llm.factory import create_llm_client
-from llm.openai_compatible import FailureDisposition, OpenAICompatibleClient, classify_openai_failure
+from llm.openai_compatible import (
+    FailureDisposition,
+    OpenAICompatibleClient,
+    classify_openai_failure,
+)
 
 
 def completion(content: str = "OK", prompt_tokens: int = 2, completion_tokens: int = 1):

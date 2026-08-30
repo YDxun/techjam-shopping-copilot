@@ -1,23 +1,29 @@
-"""构建 field_mapping.json：属性 → 去哪找（字段）+ 权重 + 过滤严格度（静态表）。
+"""Build field_mapping.json: attribute -> where to look (fields) + weights + filter strictness
+    (static table).
 
-回答的问题："用户约束 {material: cotton} 时，去目录的哪些字段找 'cotton'？找不到算不算不满足？"
+Question answered: "for a user constraint {material: cotton}, which catalog fields should be
+searched for 'cotton'? If not found, is the constraint unmet?"
 
-数据来源：
-- data/analysis/vocab.json  各属性 canonical 词 + 同义词（已建，本脚本复用）
-- data/analysis/stats.json  字段缺失率（price 缺 78.9%、description 空 47.8%…）
-- data/catalog.jsonl        50k 商品（按字段抽取文本做覆盖统计）
+Data sources:
+- data/analysis/vocab.json  per-attribute canonical words + synonyms (already built; reused here)
+- data/analysis/stats.json  field missing rates (price missing 78.9%, description empty 47.8%...)
+- data/catalog.jsonl        50k products (per-field text extraction for coverage stats)
 
-方法（与建 vocab 的反推统计同源）：
-对每个属性（material/color/size/style/use_case/category）取 vocab 的 canonical+同义词，
-统计"约束词出现在 title / features / details.<key> / store / categories / description 的占比"。
-用倒排索引（字段->token->商品集合）加速；短语走子串扫描。聚合后按
-"约束确认真实存在（title/features 命中）后各字段命中率"给出 lookup_fields 权重，
-details 权威键（Material/Color/Size…）命中即高置信。brand/budget/feature/other 无词表人工定稿。
+Method (same source as the reverse stats used to build the vocab):
+For each attribute (material/color/size/style/use_case/category), take the vocab's canonical +
+synonyms,
+and measure "the share of constraint words appearing in title / features / details.<key> / store /
+categories / description".
+Uses an inverted index (field -> token -> product set) for speed; phrases use substring scans. After
+aggregation,
+lookup-field weights come from "per-field hit rates after a constraint is confirmed to exist
+(title/features hit)",
+and an authoritative details key (Material/Color/Size...) hit is high-confidence.
+brand/budget/feature/other have no vocab and are finalized manually.
 
-产物：data/analysis/field_mapping.json（定稿）+ field_mapping_raw.json（中间统计）
-用法：python scripts/build_field_mapping.py [--quick N]
+Output: data/analysis/field_mapping.json (final) + field_mapping_raw.json (intermediate stats)
+Usage: python scripts/build_field_mapping.py [--quick N]
 """
-
 from __future__ import annotations
 
 import argparse
@@ -39,7 +45,7 @@ def log(msg: str) -> None:
     print(f"[{time.time() - _T0:6.1f}s] {msg}", flush=True)
 
 
-# 各属性在 details 字典里的权威键（命中即高置信）
+# authoritative keys per attribute in the details dict (a hit is high-confidence)
 DETAILS_KEY_HINTS = {
     "material": ("material", "fabric"),
     "color": ("color",),
@@ -53,72 +59,21 @@ DETAILS_KEY_HINTS = {
 FIELDS = ("title", "features", "store", "categories", "description")
 TOKEN_RE = re.compile(r"[a-z0-9%]+")
 
-# 非属性词黑名单：从 top 类目 token 反推（商品/类目名词，绝不可能作为属性值）。
-# vocab 反向统计会混入这类词（如 material 出现 "shoes"/"women"、style 出现 "jewelry"），
-# 统计 field_mapping 时剔除，避免污染"约束词在哪个字段出现"的占比。
-NON_ATTRIBUTE_WORDS = frozenset(
-    {
-        "shoes",
-        "women",
-        "men",
-        "girls",
-        "boys",
-        "baby",
-        "kids",
-        "unisex",
-        "jewelry",
-        "jewellery",
-        "earrings",
-        "necklaces",
-        "bracelets",
-        "rings",
-        "watches",
-        "wallets",
-        "clothing",
-        "apparel",
-        "accessories",
-        "socks",
-        "dresses",
-        "shirts",
-        "blouses",
-        "tees",
-        "tops",
-        "pants",
-        "jeans",
-        "shorts",
-        "jackets",
-        "coats",
-        "sandals",
-        "boots",
-        "sneakers",
-        "costumes",
-        "lingerie",
-        "lounge",
-        "sleep",
-        "activewear",
-        "novelty",
-        "sets",
-        "more",
-        "t",
-        "scarves",
-        "gloves",
-        "hats",
-        "belts",
-        "bags",
-        "handbags",
-        "purses",
-        "umbrellas",
-        "sunglasses",
-        "suits",
-        "skirts",
-        "leggings",
-        "swimwear",
-        "underwear",
-        "pajamas",
-        "robes",
-        "jumpsuits",
-    }
-)
+# non-attribute word blacklist: derived from top category tokens (product/category nouns that can
+# never be attribute values).
+# reverse vocab stats can mix in such words (e.g. "shoes"/"women" under material, "jewelry" under
+# style),
+# so they are removed when building field_mapping to keep the per-field shares clean.
+NON_ATTRIBUTE_WORDS = frozenset({
+    "shoes", "women", "men", "girls", "boys", "baby", "kids", "unisex",
+    "jewelry", "jewellery", "earrings", "necklaces", "bracelets", "rings", "watches",
+    "wallets", "clothing", "apparel", "accessories", "socks", "dresses", "shirts",
+    "blouses", "tees", "tops", "pants", "jeans", "shorts", "jackets", "coats",
+    "sandals", "boots", "sneakers", "costumes", "lingerie", "lounge", "sleep",
+    "activewear", "novelty", "sets", "more", "t", "scarves", "gloves", "hats",
+    "belts", "bags", "handbags", "purses", "umbrellas", "sunglasses", "suits",
+    "skirts", "leggings", "swimwear", "underwear", "pajamas", "robes", "jumpsuits",
+})
 
 
 def _tokens(text: str) -> frozenset[str]:
@@ -150,19 +105,19 @@ def _join_lower(value) -> str:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--catalog", default=str(ROOT / "data" / "catalog.jsonl"))
-    ap.add_argument("--quick", type=int, default=0, help=">0 时只用前 N 个商品（调试）")
+    ap.add_argument("--quick", type=int, default=0, help="when >0, use only the first N products (debug)")  # noqa: E501
     args = ap.parse_args()
 
     vocab = json.loads((ROOT / "data" / "analysis" / "vocab.json").read_text(encoding="utf-8"))
     stats = json.loads((ROOT / "data" / "analysis" / "stats.json").read_text(encoding="utf-8"))
 
-    # ---- 1) 构建倒排索引：field -> token -> set(asin_idx) ----
+    # ---- 1) build an inverted index: field -> token -> set(asin_idx) ----
     idx: dict[str, dict[str, set[int]]] = {f: defaultdict(set) for f in FIELDS}
     idx["details"] = defaultdict(set)
-    idx_tf = defaultdict(set)  # title+features 合并索引（约束检测）
+    idx_tf = defaultdict(set)          # merged title+features index (constraint detection)
     texts: dict[str, list[str]] = {f: [] for f in FIELDS}
     texts["details"] = []
-    details_auth: list[dict[str, str]] = []  # 每商品权威键文本（小写）
+    details_auth: list[dict[str, str]] = []   # per-product authoritative-key text (lowercase)
     asins: list[str] = []
 
     with Path(args.catalog).open(encoding="utf-8") as fh:
@@ -188,7 +143,7 @@ def main() -> int:
             tft = ft["title"] + " " + ft["features"]
             for tok in _tokens(tft):
                 idx_tf[tok].add(i)
-            # 权威键文本
+            # authoritative-key text
             auth: dict[str, str] = {}
             details = p.get("details") or {}
             if isinstance(details, dict):
@@ -204,7 +159,7 @@ def main() -> int:
     n = len(asins)
     log(f"catalog={n}")
 
-    # ---- 2) 每属性每字段聚合命中率 ----
+    # ---- 2) aggregate per-attribute per-field hit rates ----
     attr_terms: dict[str, dict[str, list[str]]] = {}
     for attr in ("material", "color", "size", "style", "use_case", "category_product_type"):
         entries = vocab["dictionaries"].get(attr, {})
@@ -213,10 +168,9 @@ def main() -> int:
             if not isinstance(ent, dict):
                 continue
             if canonical.lower() in NON_ATTRIBUTE_WORDS:
-                continue  # canonical 本身就是商品词（如 material 的 "shoes"）
+                continue  # canonical is itself a product word (e.g. "shoes" under material)
             syns = [
-                s
-                for s in ent.get("synonyms", [])
+                s for s in ent.get("synonyms", [])
                 if isinstance(s, str) and s and s not in NON_ATTRIBUTE_WORDS
             ]
             if syns:
@@ -226,7 +180,7 @@ def main() -> int:
 
     attr_agg: dict[str, dict] = {}
     for attr, terms in attr_terms.items():
-        # 每字段: tf 命中商品集（title/features 任一同义词）
+        # per field: tf-hit product set (any synonym in title/features)
         tf_sets: dict[str, set[int]] = {}
         for canonical, syns in terms.items():
             single = [s for s in syns if _single_token(s)]
@@ -242,15 +196,16 @@ def main() -> int:
                     ):
                         sset.add(i)
             tf_sets[canonical] = sset
-        # 聚合 tf 并集（所有 canonical）
+        # aggregate the tf union (all canonicals)
         all_tf: set[int] = set()
         for sset in tf_sets.values():
             all_tf |= sset
         if not all_tf:
             attr_agg[attr] = {"note": "no data"}
             continue
-        # 每字段命中率 = 该字段命中的 tf 商品数 / tf 商品数（加权按 canonical 计数）
-        # 简化：按商品级并集算（一个商品多 canonical 只计一次）
+        # per-field hit rate = tf products hit in this field / tf products (weighted by canonical
+        # count)
+        # simplified: product-level union (a product with multiple canonicals counts once)
         field_stats: dict[str, dict] = {}
         for f in FIELDS:
             fhit: set[int] = set()
@@ -269,7 +224,7 @@ def main() -> int:
                 "hit_rate": round(len(inter) / len(all_tf), 3) if all_tf else 0.0,
                 "overall": round(len(fhit) / n, 4),
             }
-        # details 权威键命中率
+        # details authoritative-key hit rate
         dhit: set[int] = set()
         for i in range(n):
             auth = details_auth[i]

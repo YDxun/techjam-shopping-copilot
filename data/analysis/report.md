@@ -1,12 +1,12 @@
-# TechJam2026 数据盘点 + 商品字典 + 提问价值分析报告
+# TechJam2026 Data Inventory + Product Dictionary + Question-Value Analysis Report
 
-- 生成时间：2026-08-28 02:18:49
-- 数据源：`data/catalog.jsonl`（50000 商品）+ `data/public_set.jsonl`（200 会话）
+- generated at: 2026-08-28 02:18:49
+- data sources: `data/catalog.jsonl` (50000 products) + `data/public_set.jsonl` (200 sessions)
 
-## 一、数据速览
+## 1. Data overview
 
-### 字段覆盖率
-| 字段 | 覆盖率 |
+### Field coverage
+| Field | Coverage |
 |---|---|
 | `parent_asin` | 100.0% |
 | `title` | 100.0% |
@@ -19,8 +19,8 @@
 | `rating_number` | 100.0% |
 | `store` | 100.0% |
 
-### 缺失与脏数据
-| 问题 | 数量 | 占比 |
+### Missing & dirty data
+| Issue | Count | Share |
 |---|---|---|
 | price_missing | 39473 | 78.95% |
 | description_empty | 23887 | 47.77% |
@@ -33,12 +33,12 @@
 | title_short_or_generic | 3 | 0.01% |
 | price_zero_or_neg | 1 | 0.00% |
 
-### 价格
-- 有价格商品占比 **20.8%**；中位数 $22.88，P25 $14.99，P75 $39.99，区间 $0.0–$4119.0
-  → **budget 约束必须 lenient**：79% 商品无价格，不能用 budget 硬过滤
+### Price
+- products with a price: **20.8%**; median $22.88, P25 $14.99, P75 $39.99, range $0.0-$4119.0
+  -> **budget constraints must be lenient**: 79% of products have no price, so budget can never be a hard filter
 
-### 品类分布（Top 二级品类）
-| 二级品类 | 数量 |
+### Category distribution (top second-level categories)
+| Second-level category | Count |
 |---|---|
 | Women | 26406 |
 | Men | 9901 |
@@ -61,8 +61,8 @@
 | Women's Plus-Size Apparel | 27 |
 | Customers' Most-Loved: Sweaters Under $30 pASIN Test | 24 |
 
-### 评分分布
-| average_rating 区间 | 数量 |
+### Rating distribution
+| average_rating bucket | Count |
 |---|---|
 | 4.0-4.5 | 17104 |
 | 4.5-5.0 | 9542 |
@@ -71,7 +71,7 @@
 | 3.0-3.5 | 4542 |
 | <3.0 | 2897 |
 
-| rating_number 区间 | 数量 |
+| rating_number bucket | Count |
 |---|---|
 | 0 | 0 |
 | 1-10 | 23455 |
@@ -79,10 +79,10 @@
 | 101-1000 | 7789 |
 | 1000+ | 1532 |
 
-## 二、商品字典 vocab.json
+## 2. Product dictionary (vocab.json)
 
-### material（72 个标准词）
-| 标准词 | 同义词（带目录商品数） |
+### material (72 canonical terms)
+| Canonical | Synonyms (catalog product counts) |
 |---|---|
 | polyester | polyester(10339)、100% polyester(2998)、poly(440) |
 | cotton | cotton(9414)、100% cotton(3698)、cotton blend(668) |
@@ -93,8 +93,8 @@
 | denim | jeans(2509)、denim(929)、jean(432) |
 | mesh | mesh(2466)、mesh fabric(113)、netting(14) |
 
-### color（45 个标准词）
-| 标准词 | 同义词（带目录商品数） |
+### color (45 canonical terms)
+| Canonical | Synonyms (catalog product counts) |
 |---|---|
 | black | black(6802)、black white(90)、jet black(9) |
 | white | white(3319)、off-white(14)、pure white(10) |
@@ -105,8 +105,8 @@
 | red | red(1916)、crimson(26)、scarlet(23) |
 | grey | grey(1741)、heather grey(599)、gray(571) |
 
-### size（34 个标准词）
-| 标准词 | 同义词（带目录商品数） |
+### size (34 canonical terms)
+| Canonical | Synonyms (catalog product counts) |
 |---|---|
 | s | s(28194)、small(2942) |
 | shoe_size | 5(9364)、8(4290)、10(4246) |
@@ -117,8 +117,8 @@
 | waist_inseam | waist(3669)、inseam(547)、waist 32(28) |
 | one_size | adjustable(3542)、one size(1716)、free size(65) |
 
-### style（44 个标准词）
-| 标准词 | 同义词（带目录商品数） |
+### style (44 canonical terms)
+| Canonical | Synonyms (catalog product counts) |
 |---|---|
 | romantic | soft(9250)、feminine(451)、romantic(127) |
 | casual | casual(7486)、everyday(1879)、weekend(362) |
@@ -129,8 +129,8 @@
 | vintage | vintage(1622)、retro(775)、old school(18) |
 | formal | office(1577)、business(1063)、formal(1026) |
 
-### use_case（21 个标准词）
-| 标准词 | 同义词（带目录商品数） |
+### use_case (21 canonical terms)
+| Canonical | Synonyms (catalog product counts) |
 |---|---|
 | gift | gift(6078)、christmas(3176)、holiday(1692) |
 | party | party(4886)、evening(988)、cocktail(946) |
@@ -141,8 +141,8 @@
 | running | running(2703)、jogging(623)、joggers(220) |
 | winter | winter(2671)、warm(2502)、snow(576) |
 
-### category_product_type（38 个标准词）
-| 标准词 | 同义词（带目录商品数） |
+### category_product_type (38 canonical terms)
+| Canonical | Synonyms (catalog product counts) |
 |---|---|
 | shirt | shirt(5909)、button down(682)、dress shirt(234) |
 | blouse | top(5841)、blouse(1303)、tunic(1224) |
@@ -153,14 +153,14 @@
 | jeans | jeans(2509)、denim(929)、skinny jeans(318) |
 | shorts | shorts(2311)、running shorts(78)、cargo shorts(69) |
 
-### price（2 个标准词）
-| 标准词 | 同义词（带目录商品数） |
+### price (2 canonical terms)
+| Canonical | Synonyms (catalog product counts) |
 |---|---|
 | budget_min | premium(1887)、high end(54)、over $(8) |
 | budget_max | affordable(284)、cheap(117)、under $(11) |
 
-### attribute_aliases（6 个标准词）
-| 标准词 | 同义词（带目录商品数） |
+### attribute_aliases (6 canonical terms)
+| Canonical | Synonyms (catalog product counts) |
 |---|---|
 | size | size(13655)、fit(9888)、sizing(800) |
 | style | design(8263)、style(6407)、look(4240) |
@@ -169,8 +169,8 @@
 | use_case | occasion(3738)、use(2829)、event(376) |
 | budget | price(427)、cost(73)、budget(12) |
 
-### 常见成分写法（百分比组合）
-| 写法 | 商品数 |
+### Common ingredient phrasings (percentage blends)
+| Phrasing | Product count |
 |---|---|
 | 100% cotton | 1106 |
 | 95% polyester | 784 |
@@ -188,12 +188,12 @@
 | 100% leather | 180 |
 | 60% polyester | 161 |
 
-## 三、提问价值分析
+## 3. Question-value analysis
 
-### 总体（200 会话）
-- 不提问基线候选池均值：**4930.7** 件
+### Overall (200 sessions)
+- baseline candidate-pool mean without asking: **4930.7** items
 
-| 问法 ask_attribute | 平均披露约束数 | 缩小后候选池(均值) | 中位池 | 命中保持率 | 相对基线缩小 |
+| ask_attribute | Avg disclosed constraints | Shrunk pool (mean) | Median pool | Hit retention | Shrink vs baseline |
 |---|---|---|---|---|---|
 | other | 1.875 | 307.7 | 6 | 99.0% | 4622.9 |
 | feature | 1.63 | 461.2 | 23 | 99.0% | 4469.5 |
@@ -206,11 +206,11 @@
 | brand | 0.0 | 4930.7 | 748 | 100.0% | 0.0 |
 | budget | 0.0 | 4930.7 | 748 | 100.0% | 0.0 |
 
-### 先问什么建议
-优先问 other（平均每轮把候选从 4930.7 缩小到 307.7，命中保持 0.99）；其次 feature / material。注：'other' 一次最多披露 2 条任意约束，信息量最大，通常最划算。
+### What to ask first
+Ask other first (shrinks the pool from 4930.7 to 307.7 per turn on average while retaining a 0.99 hit rate); then feature / material. Note: 'other' discloses up to 2 arbitrary constraints at once, carrying the most information and usually the best value.
 
-### 分场景
-- **buying**（80 会话）：先问 `other`，候选池均值 1224.0 → 48.8；次选 `feature` / `material`
-- **browsing**（80 会话）：先问 `other`，候选池均值 9316.5 → 156.2；次选 `feature` / `material`
-- **intent_override**（30 会话）：先问 `other`，候选池均值 3321.9 → 64.1；次选 `feature` / `color`
-- **boundary**（10 会话）：先问 `category`，候选池均值 4323.5 → 4323.5；次选 `material` / `color`
+### Per scenario
+- **buying** (80 sessions): ask `other` first, mean pool 1224.0 -> 48.8; next `feature` / `material`
+- **browsing** (80 sessions): ask `other` first, mean pool 9316.5 -> 156.2; next `feature` / `material`
+- **intent_override** (30 sessions): ask `other` first, mean pool 3321.9 -> 64.1; next `feature` / `color`
+- **boundary** (10 sessions): ask `category` first, mean pool 4323.5 -> 4323.5; next `material` / `color`

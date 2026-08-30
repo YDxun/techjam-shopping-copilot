@@ -1,5 +1,4 @@
-"""工具集：数据集 SHA256 完整性校验、通用文本/会话工具。"""
-
+"""Utilities: dataset SHA256 integrity verification, general text/session tools."""
 from utils import session_utils
 from utils.data_verify import sha256_of, verify_dataset, verify_file
 

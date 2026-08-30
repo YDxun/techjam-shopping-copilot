@@ -166,6 +166,7 @@ class DecisionConfig:
     # 数据验证结论：先问 other 平均每轮把候选从 4930 缩到 307、命中保持 0.99
     # （见 data/analysis/report.md）
     ask_other_first: bool = True
+    question_template_mode: str = "random"
     ask_utility: AskUtilityConfig = field(default_factory=AskUtilityConfig)
     stop_utility: StopUtilityConfig = field(default_factory=StopUtilityConfig)
     candidate_question_value: CandidateQuestionValueConfig = field(

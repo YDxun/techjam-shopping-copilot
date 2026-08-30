@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Callable
-from contextlib import asynccontextmanager, suppress
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal
@@ -98,10 +98,7 @@ def create_app(
 
         task = asyncio.create_task(initialize())
         yield
-        if not task.done():
-            task.cancel()
-        with suppress(asyncio.CancelledError):
-            await task
+        await task
 
     app = FastAPI(lifespan=lifespan)
     app.state.runtime_container = container

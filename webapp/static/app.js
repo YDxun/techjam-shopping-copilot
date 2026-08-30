@@ -59,21 +59,172 @@ function persistState() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify({version: 1, ...state}));
 }
 
+function isPlainObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isUuid(value) {
+  return typeof value === "string"
+    && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function isSafeNonNegativeInteger(value) {
+  return Number.isSafeInteger(value) && value >= 0;
+}
+
+function normalizeStringList(value) {
+  return Array.isArray(value) && value.every((item) => typeof item === "string")
+    ? [...value]
+    : null;
+}
+
+function normalizeRecommendations(value) {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+  const recommendations = [];
+  for (const recommendation of value) {
+    if (!isPlainObject(recommendation) || typeof recommendation.parent_asin !== "string"
+      || !recommendation.parent_asin.trim()) {
+      return null;
+    }
+    recommendations.push({parent_asin: recommendation.parent_asin});
+  }
+  return recommendations;
+}
+
+function normalizeProduct(asin, value) {
+  if (!isPlainObject(value) || value.parent_asin !== asin || typeof value.title !== "string"
+    || typeof value.store !== "string") {
+    return null;
+  }
+  const categories = normalizeStringList(value.categories);
+  const features = normalizeStringList(value.features);
+  if (categories === null || features === null) {
+    return null;
+  }
+  const numericFields = ["price", "average_rating", "rating_number"];
+  for (const field of numericFields) {
+    if (value[field] !== null && !Number.isFinite(Number(value[field]))) {
+      return null;
+    }
+  }
+  return {
+    parent_asin: asin,
+    title: value.title,
+    price: value.price === null ? null : Number(value.price),
+    average_rating: value.average_rating === null ? null : Number(value.average_rating),
+    rating_number: value.rating_number === null ? null : Number(value.rating_number),
+    store: value.store,
+    categories,
+    features,
+  };
+}
+
+function normalizeProducts(value) {
+  if (!isPlainObject(value)) {
+    return null;
+  }
+  const products = {};
+  for (const [asin, product] of Object.entries(value)) {
+    if (!asin.trim()) {
+      return null;
+    }
+    const normalized = normalizeProduct(asin, product);
+    if (normalized === null) {
+      return null;
+    }
+    products[asin] = normalized;
+  }
+  return products;
+}
+
+function normalizeAssistantPayload(value, sessionId) {
+  if (!isPlainObject(value) || value.session_id !== sessionId || !isUuid(value.session_id)
+    || !isUuid(value.message_id) || !Number.isSafeInteger(value.turn) || value.turn < 1
+    || !isPlainObject(value.agent_response)) {
+    return null;
+  }
+  const response = value.agent_response;
+  const recommendations = normalizeRecommendations(response.recommendations);
+  const products = normalizeProducts(value.products);
+  if (typeof response.message !== "string"
+    || (response.ask_attribute !== null && typeof response.ask_attribute !== "string")
+    || !isPlainObject(response.usage)
+    || !isSafeNonNegativeInteger(response.usage.prompt_tokens)
+    || !isSafeNonNegativeInteger(response.usage.completion_tokens)
+    || recommendations === null || products === null) {
+    return null;
+  }
+  return {
+    session_id: value.session_id,
+    message_id: value.message_id,
+    turn: value.turn,
+    agent_response: {
+      message: response.message,
+      ask_attribute: response.ask_attribute,
+      recommendations,
+      usage: {
+        prompt_tokens: response.usage.prompt_tokens,
+        completion_tokens: response.usage.completion_tokens,
+      },
+    },
+    products,
+  };
+}
+
+function normalizePersistedMessage(value, sessionId) {
+  if (!isPlainObject(value) || (value.role !== "user" && value.role !== "assistant")) {
+    return null;
+  }
+  if (value.role === "user") {
+    if (typeof value.text !== "string" || !value.text.trim() || value.text.length > 4000
+      || !isUuid(value.messageId) || !["pending", "sent", "failed"].includes(value.status)) {
+      return null;
+    }
+    return {
+      role: "user",
+      text: value.text,
+      messageId: value.messageId,
+      status: value.status === "pending" ? "failed" : value.status,
+    };
+  }
+  const payload = normalizeAssistantPayload(value.payload, sessionId);
+  return payload === null ? null : {role: "assistant", payload};
+}
+
 function restoreState() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    if (!saved || saved.version !== 1 || !Array.isArray(saved.messages)) {
+    if (!isPlainObject(saved) || saved.version !== 1 || !isUuid(saved.sessionId)
+      || !Array.isArray(saved.messages)
+      || (saved.updatedAt !== null && typeof saved.updatedAt !== "string")) {
+      localStorage.removeItem(STORAGE_KEY);
       return emptyState();
     }
+    const messages = saved.messages.map((message) => normalizePersistedMessage(message, saved.sessionId));
+    const userMessageIds = new Set();
+    for (const message of messages) {
+      if (message === null) {
+        localStorage.removeItem(STORAGE_KEY);
+        return emptyState();
+      }
+      if (message.role === "user") {
+        if (userMessageIds.has(message.messageId)) {
+          localStorage.removeItem(STORAGE_KEY);
+          return emptyState();
+        }
+        userMessageIds.add(message.messageId);
+      } else if (!userMessageIds.has(message.payload.message_id)) {
+        localStorage.removeItem(STORAGE_KEY);
+        return emptyState();
+      }
+    }
     return {
-      sessionId: typeof saved.sessionId === "string" ? saved.sessionId : null,
-      messages: saved.messages.map((message) => (
-        message.role === "user" && message.status === "pending"
-          ? {...message, status: "failed"}
-          : message
-      )),
+      sessionId: saved.sessionId,
+      messages,
       pending: false,
-      updatedAt: typeof saved.updatedAt === "string" ? saved.updatedAt : null,
+      updatedAt: saved.updatedAt,
     };
   } catch (error) {
     localStorage.removeItem(STORAGE_KEY);
@@ -137,9 +288,16 @@ function productRatingText(product) {
 
 function renderProducts(payload) {
   const grid = element("div", "product-grid");
+  if (!isPlainObject(payload?.agent_response) || !Array.isArray(payload.agent_response.recommendations)) {
+    return grid;
+  }
+  const products = isPlainObject(payload.products || {}) ? payload.products || {} : {};
   payload.agent_response.recommendations.forEach((recommendation, index) => {
+    if (!isPlainObject(recommendation) || typeof recommendation.parent_asin !== "string") {
+      return;
+    }
     const asin = recommendation.parent_asin;
-    const product = payload.products[asin];
+    const product = isPlainObject(products[asin]) ? products[asin] : null;
     const card = element("article", "product-card");
     card.append(element(
       "div",
@@ -387,10 +545,15 @@ async function submitExistingMessage(text, messageId) {
 
   let finalNotice = "";
   try {
-    const payload = await apiRequest(`/api/sessions/${state.sessionId}/messages`, {
+    const payload = normalizeAssistantPayload(await apiRequest(
+      `/api/sessions/${state.sessionId}/messages`, {
       method: "POST",
       body: JSON.stringify({message_id: messageId, message: text}),
-    });
+      },
+    ), state.sessionId);
+    if (payload === null) {
+      throw new Error("invalid chat response");
+    }
     userMessage.status = "sent";
     state.messages.push({role: "assistant", payload});
   } catch (error) {

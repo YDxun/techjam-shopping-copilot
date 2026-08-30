@@ -1,3 +1,4 @@
+import asyncio
 import json
 import threading
 import time
@@ -158,6 +159,53 @@ def test_background_initializer_exposes_loading_then_ready(tmp_path: Path) -> No
         assert client.get("/api/health").json()["status"] == "loading"
         gate.set()
         assert wait_for_status(client, "ready")["status"] == "ready"
+
+
+def test_shutdown_waits_for_blocking_initializer_worker(tmp_path: Path) -> None:
+    """Cancelling only the task wrapper must not end the lifespan early."""
+    runtime, _ = make_runtime(tmp_path)
+    started = threading.Event()
+    unblock = threading.Event()
+    initializer_finished = threading.Event()
+    lifespan_finished = threading.Event()
+
+    def initializer(path: Path) -> WebRuntime:
+        started.set()
+        assert unblock.wait(timeout=2.0)
+        initializer_finished.set()
+        return runtime
+
+    app = create_app(catalog_path=tmp_path / "catalog.jsonl", initializer=initializer)
+
+    async def exercise_lifespan() -> None:
+        async with app.router.lifespan_context(app):
+            await asyncio.to_thread(started.wait, 1.0)
+
+    def run_lifespan() -> None:
+        loop = asyncio.new_event_loop()
+        try:
+            loop.run_until_complete(exercise_lifespan())
+            lifespan_finished.set()
+            unblock.wait(timeout=1.0)
+            loop.run_until_complete(asyncio.sleep(0))
+        finally:
+            loop.close()
+
+    lifecycle = threading.Thread(target=run_lifespan)
+    lifecycle.start()
+    try:
+        assert started.wait(timeout=1.0)
+
+        assert not lifespan_finished.wait(timeout=0.1)
+
+        unblock.set()
+        assert lifespan_finished.wait(timeout=1.0)
+        lifecycle.join(timeout=1.0)
+        assert not lifecycle.is_alive()
+        assert initializer_finished.is_set()
+    finally:
+        unblock.set()
+        lifecycle.join(timeout=1.0)
 
 
 def test_initializer_failure_is_sanitized(tmp_path: Path) -> None:

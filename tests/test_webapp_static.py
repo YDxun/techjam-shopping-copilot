@@ -25,6 +25,29 @@ def test_dynamic_javascript_never_uses_html_injection() -> None:
     assert "crypto.randomUUID()" in script
 
 
+def test_web_requirements_pin_the_pydantic_v2_api_contract() -> None:
+    requirements = Path("requirements-web.txt").read_text(encoding="utf-8").splitlines()
+    declared = [line.split("#", maxsplit=1)[0].strip() for line in requirements]
+    assert "pydantic>=2,<3" in declared
+
+
+def test_restore_state_validates_complete_persisted_chat_shape() -> None:
+    script = (STATIC / "app.js").read_text(encoding="utf-8")
+    for guard in (
+        "function isUuid",
+        "function normalizePersistedMessage",
+        "function normalizeAssistantPayload",
+        "function normalizeProducts",
+        "function normalizeProduct",
+        "function normalizeRecommendations",
+        "function isPlainObject",
+    ):
+        assert guard in script
+    assert "saved.sessionId" in script
+    assert "return emptyState();" in script
+    assert "payload.products || {}" in script
+
+
 def test_async_recovery_has_static_safety_guards() -> None:
     script = (STATIC / "app.js").read_text(encoding="utf-8")
     assert "let serviceReady = false;" in script

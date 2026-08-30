@@ -10,8 +10,6 @@ from datetime import datetime, timezone
 from typing import Protocol
 from uuid import UUID, uuid4
 
-from webapp.catalog import CatalogError
-
 logger = logging.getLogger(__name__)
 
 
@@ -63,8 +61,12 @@ class SessionManager:
     async def create_session(self) -> SessionSnapshot:
         session_id = uuid4()
         async with self._agent_lock:
-            await asyncio.to_thread(self._agent.reset, str(session_id), {})
+            _, cancelled = await self._wait_for_worker(
+                asyncio.create_task(asyncio.to_thread(self._agent.reset, str(session_id), {}))
+            )
         self._sessions[session_id] = _SessionRecord(session_id=session_id)
+        if cancelled:
+            raise asyncio.CancelledError
         return SessionSnapshot(session_id, 1)
 
     def get_session(self, session_id: UUID) -> SessionSnapshot | None:
@@ -85,32 +87,49 @@ class SessionManager:
                 return copy.deepcopy(cached)
             turn = record.next_turn
             async with self._agent_lock:
-                raw = await asyncio.to_thread(
-                    self._agent.respond, str(session_id), message, turn, self._top_k
+                raw, cancelled = await self._wait_for_worker(
+                    asyncio.create_task(
+                        asyncio.to_thread(
+                            self._agent.respond, str(session_id), message, turn, self._top_k
+                        )
+                    )
                 )
             if not isinstance(raw, dict):
                 raise TypeError("Agent.respond() must return a dictionary")
             agent_response = copy.deepcopy(raw)
-            asins = [
-                str(item.get("parent_asin", ""))
-                for item in agent_response.get("recommendations", [])
-                if isinstance(item, dict) and item.get("parent_asin")
-            ]
-            try:
-                products = self._catalog.summaries(asins)
-            except CatalogError:
-                logger.exception("catalog presentation enrichment failed")
-                products = {}
             envelope = {
                 "session_id": str(session_id),
                 "message_id": str(message_id),
                 "turn": turn,
                 "agent_response": agent_response,
-                "products": products,
+                "products": {},
             }
             record.responses[message_id] = copy.deepcopy(envelope)
             while len(record.responses) > 128:
                 record.responses.popitem(last=False)
             record.next_turn += 1
             record.last_accessed_at = datetime.now(timezone.utc)
+            if cancelled:
+                raise asyncio.CancelledError
+            try:
+                asins = [
+                    str(item.get("parent_asin", ""))
+                    for item in agent_response.get("recommendations", [])
+                    if isinstance(item, dict) and item.get("parent_asin")
+                ]
+                products = await asyncio.to_thread(self._catalog.summaries, asins)
+            except Exception:
+                logger.exception("catalog presentation enrichment failed")
+            else:
+                envelope["products"] = products
+            record.responses[message_id] = copy.deepcopy(envelope)
             return envelope
+
+    @staticmethod
+    async def _wait_for_worker(worker: asyncio.Task[object]) -> tuple[object, bool]:
+        cancelled = False
+        while True:
+            try:
+                return await asyncio.shield(worker), cancelled
+            except asyncio.CancelledError:
+                cancelled = True

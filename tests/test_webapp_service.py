@@ -152,3 +152,70 @@ def test_catalog_failure_after_agent_response_is_cached_without_reinvocation() -
         assert len(agent.calls) == 1
 
     asyncio.run(scenario())
+
+
+def test_cancelled_agent_call_commits_before_releasing_global_serialization() -> None:
+    class BlockingAgent(FakeAgent):
+        def __init__(self) -> None:
+            super().__init__()
+            self.started = threading.Event()
+            self.release = threading.Event()
+
+        def respond(self, session_id: str, user_message: str, turn: int, top_k: int) -> dict:
+            with self.guard:
+                self.active += 1
+                self.max_active = max(self.max_active, self.active)
+            self.started.set()
+            self.release.wait()
+            self.calls.append((session_id, user_message, turn, top_k))
+            with self.guard:
+                self.active -= 1
+            return {
+                "message": f"reply {turn}",
+                "recommendations": [{"parent_asin": "A1"}],
+            }
+
+    async def scenario() -> None:
+        agent = BlockingAgent()
+        manager = SessionManager(agent, FakeCatalog(), top_k=10)
+        left = await manager.create_session()
+        right = await manager.create_session()
+        message_id = uuid4()
+        cancelled = asyncio.create_task(manager.send_message(left.session_id, message_id, "left"))
+        await asyncio.to_thread(agent.started.wait)
+        cancelled.cancel()
+        concurrent = asyncio.create_task(manager.send_message(right.session_id, uuid4(), "right"))
+        try:
+            await asyncio.sleep(0.02)
+            assert agent.max_active == 1
+        finally:
+            agent.release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await cancelled
+        await concurrent
+        retry = await manager.send_message(left.session_id, message_id, "ignored retry body")
+        assert retry["turn"] == 1
+        assert manager.get_session(left.session_id).next_turn == 2
+        assert len(agent.calls) == 2
+
+    asyncio.run(scenario())
+
+
+def test_non_catalog_presentation_failure_is_cached_without_reinvoking_agent() -> None:
+    class BrokenCatalog:
+        def summaries(self, asins):
+            raise RuntimeError("unexpected presentation failure")
+
+    async def scenario() -> None:
+        agent = FakeAgent()
+        manager = SessionManager(agent, BrokenCatalog(), top_k=10)
+        session = await manager.create_session()
+        message_id = uuid4()
+        first = await manager.send_message(session.session_id, message_id, "cotton")
+        retry = await manager.send_message(session.session_id, message_id, "cotton")
+        assert first == retry
+        assert first["products"] == {}
+        assert manager.get_session(session.session_id).next_turn == 2
+        assert len(agent.calls) == 1
+
+    asyncio.run(scenario())

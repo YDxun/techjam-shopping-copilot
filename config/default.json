@@ -34,7 +34,7 @@
   "decision": {
     "max_questions": 3,
     "ask_other_first": true,
-  "question_template_mode": "random",
+    "question_template_mode": "random",
     "ask_utility": {
       "normalization": "clamp_0_1",
       "minimum_ask_utility": 0.2,
@@ -201,7 +201,7 @@
     "bonus_fifty": 0.2,
     "max_count": 50
   },
-  "emit_gate": false,
+  "emit_gate": true,
   "emit_late_turn": 5,
   "emit_k0": 1,
   "emit_k1": 1,

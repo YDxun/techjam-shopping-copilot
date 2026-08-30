@@ -57,6 +57,7 @@ class CandidateSignalCalculator:
         *,
         remaining_question_budget: int | None = None,
         terminal_eligible: bool = True,
+        include_other: bool = True,
     ) -> CandidateQuestionSignals:
         """Return signals for unique candidates and unresolved legal attributes.
 
@@ -78,9 +79,12 @@ class CandidateSignalCalculator:
             for attribute in attributes
         }
 
-        best_other_pair, other_signal = self._best_other_pair(rows, probabilities, attributes)
+        best_other_pair: tuple[str, str] | None = None
+        other_signal: CandidateAttributeSignal | None = None
+        if include_other:
+            best_other_pair, other_signal = self._best_other_pair(rows, probabilities, attributes)
         lookahead_depth_used = 1
-        if self._lookahead_enabled(
+        if include_other and self._lookahead_enabled(
             rows,
             by_attribute,
             other_signal,

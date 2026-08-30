@@ -19,6 +19,7 @@ from pathlib import Path
 
 from agent.base_agent import BaseAgent
 from agent.capability_probe import CapabilityProbe, CapabilityProfile
+from agent.dialogue.catalog_resources import DialogueCatalogResources
 from agent.dialogue.models import GuardAction
 from agent.dialogue.pipeline import DialogueUnderstandingPipeline
 from agent.intent_router import IntentRouter
@@ -47,6 +48,7 @@ class Agent(BaseAgent):
         llm_client: LLMClient | None = None,
         retriever: HybridRetriever | None = None,
         reranker: Reranker | None = None,
+        dialogue_catalog_resources: DialogueCatalogResources | None = None,
     ) -> None:
         self.env = env or EnvConfig.from_env()
         self.llm_client = llm_client if llm_client is not None else DisabledLLMClient()
@@ -86,6 +88,7 @@ class Agent(BaseAgent):
             # 自动化控制：LLM 意图识别仅在探测可用且 LLM_INTENT_ENABLE=1 时级联启用，
             # 否则走纯规则识别（离线安全）。澄清决策始终用规则策略（"other-first" 数据验证最优）。
             mode="cascaded" if self.decisions.use_llm_intent else "rule_only",
+            catalog_resources=dialogue_catalog_resources,
         )
         self.router = IntentRouter(env=self.env)
 
@@ -105,6 +108,10 @@ class Agent(BaseAgent):
     def dialogue_decision_statistics(self) -> dict[str, object]:
         """Expose local decision diagnostics without changing the response contract."""
         return self.dialogue.dialogue_decision_statistics()
+
+    def hybrid_question_statistics(self) -> dict[str, object]:
+        """Expose this Agent's independent Hybrid-question diagnostics."""
+        return self.dialogue.question_policy.hybrid_policy.statistics()
 
     # ------------------------------------------------------------------
     def respond(self, session_id: str, user_message: str, turn: int, top_k: int) -> dict:
@@ -130,16 +137,22 @@ class Agent(BaseAgent):
 
         # 2) 多路由混合召回 → 候选池（Pillar I；BLaIR 稠密 + BM25 + 硬约束 AND + 品类）
         candidate_config = self.env.decision.candidate_question_value
-        pool_size = (
-            max(RETRIEVAL_POOL_SIZE, candidate_config.pool_size)
-            if candidate_config.enabled
-            else RETRIEVAL_POOL_SIZE
+        hybrid_config = self.env.decision.hybrid_question_policy
+        full_dynamic = (
+            candidate_config.enabled and self.env.decision.question_termination_mode != "legacy"
         )
+        hybrid = hybrid_config.enabled and not full_dynamic
+        configured_pool_size = (
+            candidate_config.pool_size
+            if full_dynamic
+            else hybrid_config.pool_size if hybrid else RETRIEVAL_POOL_SIZE
+        )
+        pool_size = max(RETRIEVAL_POOL_SIZE, configured_pool_size)
         candidates = self.retriever.search(route, top_k=pool_size, mode=context.retrieval_mode)
 
         candidate_signals = None
         calculator = self.dialogue.candidate_signal_calculator
-        if candidate_config.enabled and calculator is not None:
+        if calculator is not None and self.dialogue.needs_candidate_signals(pending):
             try:
                 candidate_signals = calculator.calculate(
                     candidates,
@@ -151,6 +164,7 @@ class Agent(BaseAgent):
                     terminal_eligible=(
                         pending.state.turn < 10 and not pending.state.no_more_preferences
                     ),
+                    include_other=not hybrid,
                 )
             except Exception:
                 logger.exception(

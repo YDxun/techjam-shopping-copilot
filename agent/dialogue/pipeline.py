@@ -10,8 +10,7 @@ from enum import Enum
 from typing import Iterable
 
 from agent.dialogue.candidate_signals import CONCRETE_ATTRIBUTES, CandidateSignalCalculator
-from agent.dialogue.catalog_attributes import CatalogAttributeCache, RuleVocabularyExtractor
-from agent.dialogue.catalog_signals import CatalogQuestionSignals
+from agent.dialogue.catalog_resources import DialogueCatalogResources
 from agent.dialogue.diagnostics import DecisionTraceRecorder, DialogueDecisionTrace
 from agent.dialogue.models import (
     CandidateQuestionSignals,
@@ -139,6 +138,7 @@ class DialogueUnderstandingPipeline:
         llm_client: LLMClient,
         products: Iterable[dict],
         mode: str | None = None,
+        catalog_resources: DialogueCatalogResources | None = None,
     ) -> None:
         dialogue_config = env.dialogue_understanding
         self._recognition_mode = mode or dialogue_config.mode
@@ -159,22 +159,43 @@ class DialogueUnderstandingPipeline:
             mode=self._recognition_mode,
             rule_confidence_threshold=dialogue_config.rule_confidence_threshold,
         )
-        product_rows = tuple(products)
         self.question_policy = QuestionPolicy(env.decision)
         self.transition_guard = TransitionGuard(dialogue_config.transition_guard)
         self.decision_trace_recorder = DecisionTraceRecorder(env.diagnostics.decision_trace)
-        self.catalog_signals = CatalogQuestionSignals.from_products(product_rows)
+        full_dynamic = (
+            env.decision.candidate_question_value.enabled
+            and env.decision.question_termination_mode != "legacy"
+        )
+        hybrid = env.decision.hybrid_question_policy.enabled
+        resources = catalog_resources or DialogueCatalogResources.from_products(
+            products,
+            include_attribute_cache=full_dynamic or hybrid,
+        )
+        self.catalog_signals = resources.catalog_signals
         self.candidate_signal_calculator: CandidateSignalCalculator | None = None
-        if env.decision.candidate_question_value.enabled:
+        if resources.attribute_cache is not None:
             try:
-                self.candidate_signal_calculator = CandidateSignalCalculator(
-                    CatalogAttributeCache.from_products(product_rows, RuleVocabularyExtractor()),
-                    env.decision.candidate_question_value,
-                    env.decision.finish_strategy,
-                )
+                if full_dynamic:
+                    self.candidate_signal_calculator = CandidateSignalCalculator(
+                        resources.attribute_cache,
+                        env.decision.candidate_question_value,
+                        env.decision.finish_strategy,
+                    )
+                elif hybrid:
+                    hybrid_config = replace(
+                        env.decision.candidate_question_value,
+                        pool_size=env.decision.hybrid_question_policy.pool_size,
+                        prior_alpha=env.decision.hybrid_question_policy.prior_alpha,
+                        prior_temperature=env.decision.hybrid_question_policy.prior_temperature,
+                    )
+                    self.candidate_signal_calculator = CandidateSignalCalculator(
+                        resources.attribute_cache,
+                        hybrid_config,
+                        replace(env.decision.finish_strategy, enabled=False, lookahead_depth=1),
+                    )
             except Exception:
                 logger.exception(
-                    "[dialogue] dynamic catalog setup failed; using static question policy"
+                    "[dialogue] dynamic calculator setup failed; using static question policy"
                 )
         self._sessions: dict[str, SessionState] = {}
         self._session_locks: dict[str, threading.RLock] = {}

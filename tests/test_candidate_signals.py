@@ -52,6 +52,25 @@ def calculator(
 
 
 class CandidateSignalCalculatorTest(unittest.TestCase):
+    def test_concrete_only_signals_skip_other_and_keep_depth_one(self) -> None:
+        # Hybrid only ranks concrete replacement attributes, so it must not spend
+        # work deriving the composite ``other`` signal or two-step branches.
+        cache = cache_for(
+            A={"material": {"cotton"}, "color": {"black"}},
+            B={"material": {"leather"}, "color": {"red"}},
+            C={"material": {"cotton"}, "color": {"red"}},
+        )
+        candidates = [{"parent_asin": asin} for asin in "ABC"]
+        signal_calculator = calculator(cache, lookahead_depth=2, finish_enabled=True)
+
+        expected = calculator(cache).calculate(candidates)
+        concrete_only = signal_calculator.calculate(candidates, include_other=False)
+
+        self.assertIsNone(concrete_only.best_other_pair)
+        self.assertIsNone(concrete_only.other_signal)
+        self.assertEqual(concrete_only.lookahead_depth_used, 1)
+        self.assertEqual(concrete_only.by_attribute, expected.by_attribute)
+
     def test_uniform_prior_hand_calculates_split_and_constant_attributes(self) -> None:
         # Changing compatible-set construction to exclude an answer-matching product
         # would make the hand-derived material values below fail.

@@ -6,6 +6,7 @@ import unittest
 from dataclasses import replace
 from unittest.mock import Mock, patch
 
+from agent.dialogue.catalog_resources import DialogueCatalogResources
 from agent.dialogue.models import (
     CandidateAttributeSignal,
     CandidateQuestionSignals,
@@ -132,6 +133,9 @@ class RecordingPolicy:
         self.last_candidate_signals = candidate_signals
         return self.delegate.decide(state, recognition, signals, candidate_signals)
 
+    def needs_candidate_signals(self, state, recognition):
+        return self.delegate.needs_candidate_signals(state, recognition)
+
     def message_for(self, decision, state):
         return self.delegate.message_for(decision, state)
 
@@ -220,6 +224,17 @@ class DialogueFlowTest(unittest.TestCase):
                         "max_traces": trace_max_traces,
                     }
                 },
+            },
+            environ={"LLM_PROVIDER": "none"},
+        )
+
+    def hybrid_env(self) -> EnvConfig:
+        return EnvConfig.from_env(
+            overrides={
+                "skip_data_verify": True,
+                "dialogue_understanding": {"mode": "rule_only"},
+                "decision": {"hybrid_question_policy": {"enabled": True}},
+                "llm": {"rerank_enabled": False},
             },
             environ={"LLM_PROVIDER": "none"},
         )
@@ -318,6 +333,81 @@ class DialogueFlowTest(unittest.TestCase):
 
         self.assertFalse(pipeline.needs_candidate_signals(guarded))
         pipeline.question_policy.needs_candidate_signals.assert_not_called()
+
+    def test_injected_catalog_resources_are_reused_without_rebuilding(self) -> None:
+        # Rebuilding either immutable derived structure per pipeline defeats the
+        # shared-catalog comparison and makes extractor setup scale with agents.
+        resources = DialogueCatalogResources.from_products(PRODUCTS, include_attribute_cache=True)
+        with patch(
+            "agent.dialogue.catalog_resources.CatalogQuestionSignals.from_products",
+            side_effect=AssertionError("injected signals must be reused"),
+        ), patch(
+            "agent.dialogue.catalog_resources.CatalogAttributeCache.from_products",
+            side_effect=AssertionError("injected cache must be reused"),
+        ):
+            first = DialogueUnderstandingPipeline(
+                env=self.hybrid_env(),
+                llm_client=DisabledLLMClient(),
+                products=(),
+                catalog_resources=resources,
+            )
+            second = DialogueUnderstandingPipeline(
+                env=self.hybrid_env(),
+                llm_client=DisabledLLMClient(),
+                products=(),
+                catalog_resources=resources,
+            )
+
+        first.reset("a", {})
+        second.reset("b", {})
+        self.assertIs(first.catalog_signals, second.catalog_signals)
+        self.assertIsNotNone(first.candidate_signal_calculator)
+        self.assertIsNotNone(second.candidate_signal_calculator)
+        self.assertIs(
+            first.candidate_signal_calculator._cache,
+            second.candidate_signal_calculator._cache,
+        )
+        self.assertIsNot(first.session("a"), second.session("b"))
+
+    def test_agents_share_catalog_resources_but_keep_hybrid_state_independent(self) -> None:
+        # Comparison agents may share immutable catalog setup, but policy counters
+        # and dialogue state must remain local to each Agent instance.
+        resources = DialogueCatalogResources.from_products(PRODUCTS, include_attribute_cache=True)
+        retriever = StaticRetriever()
+        first = Agent(
+            env=self.hybrid_env(),
+            llm_client=DisabledLLMClient(),
+            retriever=retriever,
+            reranker=StaticReranker(("B", "A", "C")),
+            dialogue_catalog_resources=resources,
+        )
+        second = Agent(
+            env=self.hybrid_env(),
+            llm_client=DisabledLLMClient(),
+            retriever=retriever,
+            reranker=StaticReranker(("B", "A", "C")),
+            dialogue_catalog_resources=resources,
+        )
+        first.reset("first", {})
+        second.reset("second", {})
+
+        response = first.respond("first", "I'm looking for shoes.", 1, 3)
+
+        self.assertEqual(
+            [item["parent_asin"] for item in response["recommendations"]], ["B", "A", "C"]
+        )
+        self.assertIs(first.dialogue.catalog_signals, second.dialogue.catalog_signals)
+        self.assertIs(
+            first.dialogue.candidate_signal_calculator._cache,
+            second.dialogue.candidate_signal_calculator._cache,
+        )
+        self.assertEqual(second.dialogue.session("second").dialogue.turn, 0)
+        self.assertEqual(second.dialogue.session("second").dialogue.hybrid_replacements_used, 0)
+        self.assertEqual(second.hybrid_question_statistics()["replacement_count"], 0)
+        self.assertEqual(
+            first.hybrid_question_statistics()["reason_counts"],
+            {"hybrid_first_other_preserved": 1},
+        )
 
     def test_committed_hybrid_replacement_increments_only_replacement_counter(self) -> None:
         # Marking initial other, rather than the replacement, spends the session budget early.
@@ -540,7 +630,7 @@ class DialogueFlowTest(unittest.TestCase):
         # Constructing either dynamic dependency while disabled would make rollback
         # pay the catalog-extraction cost and raises this sentinel error.
         with patch(
-            "agent.dialogue.pipeline.CatalogAttributeCache.from_products",
+            "agent.dialogue.catalog_resources.CatalogAttributeCache.from_products",
             side_effect=AssertionError("disabled path must not build cache"),
         ), patch(
             "agent.dialogue.pipeline.CandidateSignalCalculator",
@@ -559,7 +649,7 @@ class DialogueFlowTest(unittest.TestCase):
         # Escaping startup extraction errors would make an enabled experiment fail
         # before its static-policy fallback can return the public response shape.
         with patch(
-            "agent.dialogue.pipeline.CatalogAttributeCache.from_products",
+            "agent.dialogue.catalog_resources.CatalogAttributeCache.from_products",
             side_effect=RuntimeError("extractor unavailable"),
         ):
             agent = Agent(
@@ -574,6 +664,22 @@ class DialogueFlowTest(unittest.TestCase):
         self.assertIsNone(agent.dialogue.candidate_signal_calculator)
         self.assertEqual(set(response), {"message", "ask_attribute", "recommendations", "usage"})
         self.assertEqual(response["ask_attribute"], "other")
+
+    def test_hybrid_calculator_setup_failure_falls_back_to_legacy(self) -> None:
+        # A malformed dynamic setup must not prevent the Legacy response path.
+        resources = DialogueCatalogResources.from_products(PRODUCTS, include_attribute_cache=True)
+        with patch(
+            "agent.dialogue.pipeline.CandidateSignalCalculator",
+            side_effect=ValueError("invalid calculator configuration"),
+        ):
+            pipeline = DialogueUnderstandingPipeline(
+                env=self.hybrid_env(),
+                llm_client=DisabledLLMClient(),
+                products=(),
+                catalog_resources=resources,
+            )
+
+        self.assertIsNone(pipeline.candidate_signal_calculator)
 
     def test_empty_candidates_keep_the_official_response_valid(self) -> None:
         # Treating an empty pool as an exception would turn a harmless miss into evaluator failure.

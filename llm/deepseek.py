@@ -1,4 +1,4 @@
-from .openai_compatible import FailureDisposition, OpenAICompatibleClient, classify_openai_failure
+from .openai_compatible import OpenAICompatibleClient
 
 
 class DeepSeekClient(OpenAICompatibleClient):

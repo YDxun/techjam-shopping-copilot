@@ -1,0 +1,166 @@
+{
+  "version": "1.0.0",
+  "generated_by": "scripts/build_field_mapping.py",
+  "generated_at": "2026-08-29",
+  "n_products": 50000,
+  "price_missing_ratio": 0.7895,
+  "description_empty_ratio": 0.4777,
+  "attr_coverage": {
+    "material": {
+      "tf_products": 43094,
+      "field_stats": {
+        "title": {
+          "hit_rate": 0.438,
+          "overall": 0.3774
+        },
+        "features": {
+          "hit_rate": 0.906,
+          "overall": 0.7811
+        },
+        "store": {
+          "hit_rate": 0.008,
+          "overall": 0.0073
+        },
+        "categories": {
+          "hit_rate": 0.067,
+          "overall": 0.0614
+        },
+        "description": {
+          "hit_rate": 0.44,
+          "overall": 0.4038
+        }
+      },
+      "details_authoritative_hit_rate": 0.03
+    },
+    "color": {
+      "tf_products": 38089,
+      "field_stats": {
+        "title": {
+          "hit_rate": 0.654,
+          "overall": 0.4981
+        },
+        "features": {
+          "hit_rate": 0.678,
+          "overall": 0.5163
+        },
+        "store": {
+          "hit_rate": 0.024,
+          "overall": 0.0184
+        },
+        "categories": {
+          "hit_rate": 0.079,
+          "overall": 0.0822
+        },
+        "description": {
+          "hit_rate": 0.372,
+          "overall": 0.3664
+        }
+      },
+      "details_authoritative_hit_rate": 0.048
+    },
+    "size": {
+      "tf_products": 45689,
+      "field_stats": {
+        "title": {
+          "hit_rate": 0.808,
+          "overall": 0.7382
+        },
+        "features": {
+          "hit_rate": 0.683,
+          "overall": 0.6241
+        },
+        "store": {
+          "hit_rate": 0.027,
+          "overall": 0.025
+        },
+        "categories": {
+          "hit_rate": 0.021,
+          "overall": 0.021
+        },
+        "description": {
+          "hit_rate": 0.425,
+          "overall": 0.4131
+        }
+      },
+      "details_authoritative_hit_rate": 0.02
+    },
+    "style": {
+      "tf_products": 38243,
+      "field_stats": {
+        "title": {
+          "hit_rate": 0.509,
+          "overall": 0.3892
+        },
+        "features": {
+          "hit_rate": 0.857,
+          "overall": 0.6559
+        },
+        "store": {
+          "hit_rate": 0.021,
+          "overall": 0.0168
+        },
+        "categories": {
+          "hit_rate": 0.224,
+          "overall": 0.2192
+        },
+        "description": {
+          "hit_rate": 0.402,
+          "overall": 0.3901
+        }
+      },
+      "details_authoritative_hit_rate": 0.019
+    },
+    "use_case": {
+      "tf_products": 24359,
+      "field_stats": {
+        "title": {
+          "hit_rate": 0.541,
+          "overall": 0.2636
+        },
+        "features": {
+          "hit_rate": 0.754,
+          "overall": 0.3676
+        },
+        "store": {
+          "hit_rate": 0.017,
+          "overall": 0.0092
+        },
+        "categories": {
+          "hit_rate": 0.211,
+          "overall": 0.1607
+        },
+        "description": {
+          "hit_rate": 0.316,
+          "overall": 0.2435
+        }
+      },
+      "details_authoritative_hit_rate": 0.005
+    },
+    "category_product_type": {
+      "tf_products": 28439,
+      "field_stats": {
+        "title": {
+          "hit_rate": 0.842,
+          "overall": 0.4791
+        },
+        "features": {
+          "hit_rate": 0.589,
+          "overall": 0.3352
+        },
+        "store": {
+          "hit_rate": 0.019,
+          "overall": 0.0108
+        },
+        "categories": {
+          "hit_rate": 0.262,
+          "overall": 0.2176
+        },
+        "description": {
+          "hit_rate": 0.336,
+          "overall": 0.2333
+        }
+      },
+      "details_authoritative_hit_rate": 0.012
+    }
+  }
+}

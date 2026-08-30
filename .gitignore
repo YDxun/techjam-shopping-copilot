@@ -25,3 +25,6 @@ program_documents/
 
 # 本地提交包/归档，不纳入版本库
 *.zip
+
+# 队友打包的原始数据资产目录（已蒸馏到 data/assets/）
+new_data_porcess/

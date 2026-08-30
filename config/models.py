@@ -221,6 +221,11 @@ class LLMConfig:
     provider: str = "deepseek"
     rerank_enabled: bool = False
     rerank_candidates: int = 12
+    # Optimized text-reranking endpoint (kept optional; API credentials stay in env).
+    rerank_backend: str = "text"
+    qwen_rerank_model: str = "qwen3-rerank"
+    dashscope_workspace_id: str = ""
+    qwen_rerank_base_url: str = ""
     health_check_enabled: bool = True
     connect_timeout_seconds: float = 3.0
     timeout_seconds: float = 8.0
@@ -259,6 +264,48 @@ class LLMConfig:
 
 
 @dataclass(frozen=True)
+class RetrievalConfig:
+    """Retrieval tuning knobs used by the optimized recall pipeline."""
+
+    bm25_field_weights: tuple[float, ...] = (0.0, 6.0, 4.0, 2.5, 2.5, 1.5, 1.0)
+    rrf_k: float = 60.0
+    rrf_constraint_k: float = 10.0
+    dense_weight: float = 0.5
+    bm25_limit_mult: int = 2
+    recall_limit_mult: int = 3
+
+
+@dataclass(frozen=True)
+class FingerprintConfig:
+    """Constraint-combination fingerprint boost configuration."""
+
+    enable: bool = False
+    bonus_unique: float = 1.0
+    bonus_ten: float = 0.5
+    bonus_fifty: float = 0.2
+    max_count: int = 50
+
+
+def _default_rerank_weights() -> dict[str, float]:
+    return {
+        "coverage": 0.50,
+        "combo": 0.10,
+        "category": 0.25,
+        "rrf": 0.15,
+        "popularity": 0.05,
+        "profile": 0.05,
+    }
+
+
+@dataclass(frozen=True)
+class RetrievalModeConfig:
+    """Thresholds for optimized retrieval-mode selection."""
+
+    exploit_min_hard: int = 2
+    exploit_min_constraints: int = 4
+
+
+@dataclass(frozen=True)
 class AppConfig:
     env_mode: str = "dev"
     retrieval_backend: str = "bm25"
@@ -282,9 +329,31 @@ class AppConfig:
     # bge-reranker-v2-m3 交叉编码重排（默认关，环境自感知开启时可用才启用）
     reranker_model_enabled: bool = False
 
+    # Keep the established positional argument order through diagnostics.
     dialogue_understanding: DialogueUnderstandingConfig = field(
         default_factory=DialogueUnderstandingConfig
     )
     decision: DecisionConfig = field(default_factory=DecisionConfig)
     llm: LLMConfig = field(default_factory=LLMConfig)
     diagnostics: DiagnosticsConfig = field(default_factory=DiagnosticsConfig)
+
+    # New optimized retrieval/reranking fields are keyword-friendly extensions.
+    asset_vocab_expand: bool = False
+    asset_category_expand: bool = False
+    asset_paraphrase: bool = False
+    asset_field_map: bool = False
+    emit_gate: bool = False
+    emit_late_turn: int = 4
+    emit_k0: int = 1
+    emit_k1: int = 2
+    emit_k2: int = 10
+    emit_fp_confident: int = 3
+    emit_margin_confident: float = 0.10
+    emit_commit_constraints: int = 4
+    hard_cue_enabled: bool = True
+    retrieval_pool_size: int = 300
+    retrieval: RetrievalConfig = field(default_factory=RetrievalConfig)
+    rerank_weights: dict[str, float] = field(default_factory=_default_rerank_weights)
+    fingerprint: FingerprintConfig = field(default_factory=FingerprintConfig)
+
+    retrieval_mode: RetrievalModeConfig = field(default_factory=RetrievalModeConfig)

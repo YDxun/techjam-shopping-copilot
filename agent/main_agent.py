@@ -31,10 +31,7 @@ from utils import data_verify
 
 logger = logging.getLogger(__name__)
 
-# 检索候选池规模：与 LLM 重排提交数 llm.rerank_candidates 解耦。
-# 队友分支曾把 rerank_candidates 语义改为 LLM 提交数（默认 12），若继续用它当候选池会把池子
-# 缩到 30，导致高频约束下目标商品被挤出候选池（HR@10 0.995 -> 0.855）。
-RETRIEVAL_POOL_SIZE = 300
+# Candidate-pool size is configuration-owned and independent from LLM rerank submission size.
 
 
 class Agent(BaseAgent):
@@ -84,9 +81,7 @@ class Agent(BaseAgent):
             env=self.env,
             llm_client=self.llm_client,
             products=(
-                ()
-                if dialogue_catalog_resources is not None
-                else self.retriever.iter_products()
+                () if dialogue_catalog_resources is not None else self.retriever.iter_products()
             ),
             # 自动化控制：LLM 意图识别仅在探测可用且 LLM_INTENT_ENABLE=1 时级联启用，
             # 否则走纯规则识别（离线安全）。澄清决策始终用规则策略（"other-first" 数据验证最优）。
@@ -148,10 +143,17 @@ class Agent(BaseAgent):
         configured_pool_size = (
             candidate_config.pool_size
             if full_dynamic
-            else hybrid_config.pool_size if hybrid else RETRIEVAL_POOL_SIZE
+            else hybrid_config.pool_size
+            if hybrid
+            else self.env.retrieval_pool_size
         )
-        pool_size = max(RETRIEVAL_POOL_SIZE, configured_pool_size)
-        candidates = self.retriever.search(route, top_k=pool_size, mode=context.retrieval_mode)
+        pool_size = max(self.env.retrieval_pool_size, configured_pool_size)
+        candidates = self.retriever.search(
+            route,
+            top_k=pool_size,
+            mode=context.retrieval_mode,
+            shelf=context.category_phrase,
+        )
 
         candidate_signals = None
         calculator = self.dialogue.candidate_signal_calculator
@@ -191,8 +193,31 @@ class Agent(BaseAgent):
             use_reranker_model=self.decisions.use_reranker_model,
             use_llm_rerank=self.decisions.use_llm_rerank,
         )
-        shown = ranked[:top_k]
         decision = turn_result.question_decision
+        emit_k = top_k
+        if self.env.emit_gate:
+            n_constraints = context.total_constraints()
+            fp_confident = (
+                getattr(self.reranker, "last_fp_count", None) is not None
+                and 0 < getattr(self.reranker, "last_fp_count", 0) <= self.env.emit_fp_confident
+            )
+            margin_confident = (
+                getattr(self.reranker, "last_margin", 0.0) >= self.env.emit_margin_confident
+            )
+            if not (
+                turn >= self.env.emit_late_turn
+                or not decision.should_ask
+                or n_constraints >= self.env.emit_commit_constraints
+                or fp_confident
+                or margin_confident
+            ):
+                if n_constraints == 0:
+                    emit_k = max(1, min(top_k, self.env.emit_k0))
+                elif n_constraints == 1:
+                    emit_k = max(1, min(top_k, self.env.emit_k1))
+                else:
+                    emit_k = max(1, min(top_k, self.env.emit_k2))
+        shown = ranked[:emit_k]
         message = self.dialogue.message_for(decision, turn_result.state)
         usage = {
             "prompt_tokens": turn_result.prompt_tokens + self.reranker.last_usage["prompt_tokens"],

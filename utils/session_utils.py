@@ -1,4 +1,5 @@
-﻿"""通用会话/文本工具（Pillar II/III：槽位解析、约束类型归类、检索词构建）。"""
+"""通用会话/文本工具（Pillar II/III：槽位解析、约束类型归类、检索词构建）。"""
+
 from __future__ import annotations
 
 import re
@@ -7,11 +8,26 @@ from typing import Iterable
 from config import constants
 
 TOKEN_RE = re.compile(r"[a-z0-9%]+", re.IGNORECASE)
-_PREFIX_RE = re.compile(r"^\s*(material|color|size|style|feature|use[_-]?case|budget|brand|department)\s*[:：]\s*", re.I)
-_COLOR_RE = re.compile(r"\b(black|white|blue|red|pink|green|brown|gray|grey|purple|yellow|orange)\b", re.I)
-_SIZE_RE = re.compile(r"\b(size|sizing|width|wide|narrow|small|medium|large|x[sl]|extra\s*(small|large))\b", re.I)
-_STYLE_RE = re.compile(r"\b(department|style|fit|sleeve|neck|crew|v-?neck|round|regular|slim|loose|classic|casual|formal)\b", re.I)
-_USE_CASE_RE = re.compile(r"\b(hiking|running|gym|winter|outdoor|work|sports|travel|gift|party|wedding|athletic|walking)\b", re.I)
+_PREFIX_RE = re.compile(
+    r"^\s*(material|color|size|style|feature|use[_-]?case|budget|brand|department)\s*[:：]\s*",
+    re.I,
+)
+_COLOR_RE = re.compile(
+    r"\b(black|white|blue|red|pink|green|brown|gray|grey|purple|yellow|orange)\b",
+    re.I,
+)
+_SIZE_RE = re.compile(
+    r"\b(size|sizing|width|wide|narrow|small|medium|large|x[sl]|extra\s*(small|large))\b",
+    re.I,
+)
+_STYLE_RE = re.compile(
+    r"\b(department|style|fit|sleeve|neck|crew|v-?neck|round|regular|slim|loose|classic|casual|formal)\b",
+    re.I,
+)
+_USE_CASE_RE = re.compile(
+    r"\b(hiking|running|gym|winter|outdoor|work|sports|travel|gift|party|wedding|athletic|walking)\b",
+    re.I,
+)
 _BUDGET_RE = re.compile(r"(?:budget|under|<=|\\$)\s*\d", re.I)
 
 
@@ -40,7 +56,9 @@ def classify_attribute(value: str) -> str:
         return "budget"
     if any(m in lowered for m in constants.MATERIALS):
         return "material"
-    if _COLOR_RE.search(lowered) or any(c in lowered for c in ("color", "black", "white", "blue", "red", "pink", "green")):
+    if _COLOR_RE.search(lowered) or any(
+        c in lowered for c in ("color", "black", "white", "blue", "red", "pink", "green")
+    ):
         return "color"
     if _SIZE_RE.search(lowered):
         return "size"

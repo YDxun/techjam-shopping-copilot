@@ -18,6 +18,7 @@ from config.models import (
     DecisionTraceConfig,
     DiagnosticsConfig,
     DialogueUnderstandingConfig,
+    FingerprintConfig,
     FinishStrategyConfig,
     FinishWeights,
     HybridQuestionPolicyConfig,
@@ -25,6 +26,8 @@ from config.models import (
     LLMConfig,
     ProviderConfig,
     ProviderConfigs,
+    RetrievalConfig,
+    RetrievalModeConfig,
     RetryConfig,
     SecretValue,
     StopUtilityConfig,
@@ -136,9 +139,18 @@ def _environment_overrides(
         "MAX_CONSTRAINT_ASKS": ("max_constraint_asks", _parse_int),
         "LLM_INTENT_ENABLE": ("llm_intent_enabled", _parse_bool),
         "LLM_CLARIFY_ENABLE": ("llm_clarify_enabled", _parse_bool),
+        "HARD_CUE_ENABLE": ("hard_cue_enabled", _parse_bool),
         "BLAIR_OFFLINE_EMBEDDING_PATH": ("blair_offline_embedding_path", _parse_text),
         "BLAIR_QUERY_ENCODER_MODEL": ("blair_query_encoder_model", _parse_text),
         "RERANKER_MODEL_ENABLE": ("reranker_model_enabled", _parse_bool),
+        "EMIT_GATE": ("emit_gate", _parse_bool),
+        "EMIT_LATE_TURN": ("emit_late_turn", _parse_int),
+        "EMIT_K0": ("emit_k0", _parse_int),
+        "EMIT_K1": ("emit_k1", _parse_int),
+        "EMIT_K2": ("emit_k2", _parse_int),
+        "EMIT_FP_CONFIDENT": ("emit_fp_confident", _parse_int),
+        "EMIT_MARGIN_CONFIDENT": ("emit_margin_confident", _parse_float),
+        "EMIT_COMMIT_CONSTRAINTS": ("emit_commit_constraints", _parse_int),
     }
     for name, (field_name, parser) in flat_fields.items():
         value = _environment_value(env, name)
@@ -172,6 +184,20 @@ def _environment_overrides(
                 )
 
     nested_fields: dict[str, tuple[tuple[str, ...], Callable[[str, str], Any]]] = {
+        "COMBO_FINGERPRINT_ENABLE": (("fingerprint", "enable"), _parse_bool),
+        "RRF_K": (("retrieval", "rrf_k"), _parse_float),
+        "RRF_CONSTRAINT_K": (("retrieval", "rrf_constraint_k"), _parse_float),
+        "DENSE_WEIGHT": (("retrieval", "dense_weight"), _parse_float),
+        "BM25_FIELD_WEIGHTS": (("retrieval", "bm25_field_weights"), _parse_float_list),
+        "RETRIEVAL_MODE__EXPLOIT_MIN_HARD": (("retrieval_mode", "exploit_min_hard"), _parse_int),
+        "RETRIEVAL_MODE__EXPLOIT_MIN_CONSTRAINTS": (
+            ("retrieval_mode", "exploit_min_constraints"),
+            _parse_int,
+        ),
+        "LLM_RERANK_BACKEND": (("llm", "rerank_backend"), _parse_text),
+        "QWEN_RERANK_MODEL": (("llm", "qwen_rerank_model"), _parse_text),
+        "DASHSCOPE_WORKSPACE_ID": (("llm", "dashscope_workspace_id"), _parse_text),
+        "QWEN_RERANK_BASE_URL": (("llm", "qwen_rerank_base_url"), _parse_text),
         "MAX_CONSTRAINT_ASKS": (("decision", "max_questions"), _parse_int),
         "SHOPPING_DIALOGUE__MODE": (("dialogue_understanding", "mode"), _parse_text),
         "SHOPPING_DIALOGUE__RULE_CONFIDENCE_THRESHOLD": (
@@ -432,6 +458,13 @@ def _parse_float(value: str, name: str) -> float:
         raise ConfigError(f"{name} must be a number") from error
 
 
+def _parse_float_list(value: str, name: str) -> list[float]:
+    try:
+        return [float(item.strip()) for item in value.split(",")]
+    except ValueError as error:
+        raise ConfigError(f"{name} must be a comma-separated list of numbers") from error
+
+
 def _parse_bool(value: str, name: str) -> bool:
     values = {
         "1": True,
@@ -482,6 +515,9 @@ def _build_and_validate(data: Mapping[str, Any], selected_key: SecretValue) -> A
     decision_trace_data = _mapping(
         diagnostics_data.get("decision_trace"), "diagnostics.decision_trace"
     )
+    retrieval_data = _mapping(data.get("retrieval"), "retrieval")
+    fingerprint_data = _mapping(data.get("fingerprint"), "fingerprint")
+    retrieval_mode_data = _mapping(data.get("retrieval_mode"), "retrieval_mode")
     retry_data = _mapping(llm_data.get("retry"), "llm.retry")
     circuit_data = _mapping(llm_data.get("circuit_breaker"), "llm.circuit_breaker")
     providers_data = _mapping(llm_data.get("providers"), "llm.providers")
@@ -502,6 +538,14 @@ def _build_and_validate(data: Mapping[str, Any], selected_key: SecretValue) -> A
         provider=provider,
         rerank_enabled=_bool_value(llm_data.get("rerank_enabled"), "llm.rerank_enabled"),
         rerank_candidates=_int_value(llm_data.get("rerank_candidates"), "llm.rerank_candidates"),
+        rerank_backend=_string_value(llm_data.get("rerank_backend"), "llm.rerank_backend"),
+        qwen_rerank_model=_string_value(llm_data.get("qwen_rerank_model"), "llm.qwen_rerank_model"),
+        dashscope_workspace_id=_string_value(
+            llm_data.get("dashscope_workspace_id"), "llm.dashscope_workspace_id"
+        ),
+        qwen_rerank_base_url=_string_value(
+            llm_data.get("qwen_rerank_base_url"), "llm.qwen_rerank_base_url"
+        ),
         health_check_enabled=_bool_value(
             llm_data.get("health_check_enabled"), "llm.health_check_enabled"
         ),
@@ -542,6 +586,25 @@ def _build_and_validate(data: Mapping[str, Any], selected_key: SecretValue) -> A
         reranker_model_enabled=_bool_value(
             data.get("reranker_model_enabled"), "reranker_model_enabled"
         ),
+        asset_vocab_expand=_bool_value(data.get("asset_vocab_expand"), "asset_vocab_expand"),
+        asset_category_expand=_bool_value(
+            data.get("asset_category_expand"), "asset_category_expand"
+        ),
+        asset_paraphrase=_bool_value(data.get("asset_paraphrase"), "asset_paraphrase"),
+        asset_field_map=_bool_value(data.get("asset_field_map"), "asset_field_map"),
+        emit_gate=_bool_value(data.get("emit_gate"), "emit_gate"),
+        emit_late_turn=_int_value(data.get("emit_late_turn"), "emit_late_turn"),
+        emit_k0=_int_value(data.get("emit_k0"), "emit_k0"),
+        emit_k1=_int_value(data.get("emit_k1"), "emit_k1"),
+        emit_k2=_int_value(data.get("emit_k2"), "emit_k2"),
+        emit_fp_confident=_int_value(data.get("emit_fp_confident"), "emit_fp_confident"),
+        emit_margin_confident=_number_value(
+            data.get("emit_margin_confident"), "emit_margin_confident"
+        ),
+        emit_commit_constraints=_int_value(
+            data.get("emit_commit_constraints"), "emit_commit_constraints"
+        ),
+        hard_cue_enabled=_bool_value(data.get("hard_cue_enabled"), "hard_cue_enabled"),
         clarify_strategy=_string_value(data.get("clarify_strategy"), "clarify_strategy"),
         override_erase=_bool_value(data.get("override_erase"), "override_erase"),
         skip_data_verify=_bool_value(data.get("skip_data_verify"), "skip_data_verify"),
@@ -597,6 +660,46 @@ def _build_and_validate(data: Mapping[str, Any], selected_key: SecretValue) -> A
                     transition_guard_data.get("destructive_failure_action"),
                     "dialogue_understanding.transition_guard.destructive_failure_action",
                 ),
+            ),
+        ),
+        retrieval_pool_size=_int_value(data.get("retrieval_pool_size"), "retrieval_pool_size"),
+        retrieval=RetrievalConfig(
+            bm25_field_weights=_tuple_number_value(
+                retrieval_data.get("bm25_field_weights"), "retrieval.bm25_field_weights"
+            ),
+            rrf_k=_number_value(retrieval_data.get("rrf_k"), "retrieval.rrf_k"),
+            rrf_constraint_k=_number_value(
+                retrieval_data.get("rrf_constraint_k"), "retrieval.rrf_constraint_k"
+            ),
+            dense_weight=_number_value(
+                retrieval_data.get("dense_weight"), "retrieval.dense_weight"
+            ),
+            bm25_limit_mult=_int_value(
+                retrieval_data.get("bm25_limit_mult"), "retrieval.bm25_limit_mult"
+            ),
+            recall_limit_mult=_int_value(
+                retrieval_data.get("recall_limit_mult"), "retrieval.recall_limit_mult"
+            ),
+        ),
+        rerank_weights=_number_dict_value(data.get("rerank_weights"), "rerank_weights"),
+        fingerprint=FingerprintConfig(
+            enable=_bool_value(fingerprint_data.get("enable"), "fingerprint.enable"),
+            bonus_unique=_number_value(
+                fingerprint_data.get("bonus_unique"), "fingerprint.bonus_unique"
+            ),
+            bonus_ten=_number_value(fingerprint_data.get("bonus_ten"), "fingerprint.bonus_ten"),
+            bonus_fifty=_number_value(
+                fingerprint_data.get("bonus_fifty"), "fingerprint.bonus_fifty"
+            ),
+            max_count=_int_value(fingerprint_data.get("max_count"), "fingerprint.max_count"),
+        ),
+        retrieval_mode=RetrievalModeConfig(
+            exploit_min_hard=_int_value(
+                retrieval_mode_data.get("exploit_min_hard"), "retrieval_mode.exploit_min_hard"
+            ),
+            exploit_min_constraints=_int_value(
+                retrieval_mode_data.get("exploit_min_constraints"),
+                "retrieval_mode.exploit_min_constraints",
             ),
         ),
         decision=DecisionConfig(
@@ -820,6 +923,7 @@ def _validate(config: AppConfig) -> None:
         {"clamp_0_1"},
     )
     _in(config.llm.provider, "llm.provider", {"none", "deepseek", "openai"})
+    _in(config.llm.rerank_backend, "llm.rerank_backend", {"text", "chat", "auto"})
     _positive(config.top_k, "top_k")
     _positive(
         config.dialogue_understanding.max_evidence_length,
@@ -984,6 +1088,18 @@ def _optional_int_value(value: Any, field: str) -> int | None:
     if value is None:
         return None
     return _int_value(value, field)
+
+
+def _tuple_number_value(value: Any, field: str) -> tuple[float, ...]:
+    if not isinstance(value, (list, tuple)):
+        raise ConfigError(f"{field} must be a list of numbers")
+    return tuple(_number_value(item, field) for item in value)
+
+
+def _number_dict_value(value: Any, field: str) -> dict[str, float]:
+    if not isinstance(value, Mapping):
+        raise ConfigError(f"{field} must be an object of numbers")
+    return {str(key): _number_value(item, f"{field}.{key}") for key, item in value.items()}
 
 
 def _number_value(value: Any, field: str) -> float:

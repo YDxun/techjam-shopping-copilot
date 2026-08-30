@@ -62,12 +62,20 @@ class LLMClient(Protocol):
 
     def initialize(self) -> LLMStatus: ...
 
-    def chat(self, messages: Sequence[dict[str, str]], *, temperature: float | None = None, max_tokens: int | None = None) -> LLMResult: ...
+    def chat(
+        self,
+        messages: Sequence[dict[str, str]],
+        *,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+    ) -> LLMResult: ...
 
 
 class DisabledLLMClient:
     def __init__(self, *, provider: str = "none", model: str = "") -> None:
-        self._status = LLMStatus(LLMState.DISABLED, provider, model, error_category=LLMErrorCategory.DISABLED)
+        self._status = LLMStatus(
+            LLMState.DISABLED, provider, model, error_category=LLMErrorCategory.DISABLED
+        )
 
     @property
     def status(self) -> LLMStatus:
@@ -80,5 +88,17 @@ class DisabledLLMClient:
     def initialize(self) -> LLMStatus:
         return self._status
 
-    def chat(self, messages: Sequence[dict[str, str]], *, temperature: float | None = None, max_tokens: int | None = None) -> LLMResult:
-        return LLMResult(False, self._status.provider, self._status.model, error_category=LLMErrorCategory.DISABLED, error_message="disabled")
+    def chat(
+        self,
+        messages: Sequence[dict[str, str]],
+        *,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+    ) -> LLMResult:
+        return LLMResult(
+            False,
+            self._status.provider,
+            self._status.model,
+            error_category=LLMErrorCategory.DISABLED,
+            error_message="disabled",
+        )

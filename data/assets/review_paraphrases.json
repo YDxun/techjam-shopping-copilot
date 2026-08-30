@@ -1,0 +1,259 @@
+{
+  "meta": {
+    "version": "1.0.0",
+    "source": "review_paraphrase_stats_full.json",
+    "source_vocab": "vocab_metadata_v2.json",
+    "purpose": "Natural-language query interpretation and paraphrase expansion derived from full Amazon review corpus.",
+    "important": "These phrases are NOT all literal attribute synonyms. Intent expressions must be interpreted semantically.",
+    "total_reviews": 66033346,
+    "verified_reviews": 62175766,
+    "verified_rate": 0.941581
+  },
+  "size_fit": {
+    "true_to_size": {
+      "phrases": [
+        "true to size",
+        "true-to-size",
+        "tts",
+        "fits true to size",
+        "fit true to size",
+        "fits as expected",
+        "fit as expected",
+        "sizing is accurate",
+        "size is accurate"
+      ],
+      "review_count": 1911481,
+      "negated_nearby": 480558,
+      "negated_rate": 0.251406,
+      "filter_semantics": "intent_only",
+      "note": "Do not convert this directly to literal size=S/M/L."
+    },
+    "runs_small": {
+      "phrases": [
+        "runs small",
+        "run small",
+        "runs a little small",
+        "runs a bit small",
+        "runs slightly small",
+        "fits small",
+        "on the small side",
+        "on the smaller side",
+        "smaller than expected",
+        "smaller than usual"
+      ],
+      "review_count": 1135548,
+      "negated_nearby": 234051,
+      "negated_rate": 0.206113,
+      "filter_semantics": "intent_only",
+      "note": "Do not convert this directly to literal size=S/M/L."
+    },
+    "runs_large": {
+      "phrases": [
+        "runs large",
+        "run large",
+        "runs big",
+        "run big",
+        "runs a little large",
+        "runs a bit large",
+        "fits large",
+        "fits big",
+        "on the large side",
+        "on the larger side",
+        "larger than expected",
+        "bigger than expected"
+      ],
+      "review_count": 630949,
+      "negated_nearby": 123727,
+      "negated_rate": 0.196097,
+      "filter_semantics": "intent_only",
+      "note": "Do not convert this directly to literal size=S/M/L."
+    },
+    "size_up": {
+      "phrases": [
+        "size up",
+        "sized up",
+        "sizing up",
+        "go a size up",
+        "go one size up",
+        "order a size up",
+        "order one size up",
+        "one size larger"
+      ],
+      "review_count": 1072190,
+      "negated_nearby": 254949,
+      "negated_rate": 0.237783,
+      "filter_semantics": "intent_only",
+      "note": "Do not convert this directly to literal size=S/M/L."
+    },
+    "size_down": {
+      "phrases": [
+        "size down",
+        "sized down",
+        "sizing down",
+        "go a size down",
+        "go one size down",
+        "order a size down",
+        "order one size down",
+        "one size smaller"
+      ],
+      "review_count": 317126,
+      "negated_nearby": 67841,
+      "negated_rate": 0.213924,
+      "filter_semantics": "intent_only",
+      "note": "Do not convert this directly to literal size=S/M/L."
+    },
+    "tight_or_snug": {
+      "phrases": [
+        "too tight",
+        "a little tight",
+        "slightly tight",
+        "too snug",
+        "a little snug",
+        "slightly snug"
+      ],
+      "review_count": 927715,
+      "negated_nearby": 375549,
+      "negated_rate": 0.404811,
+      "filter_semantics": "intent_only",
+      "note": "Do not convert this directly to literal size=S/M/L."
+    },
+    "loose": {
+      "phrases": [
+        "too loose",
+        "a little loose",
+        "slightly loose",
+        "loose fit"
+      ],
+      "review_count": 298919,
+      "negated_nearby": 121818,
+      "negated_rate": 0.407528,
+      "filter_semantics": "intent_only",
+      "note": "Do not convert this directly to literal size=S/M/L."
+    }
+  },
+  "material_language": {
+    "literal_aliases": {
+      "leather": [
+        "real leather",
+        "genuine leather"
+      ],
+      "faux leather": [
+        "fake leather",
+        "pleather"
+      ],
+      "synthetic leather": [
+        "pu leather"
+      ],
+      "spandex": [
+        "lycra"
+      ],
+      "polyvinyl chloride": [
+        "pvc"
+      ],
+      "thermoplastic polyurethane": [
+        "tpu"
+      ],
+      "ethylene vinyl acetate": [
+        "eva"
+      ]
+    },
+    "context_patterns": [
+      "made of {material}",
+      "made out of {material}",
+      "{material} material",
+      "{material} fabric",
+      "{material} blend"
+    ],
+    "soft_descriptors": {
+      "synthetic_material": [
+        "synthetic material",
+        "synthetic fabric"
+      ],
+      "stretch_material": [
+        "stretchy fabric",
+        "stretchy material",
+        "stretch fabric"
+      ]
+    },
+    "rules": {
+      "require_known_material_target": true,
+      "respect_negation": true,
+      "examples_of_negation": [
+        "not leather",
+        "not real leather",
+        "doesn't feel like leather"
+      ],
+      "do_not_treat_as_material": [
+        "comfortable",
+        "quality",
+        "good quality",
+        "cheap material",
+        "feels good",
+        "felt"
+      ]
+    }
+  },
+  "color_language": {
+    "literal_aliases": {
+      "gray": [
+        "grey"
+      ],
+      "navy": [
+        "navy blue"
+      ],
+      "multicolor": [
+        "multi color",
+        "multi-color",
+        "multicolored",
+        "multicoloured"
+      ],
+      "rose gold": [
+        "rose-gold"
+      ]
+    },
+    "modifier_words": [
+      "light",
+      "dark",
+      "deep",
+      "bright",
+      "pale",
+      "dusty",
+      "muted",
+      "soft",
+      "hot",
+      "neon",
+      "pastel"
+    ],
+    "ish_modifier_words": [
+      "bluish",
+      "greenish",
+      "reddish",
+      "pinkish",
+      "brownish",
+      "grayish",
+      "greyish",
+      "purplish",
+      "yellowish"
+    ],
+    "normalization_examples": {
+      "dark navy": "navy",
+      "deep navy": "navy",
+      "very deep navy": "navy",
+      "light blue": "blue",
+      "muted purple": "purple",
+      "dusty pink": "pink"
+    },
+    "soft_only_examples": [
+      "bluish black",
+      "grayish pink",
+      "brownish purple",
+      "greenish blue"
+    ],
+    "rules": {
+      "exact_modifier_plus_known_color": "normalize_to_base_color",
+      "ish_color": "soft_expansion_only",
+      "respect_negation": true,
+      "do_not_hard_filter_fuzzy_color": true
+    }
+  }
+}

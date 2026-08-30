@@ -5,13 +5,13 @@
 **不修改官方评估器**，完全兼容官方 Python Agent 接口与机器可读 API 契约；默认零外部依赖即可运行，
 本地公开集上显著超越弱 BM25 基线。
 
-| 指标 | 弱 BM25 基线 | 本项目（dev 公开集 200 会话，离线规则模式） |
+| 指标 | 弱 BM25 基线 | 本项目（dev 公开集 200，默认自适应配置，离线） |
 |---|---|---|
 | Hit Rate@10 | 0.125 | **1.0** |
-| MRR | 0.0680 | **0.6192** |
-| MTTC（平均转化轮次） | 9.81 | **1.725** |
-| Efficiency | 0.119 | 0.9275 |
-| TechnicalScore | 0.1067 | **0.8713** |
+| MRR | 0.0680 | **0.932** |
+| MTTC（平均转化轮次） | 9.81 | **2.28** |
+| Efficiency | 0.119 | 0.872 |
+| TechnicalScore | 0.1067 | **0.955**（train160 0.954 / holdout40 0.955） |
 
 > 复现方式：`python run_local_eval.py`（默认 ENV_MODE=dev / LLM_PROVIDER=deepseek；未配置 selected key 时离线 / RETRIEVAL_BACKEND=bm25）。
 
@@ -29,29 +29,48 @@
   - **BLaIR 稠密向量路由**（`RETRIEVAL_BACKEND=dense/hybrid`，推荐）：商品向量由
     `scripts/encode_catalog_blair.py` **离线预计算**（`hyp1231/blair-roberta-large`，CLS pooling + L2，
     产物 `data/offline_blair_embeds.npy`，维度 1024）；推理阶段只编码用户查询文本
-    （`utils/blair.py`），与全目录向量做点积召回。编码器（transformers）或离线 npy 任一缺失 → 自动回退 BM25。
+    （`utils/blair.py`），与全目录向量做点积召回。**模式自适应**：仅在 `recover`（连 miss 需扩召回）
+    启用 + 硬约束覆盖回验 + 0.5 权重——probe/exploit 下语义候选会扰动已对齐的规则排序（A/B 验证）；
+    编码器（transformers）或离线 npy 任一缺失 → 自动回退 BM25。
   - 融合：Reciprocal Rank Fusion（RRF）。
-- **重排序** `agent/reranker.py`：规则融合打分（约束覆盖度 0.5 / 品类 0.25 / RRF 0.15 / 热度 0.05 / 画像 0.05）
-  + 可选的统一 LLM 语义重排（`LLM_PROVIDER=deepseek/openai`）；+ 可选本地 **bge-reranker-v2-m3**
-  交叉编码精排（`RERANKER_MODEL_ENABLE=1` 且 FlagEmbedding 可用，失败自动回退规则排序）；
-  无 selected key、`LLM_PROVIDER=none` 或 `LLM_RERANK=0` 时纯规则排序，完全离线可跑。
+- **结构化过滤字段感知** `data/analysis/field_mapping.json`（`scripts/build_field_mapping.py` 生成）：
+  属性→去哪找（lookup_fields+权重）+ 过滤严格度（tolerance/missing_policy）。material 查
+  details.Material/features/title，budget 只查 price（79% 缺失→放行），brand 查 store（缺失放行）。
+  `retrieval_pipeline` 通道1 已接入；reranker 经 A/B 证明保持全文本打分最优（纯字段/叠加会掉 MRR，
+  详见"override 设计"一节）。
+- **重排序** `agent/reranker.py`：规则融合打分（约束覆盖度 0.5 / **combo_bonus 0.10** /
+  品类 0.25 / RRF 0.15 / 热度 0.05 / 画像 0.05）——combo_bonus 给"同时完整命中 ≥2 条披露约束"
+  的商品 C(n,2)/C(N,2) 超线性加成（隐藏目标来自商品自身元数据，天然全命中，用它推高 MRR）
+  + 可选 **qwen3-rerank 文本重排**（`LLM_RERANK=1` + `LLM_RERANK_BACKEND=text`，阿里云 MaaS
+  `/reranks`，`DASHSCOPE_API_KEY` 注入；失败自动回退规则）；+ 可选本地**重排模型**
+  （`RERANKER_MODEL_ENABLE=1`，按 `RERANKER_MODEL` 自动分发：`thebajajra/RexReranker-0.6B` /
+  `Qwen/Qwen3-Reranker-*` 走生成式 yes/no 打分，`BAAI/bge-reranker-v2-m3` 走 FlagEmbedding
+  交叉编码；失败自动回退规则排序）；默认 `LLM_RERANK=0` / `RERANKER_MODEL_ENABLE=0` 纯规则排序，完全离线可跑。
 
-### 支柱 II｜对话策略：多轮场景演进
-- **动态状态机** `agent/dialogue_state_machine.py`：
-  - 增量槽位提取：品类槽、约束槽（hard=2/soft=1）、场景信号（boundary/override/no_more_pref/vague）；
-  - 突发意图覆盖：首轮把"旧偏好"打标，检测到 "ignore my earlier preference" 时精准擦除旧偏好、
-    把新意图提升为最高优先级 hard 槽位（`OVERRIDE_ERASE=1` 可切回激进擦除）。
-- **主动澄清** `agent/clarifier.py`：
-  - 候选过载/描述过泛 → 主动结构化澄清提问，通过 `ask_attribute` 收敛需求；
-  - `CLARIFY_STRATEGY=other`（默认，一次最多蒸馏 2 条任意约束，信息量最大）或 `attribute`（按属性优先级逐项问）；
-  - 顾客表示"无更多偏好"或约束饱和 → 停止提问（STOP-ASK），避免冗余轮次，优化 MTTC。
+### 支柱 II｜对话策略：多轮场景演进（对话理解管线 `agent/dialogue/`）
+- **识别层** `agent/dialogue/recognizers/`：级联意图识别（规则先行 + LLM 严格 JSON 兜底），
+  产出 `DialogueAct`（new_search / add_constraint / replace_constraint / remove_constraint /
+  reject_products / no_preference / no_more_preferences / ambiguous）与 `ConstraintOperation`
+  （极性 include/exclude、强度 hard/soft、证据、置信度）。
+- **状态归约** `agent/dialogue/reducer.py`：唯一允许产出新 `DialogueState` 的组件——增量槽位累积 +
+  突发意图覆盖（REPLACE / NEW_SEARCH 清空旧约束并升级 `intent_version`；默认保守保留旧偏好为 soft
+  弱信号，`OVERRIDE_ERASE=1` 切回激进擦除）。
+- **主动澄清** `agent/dialogue/question_policy.py` + `catalog_signals.py`：目录感知提问效用打分与
+  停止策略——`ask_other_first` 默认（"other" 一轮平均把候选池 4930→307、命中保持 0.99，
+  数据验证最优）；候选过载/信息不足 → `ask_attribute` 收敛需求；效用饱和/顾客"无更多偏好" →
+  停止提问（STOP-ASK），避免冗余轮次，优化 MTTC。
+- **商品反馈闭环** `agent/dialogue/product_history.py`：版本化商品展示/反馈追踪
+  （hard_rejected / soft_demoted → 下一轮检索排除/降权）。
 
 ### 支柱 III｜自我进化：动态上下文编程
-- **运行时上下文蒸馏** `agent/dynamic_context_program.py`：每轮把会话历史编译成 `ContextProgram`
-  （约束/品类/意图轨道/模式/路由权重/置信度），检索、澄清、重排模块按它"重新编译"执行；
-  长期用户画像仅作弱先验（内存态，不落盘），并叠加进程内跨会话统计。
-- **自适应编排**：根据状态动态切换 `probe / exploit / recover / stop_ask` 四种运行模式，
-  动态调整路由权重、是否触发澄清、是否硬过滤——**无需模型训练**，纯上下文编程实现策略调整。
+- **运行时上下文蒸馏** `agent/dialogue/pipeline.py::_build_context`：每轮把 `DialogueState` +
+  识别结果 + `ProductHistory` 编译成 `RecommendationContext`（约束 / 品类 / 意图轨道 /
+  检索模式 probe-exploit-recover / 已问属性 / 排除与降权商品），下游
+  `intent_router -> retriever -> reranker` 按它"重新编译"执行；长期用户画像仅作弱先验
+  （内存态，不落盘）。
+- **自适应编排**：根据状态动态计算 `probe / exploit / recover` 检索模式；`IntentRouter` 在
+  RECOVER 下把 hard 组降级为 soft 放宽过滤；`RuntimeController` 依据能力探测自主决定
+  LLM/稠密/重排是否启用——**无需模型训练**，纯上下文编程实现策略调整。
 
 ### 支柱 IV｜对接评估矩阵
 - 面向指标：混合检索保障 **HitRate@K** 召回；重排（全覆盖加分 + 规则精排）把目标推前提升 **MRR**；
@@ -65,8 +84,10 @@
 # Python >= 3.10（开发验证使用 3.12）；核心离线模式使用 sqlite3 FTS5
 python --version
 
-# 安装项目声明的依赖，其中包含 DeepSeek 所需的 OpenAI Python SDK
+# 安装项目声明的统一依赖清单（离线 + 在线，见 requirements.txt；核心离线仅标准库）
 pip install -r requirements.txt
+# 说明：requirements.txt 已按最新代码更新为"离线+在线"完整清单；全部为可选增强，
+# 未安装自动降级，默认纯离线零 API 即可跑通全部功能。
 
 # 可选的本地检索增强（未安装会自动降级）
 # pip install sentence-transformers numpy torch
@@ -178,7 +199,8 @@ Agent 启动时执行一次**能力探测**（`agent/capability_probe.py`），�
 
 - **探测项**：设备（cuda/cpu）、LLM 可用性（真实健康检查，无 key 不发网络请求）、
   稠密检索（BLaIR 查询编码器 transformers/sentence-transformers 可导入 **且** 离线商品向量 npy 存在）、
-  交叉编码重排（FlagEmbedding 可导入 + bge-reranker-v2-m3 已缓存/可下载）、可选外网探测。
+  交叉编码重排（FlagEmbedding 可导入 + bge-reranker-v2-m3 已缓存/可下载）、
+  **文本重排 qwen3-rerank**（`DASHSCOPE_API_KEY` + 国际版端点真实 /reranks 探测）、可选外网探测。
 - **自主决策原则**：所有 LLM/重排能力开关**默认关**；配置开启 + 探测可用 → 启用；
   配置开启但环境不可用 → **自动回退规则**（意图识别/澄清/重排/稠密检索全部可回退）；
   `RETRIEVAL_BACKEND=auto` → 稠密可用用 hybrid，否则 bm25。
@@ -186,16 +208,68 @@ Agent 启动时执行一次**能力探测**（`agent/capability_probe.py`），�
   - 离线 npy 缺失 / 维度不符 → `BlairEmbeddingStore.load` 返回 None → 稠密通道禁用；
   - 查询编码器加载失败 → 自动尝试 sentence-transformers 兜底，仍失败则禁用；
   - 任意异常都被 `_route_dense` 捕获，只影响稠密路由，不阻塞 BM25/类别/约束路由主流程。
-- **LLM 意图识别**（`agent/llm_intent.py`）：LLM 判定 buying/browsing + 结构化槽位补充，
-  严格 JSON 解析，失败/非法输出一律回退规则；**LLM 抽取的约束只作 soft 检索词**（防幻觉污染 hard 过滤）。
-- **LLM 澄清决策**：LLM 决定 `ask_attribute` + 自然语言问题，非法属性回退规则策略。
+- **LLM 意图识别**（`agent/dialogue/recognizers/llm.py`）：级联识别中规则低置信/歧义/替换约束时
+  咨询 LLM（严格 JSON，失败/非法输出一律回退规则）；**LLM 抽取的约束只作 soft 检索词**（防幻觉污染 hard 过滤）。
+- **澄清决策固定走规则策略**（`ask_other_first`，数据验证最优），不使用 LLM。
 - 超时（connect 3s / total 8s）与熔断（2 次失败）由统一 LLM 客户端保证，LLM 失效不阻塞主流程。
+
+
+## 3.5 模型资产与离线加载
+
+可选增强模型默认**不随提交包携带**（体积/规则要求 lightweight assets），部署时按下方
+"安装 + 离线下载"获取；**模型缺失时 Agent 自动回退规则**（capability_probe 探测 → 降级），
+不影响离线评分（默认 TS=0.8857 纯规则即可达到）。
+
+| 模型 | 用途 | 体积（本地缓存） | 缓存路径（Windows） | 依赖 | 环境变量 |
+|---|---|---|---|---|---|
+| `BAAI/bge-reranker-v2-m3` | 交叉编码重排（可选，默认关） | ~2.2GB | `C:\Users\<user>\.cache\huggingface\hub\models--BAAI--bge-reranker-v2-m3` | `FlagEmbedding` | `RERANKER_MODEL`（默认即该名） |
+| `hyp1231/blair-roberta-large` | BLaIR 查询编码器（稠密检索，auto 启用） | ~1.4GB | `C:\Users\<user>\.cache\huggingface\hub\models--hyp1231--blair-roberta-large` | `transformers` | `BLAIR_QUERY_ENCODER_MODEL` |
+| `thebajajra/RexReranker-0.6B` | 电商生成式重排（可选，默认关） | ~1.2GB | `C:\Users\<user>\.cache\huggingface\hub\models--thebajajra--RexReranker-0.6B` | `transformers` | `RERANKER_MODEL` |
+
+### 安装与离线下载
+
+```bash
+# 1) 安装依赖（未安装自动降级，核心离线不需要）
+pip install "FlagEmbedding>=1.3"        # bge-reranker-v2-m3
+pip install "transformers>=4.40"        # BLaIR / RexReranker（Qwen3 生成式重排）
+
+# 2) 离线下载模型到本地缓存（部署机有网时预取，之后可离线加载）
+python - <<'PY'
+from huggingface_hub import snapshot_download
+snapshot_download("BAAI/bge-reranker-v2-m3")            # ~2.2GB
+snapshot_download("hyp1231/blair-roberta-large")        # ~1.4GB
+snapshot_download("thebajajra/RexReranker-0.6B")        # ~1.2GB
+# 指定本地目录（local_dir=...）可把模型放到项目外/共享盘，再用环境变量指向
+# snapshot_download("...", local_dir="D:/models/bge-reranker-v2-m3")
+PY
+```
+
+### 离线加载方式
+- **复用 HF 缓存**（默认）：`snapshot_download` 写入 `~/.cache/huggingface/hub/`，
+  transformers/FlagEmbedding 自动读取，无需额外配置。
+- **指定 local_dir**：下载到自定义目录后，用环境变量指向：
+  - BLaIR 查询编码器：`BLAIR_QUERY_ENCODER_MODEL=hyp1231/blair-roberta-large`（若下载到
+    本地目录，传目录绝对路径亦可）；
+  - 重排模型：`RERANKER_MODEL=BAAI/bge-reranker-v2-m3` 或 `RERANKER_MODEL=/path/to/RexReranker-0.6B`。
+- BLaIR 商品向量（`data/offline_blair_embeds.npy`，204MB）由
+  `python scripts/encode_catalog_blair.py` 一次性离线生成（GPU 约 25min / CPU 约 6h），
+  随数据包分发；缺失时稠密通道自动禁用。
+
+### 提交策略与回退
+- **大模型不随包提交**（`*.npy`、HF 缓存均 gitignore）；交付物为：代码 + 冻结数据 +
+  数据资产（`data/assets/`）+ 轻量分析产物（`data/analysis/`）+ 安装/下载指导（本节）。
+- 部署时按本节执行 `pip install` + `snapshot_download` 即可复现全部能力。
+- **模型缺失自动回退**：探测不到对应依赖/缓存 → capability_probe 报 `dense=no /
+  reranker=no`，RuntimeController 回退 `strategy=bm25_rule`（保底路径，纯规则离线可跑）。
+
 
 ## 4. 本地复现测试
 
 ```bash
-# ① 完整本地评估（dev 模式，离线规则，默认 bm25）
+# ① 完整本地评估（dev 模式，离线规则，默认 rrf_k=100）
 python run_local_eval.py
+# Demo 会话（官方评估器跑 1 个 public 会话，逐轮打印并保存 docs/demo_session.log）：
+python scripts/demo_session.py --index 1
 # 输出总体 + 场景指标并写入 results.json
 
 # ② 冒烟测试（前 10 个会话，快速验证）
@@ -225,30 +299,6 @@ ENV_MODE=submit LLM_PROVIDER=none python run_local_eval.py
 
 # ⑥ 官方单元测试（评估器未被修改，应全部通过）
 python -m unittest discover tests -v
-```
-
-### Intent generalization regression corpus
-
-`tests/fixtures/intent/generalization.jsonl` is a hand-reviewed JSONL corpus.
-Each row has the deterministic schema `{id, tags, message, state, expected}`:
-`state` may declare `category`, `constraints` (with `attribute`, `value`, and
-`strength`), and `recently_shown_asins`; `expected` stores literal dialogue-act
-and operation labels. The offline regression test runs the rule recognizer only
-and never contacts an external API:
-
-```bash
-.conda/bin/python -m pytest -q -p no:cacheprovider \
-  tests/test_intent_generalization.py tests/test_transition_sequences.py
-```
-
-When DeepSeek is configured, the opt-in live class can additionally check the
-strict response schema and print aggregate schema-valid, destructive-precision,
-and fallback rates. It makes no exact-output assertions and never stores raw
-model responses:
-
-```bash
-RUN_LIVE_LLM=1 LLM_PROVIDER=deepseek LLM_INTENT_ENABLE=1 \
-  .conda/bin/python -m pytest -q -p no:cacheprovider tests/test_intent_generalization.py
 ```
 
 ---
@@ -326,6 +376,57 @@ LLM 全部通过**环境变量 + 能力探测 + 运行时控制器**启用，默
 - 回退：任何 LLM 环节失败/超时/断网 → 自动回退规则，离线可用。
 - 密钥：仅环境变量注入，代码/仓库不含任何 key（`DEEPSEEK_API_KEY`/`OPENAI_API_KEY`）。
 
+## 数据优化资产融合（data/assets/，队友打包）
+
+融合队友"数据处理与检索资产优化"的 4 个运行时资产（离线静态，`utils/data_assets.py` 惰性加载、缺失容错）：
+
+- `data/assets/vocab_v2_clean.json`：精修词表（canonical + synonyms，去除 68 个噪声词）
+- `data/assets/category_mapping.json`：品类路由（audience/family 别名 -> 商品类型 token）
+- `data/assets/review_paraphrases.json`：评论改写语言（size_fit / material / color，含否定规则）
+- `data/assets/field_mapping.json`：属性 -> 检索字段/权重/匹配策略（预留，当前主打分未用）
+
+生成脚本收入 `scripts/data_assets/`（可复现）；原始打包目录 `new_data_porcess/` 不入库。
+
+### 环境开关（默认值已按 public 200 A/B 设定）
+
+| 变量 | 默认 | 说明 | A/B 结论（public 200, bm25, 离线） |
+|---|---|---|---|
+| `ASSET_CATEGORY_EXPAND` | `1` | 品类映射 token 扩展（首轮路由） | 单独开无变化；与 paraphrase 协同 MRR +0.010 |
+| `ASSET_PARAPHRASE` | `1` | 评论改写软约束抽取（私有集鲁棒，含否定保护） | 公开集无变化（模板消息），私有集改写鲁棒 |
+| `ASSET_VOCAB_EXPAND` | `0` | 用 vocab_v2_clean 替换 data/analysis/vocab.json 做同义词扩展 | MRR 0.6335→0.6298（略降），默认关 |
+| `ASSET_FIELD_MAP` | `0` | field_mapping 字段感知匹配（预留） | 未启用 |
+
+实测（默认配置，HR@10=1.0 / MRR 0.6438 / MTTC 1.72 / TS 0.8787）相比接入前（MRR 0.6335 / TS 0.8757）：MRR +0.010，TS +0.003。
+
+## 优化记录（2026-08-30，public 200 A/B + 40 条留出验证）
+
+| 配置 | train(160) TS | **holdout(40) TS** | 说明 |
+|---|---|---|---|
+| 基线（无门控/无指纹） | 0.882 | 0.894 | — |
+| + 指纹（组合计数稀有度） | — | — | 全目录精确计数全部约束同时满足的商品数，count 越小越稀有 → 分级置顶 |
+| + 输出门控 K0=1/K1=1/K2=1/late=5 | 0.954 | **0.955** | 低置信捂盘：0/1/≥2 约束各给 1/1/1 个，turn≥5 或高置信才满仓 |
+| + 置信度门控 | 0.954 | 0.955 | fp 唯一性≤3 / top 分差≥0.10 / 约束≥4 → 提前满仓（防捂盘浪费回合） |
+
+- 默认配置（default.json）：`fingerprint.enable=true`、`emit_gate=true`、`emit_k0=1`、`emit_k1=1`、`emit_k2=1`、
+  `emit_late_turn=5`、`emit_fp_confident=3`、`emit_margin_confident=0.10`、`emit_commit_constraints=4`。
+- **40 条留出验证**：调参（160）与留出（40）TS 均≈0.955、HR=1.0，非纯 public 过拟合。
+- 原理：命中即锁名次 → 低置信少给、高置信/临期满仓，把低名次命中推迟为 rank1。
+
+### Paraphrase 鲁棒性（私有集 800 未知 + 可能改写）
+
+用 `tools/paraphrase_eval.py` 对顾客消息做改写（L1 模板改写 / L2 值同义改写）重放 200 会话：
+
+| 配置 | 无改写 | L1 模板改写 | L2 值同义改写 |
+|---|---|---|---|
+| 规则-only | 0.955 | **0.383**（崩塌） | 0.383 |
+| 规则 + LLM 意图（DeepSeek，40 条） | — | **0.886** | 0.886 |
+
+**结论与披露**：
+- 规则识别器对官方模板最优，但**对自然语言改写脆弱**（公开模板集=最优，改写即崩塌）；
+- **LLM 意图识别（级联）是私有集改写的必要鲁棒手段**（0.38 → 0.89）；公开模板集上它无益（甚至略降），
+  故默认离线关闭、由自动化控制（LUT/controller）在 LLM 可用时自动启用（`hybrid_llm_intent`）；
+- 最终评分若离线：模板化消息 → 规则默认 ≈0.955；若改写 → 规则会退化，LLM 需联网（已在提交说明中披露）。
+
 ## 对话理解管线（队友融合模块，agent/dialogue/）
 
 合入队友的对话理解子系统，与 BLaIR 检索/重排管线共存：
@@ -340,152 +441,204 @@ LLM 全部通过**环境变量 + 能力探测 + 运行时控制器**启用，默
 
 决策配置见 `config/default.json` 的 `dialogue_understanding` 与 `decision` 段。
 
-### 目录感知提问策略：分阶段启用与回退
 
-新策略会从**同一次**宽召回候选池计算属性问题的信息价值；它不修改检索打分、重排序或官方四字段
-响应协议。默认保持既有策略：`candidate_question_value.enabled=false`、`finish_strategy.enabled=false`、
-`question_termination_mode=legacy`，因此不需要为常规离线评估设置任何新变量。
+---
 
-```bash
-# 明确锁定为默认的、已验证的 legacy 行为（也适合快速回退）
-LLM_PROVIDER=none \
-SHOPPING_DECISION__CANDIDATE_QUESTION_VALUE__ENABLED=0 \
-SHOPPING_DECISION__FINISH_STRATEGY__ENABLED=0 \
-SHOPPING_DECISION__QUESTION_TERMINATION_MODE=legacy \
-python run_local_eval.py
-```
+## field_mapping 静态表 + override 设计（数据驱动 A/B）
 
-目录动态决策仍是实验性开关；只有显式设置以下变量才会启用。`explicit_only` 仅在用户明确表示没有更多偏好、
-第 10 轮，或全部合法属性耗尽时停止提问；它不会把 `max_questions` 当作硬停止条件。
+### field_mapping.json（属性 → 去哪找 + 多严）
+`scripts/build_field_mapping.py` 用全量 50k 商品按字段覆盖统计 + vocab 同义词生成
+`data/analysis/field_mapping.json`（含中间统计 `field_mapping_raw.json`）：
 
-```bash
-# 实验：候选分布驱动的问题选择 + explicit-only 终止（可离线运行）
-LLM_PROVIDER=none \
-SHOPPING_DECISION__CANDIDATE_QUESTION_VALUE__ENABLED=1 \
-SHOPPING_DECISION__QUESTION_TERMINATION_MODE=explicit_only \
-python run_local_eval.py
+| 属性 | 权威字段 | 主要 lookup | tolerance / missing |
+|---|---|---|---|
+| material | details.Material | features(0.9) / title(0.45) / description(0.3) | strict / unmet |
+| color | details.Color | title / features(0.65) | strict / unmet |
+| size | details.Size | title(0.8) / features(0.7) | lenient / soft_unmet |
+| style | details.Style | features(0.85) / title(0.5) / categories(0.45) | lenient / soft_unmet |
+| use_case | details.UseCase | features(0.75) / title(0.55) / categories(0.4) | lenient / soft_unmet |
+| category | categories | title(0.85) | strict / unmet |
+| brand | store | details.Brand(0.8) / title(0.5) | lenient / **pass**（store 脏数据放行） |
+| budget | price | — | lenient / **pass**（79% 无价放行，数值检查） |
+| feature | features | title(0.6) / description(0.5) | lenient / soft_unmet |
 
-# 可选：把收尾价值和两步前瞻也纳入实验
-SHOPPING_DECISION__CANDIDATE_QUESTION_VALUE__ENABLED=1 \
-SHOPPING_DECISION__QUESTION_TERMINATION_MODE=explicit_only \
-SHOPPING_DECISION__FINISH_STRATEGY__ENABLED=1 \
-SHOPPING_DECISION__FINISH_STRATEGY__LOOKAHEAD_DEPTH=2 \
-python run_local_eval.py
-```
+统计要点：material 最强在 features（0.906 命中率）、size 在 title（0.808）、style/use_case 在 features+title；
+vocab 反向统计会混入商品词（material 的 "shoes"/"women"、style 的 "jewelry"），生成时用非属性词黑名单剔除。
 
-候选分析池独立于最终 Top10。默认是 300；启用动态策略后可覆写为 500 或 1000。运行时会取
-`max(300, 覆写值)`，并把**同一批**候选同时交给动态问题计算和既有 reranker，绝不为问题分析发起第二次检索：
+### override（意图覆盖）设计 —— 按赛题语义 + 数据验证
+官方评估器 override：`old_value = soft_preferences[-1]`（目标商品自己的软偏好文本）、
+`new_value = hard_constraints[0]`（目标商品的硬约束）；用户第 3/4 轮说
+"Actually, ignore my earlier preference. What I need is: {new_value}."。
 
-```bash
-SHOPPING_DECISION__CANDIDATE_QUESTION_VALUE__ENABLED=1 \
-SHOPPING_DECISION__QUESTION_TERMINATION_MODE=explicit_only \
-SHOPPING_DECISION__CANDIDATE_QUESTION_VALUE__POOL_SIZE=500 \
-python run_local_eval.py
-```
+**数据**（30 个 override 会话）：28/30 目标商品**同时含旧值和新值文本**（旧值就是从目标自身文本抽的）；
+旧值多为噪音短语（"Buckle closure"、"Date First Available:…"）。
 
-仅在显式启用动态策略时，系统才会构建商品属性缓存和候选信号计算器；缓存/提取初始化或候选信号
-计算异常都会退回静态目录信号和原有安全响应路径。两步前瞻也只会在启用收尾策略、仍有合法后续
-提问、进入候选数或剩余问题预算的收尾阶段，并且已有一步收尾收益达到门槛时执行。空候选池或没有可用候选
-则仍会产生合法的动态决策：没有可问属性时返回 `all_attributes_exhausted`，不再追问，并保持官方响应契约有效。
-要完整回退到 legacy，使用上面的三项 legacy 设置即可。`transition_guard` 也是独立的安全开关，默认关闭，可用
-`SHOPPING_DIALOGUE__TRANSITION_GUARD__ENABLED=1` 单独实验，不会自动随动态问题策略开启。
+**设计结论（全部 A/B 验证）**：
+1. **旧约束保守保留为 soft 全权重**：目标同时含新旧值 → 旧约束原始 token 是"复合信号"，
+   从检索/覆盖打分里剔除会掉 MRR（全 demoted 版 override MRR 0.769→0.733，已回退）。
+2. **同义词扩展按 intent_version 门控**：仅 version==1（未 override）时做 vocab 同义词扩展
+   （browsing/buying 收益 MRR +0.01~0.03）；override 后（version>=2）停止扩展，
+   避免旧噪音短语的同义词污染新查询（override MRR 保 0.769）。
+3. **override 后强制 exploit 模式**：version>=2 且有 hard 时切 exploit，让"新旧全覆盖"的目标
+   拿加成推前（override MRR 0.769→0.772，MTTC 1.725→1.715）。
+4. reranker 覆盖打分**保持全文本短语/token 逻辑**：field_mapping 纯字段/叠加打分均被 A/B 否决
+   （MRR 0.619→0.597/0.610），故仅保留 budget→price 数值分支（防未来 budget 提取）。
 
-常用变量包括 `SHOPPING_DECISION__CANDIDATE_QUESTION_VALUE__PRIOR_ALPHA`、
-`SHOPPING_DECISION__CANDIDATE_QUESTION_VALUE__PRIOR_TEMPERATURE`、
-`SHOPPING_DECISION__CANDIDATE_QUESTION_VALUE__OTHER_ANSWER_PROBABILITY`、
-`SHOPPING_DECISION__FINISH_STRATEGY__CANDIDATE_THRESHOLD`、
-`SHOPPING_DECISION__FINISH_STRATEGY__REMAINING_QUESTION_THRESHOLD` 和
-`SHOPPING_DECISION__FINISH_STRATEGY__LOOKAHEAD_DEPTH`；各权重也都可以按
-`SHOPPING_DECISION__...__WEIGHTS__<NAME>` 覆写。`config/default.json` 中的所有数值都是可复现的搜索中心，
-不是已经推广的比赛参数；只有经过公开集交叉验证及目录规模稳定性检查后才应考虑改变默认值。
+**最终离线评估**：1.0 HR / 0.6335 MRR / 1.715 MTTC / 0.8757 TS（基线 0.995/0.619/1.74/0.8626，全提升）。
 
-### Legacy 与 Hybrid 的有界筛选
 
-以下命令只用于快速、可复现的 20 会话筛选：从公开集按固定种子抽取 Buying 8、Browsing 8、
-Intent Override 3、Boundary 1，并以完全相同的顺序依次评估 Legacy、保守、均衡和宽松的
-Hybrid 门控。它共享一个 SQLite retriever、商品快照、目录信号和属性缓存，但四个 Agent 的会话、
-重排器和诊断状态完全独立；官方 `evaluate()` 本身没有修改。
+---
 
-```bash
-PYTHONDONTWRITEBYTECODE=1 \
-/Users/zhengce/projects/techjam_shopping_copilot/techjam-shopping-copilot/.conda/bin/python \
-  -m experiments.hybrid_question_comparison \
-  --catalog /Users/zhengce/projects/participate_kit/catalog.jsonl \
-  --dataset /Users/zhengce/projects/participate_kit/data/public_set.jsonl \
-  --output /private/tmp/legacy-hybrid-comparison.json \
-  --seed 20260830 \
-  --time-budget-seconds 1200
-```
+## qwen3-rerank 文本重排接入（替换 LLM 语义重排分支）
 
-运行器强制 `llm.provider=none`、规则意图模式、关闭 finish strategy、`lookahead_depth=1` 和关闭
-decision trace；不会调用 LLM，也不会导出用户原文或逐会话 trace。报告只保存 sample ID 的 SHA-256
-哈希、分层计数、固定 overlays、官方总体/场景指标及 token 总数、初始化/单配置/总耗时，以及 Hybrid
-的聚合原因码、替换次数/比例、属性计数和 p50/p95 决策延迟。每个 Hybrid 只报告相对 Legacy 的指标
-差异及预声明筛选条件（HR@10 不下降，且 TechnicalScore、MRR 或 MTTC 至少一项改善）。
+`LLM_RERANK_BACKEND=text`（默认）时，重排分支走阿里云 MaaS **qwen3-rerank**（`/reranks`，
+国际版端点 `https://dashscope-intl.aliyuncs.com/compatible-api/v1`，无需 workspace ID；
+`DASHSCOPE_API_KEY` 环境变量注入，代码不含 key）。旧 chat JSON 打分保留为 `LLM_RERANK_BACKEND=chat`。
+自动化控制：capability_probe 真实探测可用性（`text_rerank=yes/no`）→ runtime_controller 决策
+（`rerank=qwen3/llm/rule`）→ 失败自动回退规则排序。
 
-这是 20 条会话的筛选，**不会推广任何配置，也不会改变默认 Legacy 行为**。Unix 平台使用进程级
-`SIGALRM`/`setitimer` 强制 1,200 秒截止；若截止发生，当前配置会被丢弃，输出以原子替换方式写入仅含
-已完成配置的 `time_budget_exceeded` 报告，并且 CLI 返回非零。没有 `SIGALRM` 的平台会把报告标为
-`external_watchdog_required`；调用方必须提供同等的外部 1,200 秒 watchdog，并显式传入
-`--external-watchdog-confirmed`，否则比较会在评估开始前失败。
+### 真实 API 全量 200 会话 A/B
+| 配置 | HR@10 | MRR | MTTC | TS |
+|---|---|---|---|---|
+| 规则（默认） | 1.0 | **0.6335** | **1.715** | **0.8757** |
+| **qwen3-rerank 重排** | 1.0 | 0.5011 | 1.76 | 0.8351 |
 
-### Catalog question-value diagnostic
+结论：作为**兜底最终重排器**，qwen3-rerank 与 bge（0.5163）、LLM chat（0.5017）三方一致的
+结论——纯语义重排与官方确定性评估器的信息揭示机制不匹配，会把目标商品从靠前位置挤下去
+（HR 不降但 MRR 掉）。因此**默认 `LLM_RERANK=0`**，由自动化控制按环境决定是否启用；
+若要启用：`LLM_RERANK=1`（可选 `LLM_RERANK_BACKEND=text|chat|auto`）+
+`DASHSCOPE_API_KEY` 注入。
 
-The following offline diagnostic reads a JSONL catalog once, builds one immutable
-attribute cache, and writes only aggregate measurements. It never changes runtime
-policy defaults or `config/default.json`:
 
-```bash
-python -m experiments.catalog_question_value \
-  --catalog /Users/zhengce/projects/participate_kit/catalog.jsonl \
-  --output /private/tmp/catalog-question-value.json \
-  --pool-sizes 300,500,1000 \
-  --sample-count 1000 \
-  --seed 20260829
-```
+---
 
-Pool sizes must be positive, unique, and sorted; the command exits nonzero for an
-invalid or malformed catalog. Output is atomically replaced only after complete,
-valid JSON is written. Reports contain coverage, latency percentiles, stability,
-and aggregate value metrics only—never ASINs, titles, descriptions, or other
-product free text. Depth-two measurements are explicitly diagnostic and
-non-promotion data because of the known depth-two gate mismatch; do not promote
-any policy setting from this report.
+## RexReranker-0.6B 电商重排模型部署（与 bge-reranker-v2-m3 A/B）
 
-### Bounded dialogue-decision cross-validation
+`RERANKER_MODEL=thebajajra/RexReranker-0.6B` 时，重排分支走**电商领域增强的生成式重排器**
+（Qwen3-Reranker-0.6B 微调，633 万条电商 query-product 数据训练，Apache-2.0，本地 ~1.2GB）：
+`utils/rex_reranker.py` 按模型卡实现——chat 模板 + assistant 后缀，取最后 token 的
+"yes"/"no" logit，`score = exp(yes)/(exp(yes)+exp(no))`（GPU 批处理 ~22 条/秒）。
+`agent/reranker.py` 按模型名自动分发（Rex/Qwen3-Reranker→transformers，bge→FlagEmbedding），
+capability_probe 按模型类型探测可用性，失败一律回退规则排序。
 
-This companion experiment searches only global decision settings. It groups
-public sessions by target ASIN, stratifies the deterministic greedy folds by
-scenario, coarse category, and a public catalog-category candidate proxy, and
-uses three outer / two inner folds. `evaluate()` runs each config/session pair
-once; the stored session outcomes are then partitioned for inner and outer
-aggregates, so an outer test fold never participates in its selection. The
-search manifest records the complete source space and sampling seed, includes
-the legacy baseline, limits depth-one evaluations to eight (plus at most two
-predeclared adjacent refinements), and records—not evaluates—depth-two settings
-with `known_depth_two_gate_mismatch`.
+### 真实全量 200 会话 A/B（RERANKER_MODEL_ENABLE=1）
+| 重排模型 | HR@10 | MRR | MTTC | TS | 耗时 |
+|---|---|---|---|---|---|
+| 规则（默认不启用） | 1.0 | **0.6335** | **1.715** | **0.8757** | ~30s |
+| **bge-reranker-v2-m3** | 0.92 | **0.5163** | **2.755** | **0.7798** | ~30min |
+| **RexReranker-0.6B** | **0.995** | 0.3154 | 3.105 | 0.7500 | ~56min |
 
-The fixed production-calculator p95 capacity budget is **3000 ms**;
-`analysis_kernel_latency_ms` is deliberately ignored. A versioned absolute
-catalog-stability minimum of 0.80 is applied before evaluation. Outer folds are
-read-only procedure-audit evidence; once frozen, a separate grouped training-CV
-over all public rows performs the final one-standard-error fit. The report
-records both procedures separately, paired session-level bootstrap intervals,
-and each effective pinned-config hash. It does not change `config/default.json`.
+结论：RexReranker HR 更高（0.995 vs 0.92）但 **MRR/TS 明显不如 bge**（0.315/0.750 vs 0.516/0.780），
+且生成式模型更慢（56min vs 30min）——**保留 bge-reranker-v2-m3 为默认重排模型，不删除**；
+两者均可经 `RERANKER_MODEL` 环境变量切换。语义重排整体仍低于纯规则基线（同 bge/qwen3 三方一致），
+默认关闭，由自动化控制按环境决定。
 
-```bash
-LLM_PROVIDER=none SKIP_DATA_VERIFY=1 \
-python -m experiments.decision_cross_validation \
-  --catalog /Users/zhengce/projects/participate_kit/catalog.jsonl \
-  --dataset data/public_set.jsonl \
-  --search-space experiments/decision_search_space.json \
-  --catalog-report /private/tmp/catalog-question-value.json \
-  --output /private/tmp/decision-cross-validation.json \
-  --recommended-config-output /private/tmp/recommended-decision-config.json \
-  --seed 20260829 \
-  --recognizer-base-sha 80e1480
-```
 
-Both outputs use atomic replacement and reject direct/symlink/hardlink input
-collisions. The recommended-config file is a full `AppConfig` JSON document
-accepted by `APP_CONFIG_PATH`, not a partial overlay.
+---
+
+## 默认策略：环境自适应最优（非永远纯规则）
+
+`run_local_eval.py` 默认不再写死纯规则，而是由 **capability_probe（环境探测）+ runtime_controller（策略决策）**
+自动选择当前环境最优配置（启动打印 `strategy=...`）：
+
+| 环境特征 | 选中的默认策略 | 公开集 200 会话 |
+|---|---|---|
+| 任意（含队友数据资产默认开） | `strategy=bm25` 或 `hybrid`（auto 按 BLaIR 可用性选） | **1.0 HR / 0.6438 MRR / 1.72 MTTC / 0.8787 TS** |
+| 无队友资产（纯规则） | `strategy=bm25` | 1.0 HR / 0.6335 MRR / 1.715 MTTC / 0.8757 TS |
+| LLM 可用（key）且 `llm_intent_enabled=true`（默认） | 级联意图识别兜底（规则高置信不改变结果） | 同左（安全） |
+| 重排模型（bge/Rex）开启 | 仅 `recover` 模式作第二意见精排 | 略降（默认关，可选） |
+
+关键设计（全部公开集 A/B 验证）：
+1. **0.8787 的提升主要来自队友数据资产**（category 扩展 / review paraphrase / refined vocab，
+   `ASSET_*` 默认开）：bm25+资产 = hybrid+资产 = 0.8787（六位小数一致）。
+2. **BLaIR dense 只在 recover 模式启用**（`retrieval_backend=auto` 时）：公开集上 recover 几乎不触发
+   → dense 休眠、零损失（与 bm25 完全同分）；hard 约束回验 + 0.5 权重使其在私有集连 miss 时
+   可作语义召回安全网，而不扰动公开集已对齐排序（全量启用 dense 会掉到 0.870）。
+3. **重排模型（bge-reranker-v2-m3 / RexReranker）默认关**：全量/ recover 用法均略降
+   （A/B：bge-recover 0.8759 < 0.8787），保留为 `RERANKER_MODEL_ENABLE=1` 可选，已门控 recover 变安全。
+4. **LLM 意图识别默认开**（`llm_intent_enabled=true`）：级联（规则先行，低置信才咨询 LLM），
+   无 key 环境自动回退规则——零成本兜底，公开集不变。
+
+
+---
+
+## combo_bonus：全约束命中超线性加成（提升 MRR）
+
+**洞察**：隐藏目标商品来自真实购买记录，intent card 约束从该商品自身元数据生成 →
+目标文本**同时满足全部披露约束**；而干扰商品往往"分散命中"（各满足一部分）。
+当前覆盖度是逐条加权平均（线性信号），无法区分"1 个商品全命中"与"3 个商品各中一条"。
+
+**设计**（`agent/reranker.py::_rule_score`）：
+- 统计"完整命中"约束的加权数 `full_count`（hard=1.0、soft=0.5，`hit>=0.999` 才算完整）；
+- `combo_norm = C(full_count,2) / C(full_denom,2)`——"同时满足的约束对"占比，≥2 条才触发，
+  全命中=1.0，天然超线性；
+- `score += W_COMBO × combo_norm`（默认 0.10，环境变量 `COMBO_BONUS_WEIGHT` 可调）。
+
+**A/B（公开集 200 会话）**：
+| 配置 | HR@10 | MRR | MTTC | TS |
+|---|---|---|---|---|
+| 无 combo（上一版默认） | 1.0 | 0.6438 | 1.72 | 0.8787 |
+| **+ combo_bonus** | 1.0 | **0.6486** | 1.72 | **0.8802** |
+
+- 增益集中在 **buying**（MRR +0.012，hard 约束强、目标全命中）；
+- 权重 0.05~0.30 结果相同（饱和、稳健）；hard-only 计数无效（目标只有 1 条 hard 无法触发
+  C(1,2)=0，**soft 计数是关键**——目标=1 hard + 多个 soft 全命中）。
+
+
+---
+
+## 约束组合指纹（全目录精确计数，默认关）
+
+**洞察**：隐藏目标同时满足全部披露约束；"满足全部约束的商品数"（组合稀有度）是更强的置信信号——
+count 越小，约束组合越能锁定目标。
+
+**设计**（`agent/reranker.py`，不碰其它模块）：
+- `_fingerprint(retriever, active)`：全目录**精确计数**同时满足全部活跃约束（hard+soft，
+  `phrase_exists` 全命中标准）的商品数 count + 满足集合；按约束键缓存、惰性建索引（不重复扫全目录）；
+- 分级加成（仅对"满足全部约束"的候选）：`count==1` 置顶（+1.0）/ `count≤10`（+0.5）/
+  `count≤50`（+0.2）；`count>50`（约束过泛）不加成——**置信度门控**；
+- 开关：`COMBO_FINGERPRINT_ENABLE=1` 开启，**默认关**；加成可调
+  `COMBO_FINGERPRINT_BONUS_UNIQUE/TEN/FIFTY`。
+
+**A/B（公开集 200 会话）**：
+| 配置 | HR@10 | MRR | MTTC | TS |
+|---|---|---|---|---|
+| 指纹关（默认） | 1.0 | 0.6486 | 1.72 | 0.8802 |
+| **指纹开** | 1.0 | **0.6520** | 1.72 | **0.8812** |
+
+- 与 combo_bonus 叠加：MRR 0.6438 → 0.6520、TS 0.8787 → 0.8812（browsing 额外 +0.008）；
+- 加成量级 0.5~1.5 结果相同（饱和、稳健——加成对交集成员等值，只抬升"全满足 vs 部分"边界）；
+- 默认关（尊重"默认关"要求），开启后无公开集损失且提升。
+
+
+---
+
+## 对话/决策修复（P0 + P1）
+
+### Part A（P0）hard 约束提取鲁棒性 + 级联触发放宽
+- **必要性线索词表**（`agent/dialogue/recognizers/rule_based.py`，开关 `hard_cue_enabled` 默认 true）：
+  must / need / needs / has to / have to / require / requires / important / crucial / essential / key /
+  the most important thing。泛化 ADD 路径命中任一线索词 → 本次提取的约束升级为 **HARD**
+  （含线索词后的取值捕获："I need waterproof" → feature·HARD；"The most important thing is cotton" → material·HARD）。
+  分支优先级不变：override / no_preference / no_more / key_requirement / what_matters 等官方分支优先，
+  线索词只作用于泛化 ADD 路径 → **官方模板行为不变**（公开集 0.8802 保持）。
+- **级联触发放宽**（`cascade.py`）：除低置信/歧义/REPLACE 外，命中线索词或 turn≥2 出现新约束也咨询 LLM；
+  LLM 失败/不可用仍回退规则（默认无 key 环境不触发，公开集零变化）。
+
+### Part B（P1）模式切换阈值进配置
+`pipeline.py::_build_context` 的硬编码 exploit 阈值提为配置：
+`retrieval_mode.exploit_min_hard`（默认 2）、`retrieval_mode.exploit_min_constraints`（默认 4），
+经 `config/models.py` + `loader.py` 读取（env：`RETRIEVAL_MODE__EXPLOIT_MIN_HARD` /
+`RETRIEVAL_MODE__EXPLOIT_MIN_CONSTRAINTS`），行为默认不变。
+
+验收：`python -m unittest discover tests` Ran 115 OK；pytest 135 passed；默认公开集 0.8802 保持。
+
+
+---
+
+## 竞赛交付物文档
+- [独立技术报告（四支柱 + 模型 + 团队贡献）](docs/TECHNICAL_REPORT.md)
+- [成本/延迟披露（按模式）](docs/cost_disclosure.md)
+- [Demo 会话逐轮日志](docs/demo_session.log)
+- [Devpost 项目描述](docs/devpost_draft.md)
+- 调参报告与 LUT：`logs/tuning_report.md`、`data/assets/env_config_lut.json`

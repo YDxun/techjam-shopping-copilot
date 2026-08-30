@@ -27,12 +27,7 @@ class DecisionCrossValidationTest(unittest.TestCase):
         # Candidate-fold-only costs can strand a fold and omit common scenarios.
         from experiments.decision_cross_validation import grouped_stratified_folds
 
-        scenarios = (
-            ["buying"] * 20
-            + ["browsing"] * 15
-            + ["intent_override"] * 9
-            + ["boundary"] * 6
-        )
+        scenarios = ["buying"] * 20 + ["browsing"] * 15 + ["intent_override"] * 9 + ["boundary"] * 6
         samples = [
             {
                 "sample_id": f"public-{target}-{duplicate}",
@@ -337,11 +332,12 @@ class DecisionCrossValidationTest(unittest.TestCase):
         self.assertIn("preexcluded_latency_budget", statuses)
         self.assertEqual(len(manifest["configs"]), manifest["accounted_config_count"])
 
-    def test_recognizer_base_is_pinned_to_the_reviewed_commit(self) -> None:
-        # Accepting an arbitrary clean base would silently change the frozen recognizer version.
+    def test_recognizer_base_rejects_a_frozen_revision_after_intent_changes(self) -> None:
+        # The merged hard-cue/parser upgrade must invalidate an experiment pinned to 80e1480.
         from experiments.decision_cross_validation import resolve_and_verify_recognizer_base_sha
 
-        self.assertTrue(resolve_and_verify_recognizer_base_sha("80e1480").startswith("80e1480"))
+        with self.assertRaisesRegex(ValueError, "differ"):
+            resolve_and_verify_recognizer_base_sha("80e1480")
         with self.assertRaisesRegex(ValueError, "required"):
             resolve_and_verify_recognizer_base_sha("HEAD")
 

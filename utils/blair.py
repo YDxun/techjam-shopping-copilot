@@ -11,6 +11,7 @@
 编码规范（与官方 hyp1231/AmazonReviews2023 generate_emb.py 一致）：
     CLS pooling（last_hidden_state[:, 0]）+ L2 归一化，检索用点积。
 """
+
 from __future__ import annotations
 
 import logging
@@ -65,7 +66,7 @@ class BlairQueryEncoder:
 
     def __init__(self, model_name: str) -> None:
         self.model_name = model_name
-        self._model = None          # None=未加载, False=加载失败, 其它=编码器
+        self._model = None  # None=未加载, False=加载失败, 其它=编码器
         self._max_length = 512
 
     @property
@@ -78,8 +79,10 @@ class BlairQueryEncoder:
         # 首选：transformers AutoModel（BLaIR CLS 规范用法）
         try:
             import os
+
             import torch
             from transformers import AutoModel, AutoTokenizer
+
             torch.set_num_threads(max(1, os.cpu_count() or 8))
             tokenizer = AutoTokenizer.from_pretrained(self.model_name)
             model = AutoModel.from_pretrained(self.model_name)
@@ -91,6 +94,7 @@ class BlairQueryEncoder:
             logger.warning("[blair] transformers 加载失败（%s）→ 尝试 sentence-transformers", exc)
         try:
             from sentence_transformers import SentenceTransformer
+
             self._model = SentenceTransformer(self.model_name)
             logger.info("[blair] query encoder loaded (sentence-transformers): %s", self.model_name)
             return self._model
@@ -107,13 +111,17 @@ class BlairQueryEncoder:
         try:
             if isinstance(model, dict):
                 import torch
+
                 inputs = model["tokenizer"](
-                    [text], padding=True, truncation=True, max_length=self._max_length,
+                    [text],
+                    padding=True,
+                    truncation=True,
+                    max_length=self._max_length,
                     return_tensors="pt",
                 )
                 with torch.no_grad():
                     last_hidden = model["model"](**inputs, return_dict=True).last_hidden_state
-                vec = last_hidden[:, 0]                                  # CLS pooling
+                vec = last_hidden[:, 0]  # CLS pooling
                 vec = torch.nn.functional.normalize(vec, p=2, dim=1)[0]  # L2 归一化
                 return vec.detach().cpu().numpy().astype(np.float32)
             vec = model.encode([text], normalize_embeddings=True)[0]

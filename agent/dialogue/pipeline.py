@@ -142,6 +142,7 @@ class DialogueUnderstandingPipeline:
     ) -> None:
         dialogue_config = env.dialogue_understanding
         self._recognition_mode = mode or dialogue_config.mode
+        self._retrieval_mode_cfg = env.retrieval_mode
         self.reducer = StateReducer(
             dialogue_config.max_evidence_length,
             override_erase=env.override_erase,
@@ -150,6 +151,8 @@ class DialogueUnderstandingPipeline:
             rule_recognizer=RuleBasedRecognizer(
                 dialogue_config.max_evidence_length,
                 transition_guard_enabled=dialogue_config.transition_guard.enabled,
+                paraphrase_enabled=env.asset_paraphrase,
+                hard_cue_enabled=env.hard_cue_enabled,
             ),
             llm_recognizer=LLMIntentRecognizer(
                 llm_client,
@@ -271,7 +274,7 @@ class DialogueUnderstandingPipeline:
             else:
                 dialogue = session.dialogue
 
-        context = self._build_context(dialogue, recognition, products)
+        context = self._build_context(dialogue, recognition, products, self._retrieval_mode_cfg)
         usage = self.recognizer.last_usage
         return PendingDialogueTurn(
             session_id=session_id,
@@ -360,7 +363,9 @@ class DialogueUnderstandingPipeline:
                     decision.ask_attribute,
                     hybrid_replacement=decision.reason_code == "hybrid_specific_replacement",
                 )
-            context = self._build_context(dialogue, pending.recognition, pending.products)
+            context = self._build_context(
+                dialogue, pending.recognition, pending.products, self._retrieval_mode_cfg
+            )
             counts = session.candidate_counts
             if candidate_count is not None:
                 counts = counts + (candidate_count,)
@@ -548,12 +553,19 @@ class DialogueUnderstandingPipeline:
         state: DialogueState,
         recognition,
         products: ProductHistory,
+        retrieval_mode_cfg,
     ) -> RecommendationContext:
         product_lists = products.context_lists(state.intent_version)
         track = "buying" if state.hard else "browsing"
         if recognition.dialogue_act == DialogueAct.REJECT_PRODUCTS:
             retrieval_mode = "recover"
-        elif state.no_more_preferences or len(state.hard) >= 2 or state.total_constraints() >= 4:
+        elif state.intent_version >= 2 and state.hard:
+            retrieval_mode = "exploit"
+        elif (
+            state.no_more_preferences
+            or len(state.hard) >= retrieval_mode_cfg.exploit_min_hard
+            or state.total_constraints() >= retrieval_mode_cfg.exploit_min_constraints
+        ):
             retrieval_mode = "exploit"
         else:
             retrieval_mode = "probe"

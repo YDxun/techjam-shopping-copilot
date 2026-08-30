@@ -65,6 +65,24 @@ RE_COMPLEX = re.compile(
     r"\b(?:rather than|instead of|except|not the|previous|former|latter|that sort)\b",
     re.I,
 )
+_HARD_CUE_PHRASES = ("has to", "have to", "the most important thing")
+_HARD_CUE_WORDS = (
+    "must",
+    "need",
+    "needs",
+    "require",
+    "requires",
+    "important",
+    "crucial",
+    "essential",
+    "key",
+)
+RE_CUE_VALUE = re.compile(
+    r"(?:must|need|needs|has to|have to|require|requires|important|crucial|essential|"
+    r"key|the most important thing)\s*(?:is|be|to be|that is)?\s*[:：]?\s*"
+    r"([a-z][a-z0-9%\- ]{2,60}?)(?=[,.;]|$)",
+    re.I | re.S,
+)
 
 
 class RuleBasedRecognizer:
@@ -75,9 +93,21 @@ class RuleBasedRecognizer:
         max_evidence_length: int = 180,
         *,
         transition_guard_enabled: bool = False,
+        paraphrase_enabled: bool = False,
+        hard_cue_enabled: bool = True,
     ) -> None:
         self.max_evidence_length = max_evidence_length
         self.transition_guard_enabled = transition_guard_enabled
+        self.paraphrase_enabled = paraphrase_enabled
+        self.hard_cue_enabled = hard_cue_enabled
+        self._paraphrase_patterns: list[tuple[re.Pattern, str]] = []
+        if paraphrase_enabled:
+            try:
+                from utils.data_assets import load_assets
+
+                self._paraphrase_patterns = load_assets().paraphrase_patterns()
+            except Exception:
+                self._paraphrase_patterns = []
 
     def recognize(self, request: RecognitionRequest) -> RecognitionResult:
         text = request.user_message or ""
@@ -93,12 +123,8 @@ class RuleBasedRecognizer:
             no_more = RE_NO_MORE_GENERALIZATION.search(text)
         no_preference = RE_NO_PREFERENCE.search(text)
         not_right = RE_NOT_RIGHT.search(text)
-        replacement = (
-            RE_REPLACE_CONSTRAINT.search(text) if self.transition_guard_enabled else None
-        )
-        removal = (
-            RE_REMOVE_VALUE_ATTRIBUTE.search(text) if self.transition_guard_enabled else None
-        )
+        replacement = RE_REPLACE_CONSTRAINT.search(text) if self.transition_guard_enabled else None
+        removal = RE_REMOVE_VALUE_ATTRIBUTE.search(text) if self.transition_guard_enabled else None
         negated_rejection = (
             RE_NEGATED_REJECTION.search(text) if self.transition_guard_enabled else None
         )
@@ -106,9 +132,7 @@ class RuleBasedRecognizer:
             RE_NEGATED_DESTRUCTIVE.search(text) if self.transition_guard_enabled else None
         )
         negated_explicit_rejection = (
-            RE_NEGATED_EXPLICIT_REJECTION.search(text)
-            if self.transition_guard_enabled
-            else None
+            RE_NEGATED_EXPLICIT_REJECTION.search(text) if self.transition_guard_enabled else None
         )
         if negated_explicit_rejection:
             not_right = None
@@ -207,15 +231,20 @@ class RuleBasedRecognizer:
             not negated_destructive
             and not negated_explicit_rejection
             and not operations
-            and dialogue_act not in {
-            DialogueAct.NO_MORE_PREFERENCES,
-            DialogueAct.NO_PREFERENCE,
+            and dialogue_act
+            not in {
+                DialogueAct.NO_MORE_PREFERENCES,
+                DialogueAct.NO_PREFERENCE,
             }
         ):
-            operations.extend(self._generic_operations(text))
+            hard_cue = self._hard_cue_present(text)
+            operations.extend(self._generic_operations(text, hard=hard_cue))
             if operations and dialogue_act == DialogueAct.AMBIGUOUS:
                 dialogue_act = DialogueAct.ADD_CONSTRAINT
-                confidence = 0.75
+                confidence = 0.85 if hard_cue else 0.75
+
+        if self.paraphrase_enabled:
+            operations.extend(self._paraphrase_operations(text, operations))
 
         # turn-1 尾部旧偏好捕获（与 0.995 HR 基线行为一致）：
         # intent_override 首条消息为 "I'm looking for {cat}. {old_value}"，
@@ -277,7 +306,15 @@ class RuleBasedRecognizer:
             confidence=0.95,
         )
 
-    def _generic_operations(self, text: str) -> list[ConstraintOperation]:
+    def _hard_cue_present(self, text: str) -> bool:
+        if not self.hard_cue_enabled:
+            return False
+        lowered = text.lower()
+        return any(phrase in lowered for phrase in _HARD_CUE_PHRASES) or any(
+            re.search(rf"\b{re.escape(word)}\b", lowered) for word in _HARD_CUE_WORDS
+        )
+
+    def _generic_operations(self, text: str, *, hard: bool = False) -> list[ConstraintOperation]:
         lowered = text.lower()
         values: list[str] = []
         values.extend(material for material in constants.MATERIALS if material in lowered)
@@ -287,10 +324,43 @@ class RuleBasedRecognizer:
         )
         if color_match:
             values.append(f"color: {color_match.group(1)}")
+        if hard:
+            cue_match = RE_CUE_VALUE.search(text)
+            if cue_match:
+                value = re.sub(r"^(?:a|an|the)\s+", "", cue_match.group(1).strip(), flags=re.I)
+                if value and len(value) >= 2 and value not in values:
+                    values.append(value)
         return [
-            self._operation(OperationKind.ADD, value, ConstraintStrength.SOFT)
+            self._operation(
+                OperationKind.ADD,
+                value,
+                ConstraintStrength.HARD if hard else ConstraintStrength.SOFT,
+            )
             for value in values[:2]
         ]
+
+    def _paraphrase_operations(
+        self, text: str, existing: list[ConstraintOperation]
+    ) -> list[ConstraintOperation]:
+        lowered = text.lower()
+        existing_attrs = {operation.attribute for operation in existing}
+        result: list[ConstraintOperation] = []
+        seen: set[str] = set()
+        for pattern, attribute in self._paraphrase_patterns:
+            if attribute in existing_attrs or attribute in seen:
+                continue
+            match = pattern.search(lowered)
+            if not match:
+                continue
+            value = match.group(0).strip()[: self.max_evidence_length]
+            if value:
+                result.append(
+                    self._operation(
+                        OperationKind.ADD, value, ConstraintStrength.SOFT, attribute=attribute
+                    )
+                )
+                seen.add(attribute)
+        return result
 
     def _turn1_tail_operations(self, text: str, turn: int) -> list[ConstraintOperation]:
         """turn 1：'looking for X. <tail>' 的 <tail> 若不含标记，捕获为 soft 约束。"""

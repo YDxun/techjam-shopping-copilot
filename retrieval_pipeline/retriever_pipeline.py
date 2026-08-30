@@ -7,6 +7,7 @@
 通道3：BLaIR 稠密语义检索（商品向量来自离线 npy，推理只编码用户查询文本，点积召回）。
 多路融合：标准 RRF（k=60），稠密通道带 α 权重；去重 → retrieval_pool_size 截断。
 """
+
 from __future__ import annotations
 
 import logging
@@ -18,23 +19,67 @@ import numpy as np
 from retrieval_pipeline import config
 from retrieval_pipeline.data_access import BlairEmbeddingStore, CatalogStore
 from retrieval_pipeline.models import QueryBundle, SessionState
+from utils import field_mapping as fm
 
 logger = logging.getLogger(__name__)
 
 _TOKEN_RE = re.compile(r"[a-z0-9%]+", re.IGNORECASE)
-_STOPWORDS = frozenset({
-    "a", "an", "and", "are", "as", "at", "be", "but", "by", "for", "from",
-    "i", "in", "is", "it", "me", "my", "of", "on", "or", "the", "this", "to",
-    "with", "you", "want", "looking", "im", "i'm", "still", "exploring",
-})
+_STOPWORDS = frozenset(
+    {
+        "a",
+        "an",
+        "and",
+        "are",
+        "as",
+        "at",
+        "be",
+        "but",
+        "by",
+        "for",
+        "from",
+        "i",
+        "in",
+        "is",
+        "it",
+        "me",
+        "my",
+        "of",
+        "on",
+        "or",
+        "the",
+        "this",
+        "to",
+        "with",
+        "you",
+        "want",
+        "looking",
+        "im",
+        "i'm",
+        "still",
+        "exploring",
+    }
+)
 
 # 结构化约束字段 → 通道1文本匹配
-_TEXT_FILTER_FIELDS = ("material", "color", "size", "style", "brand", "feature", "use_case", "category")
+_TEXT_FILTER_FIELDS = (
+    "material",
+    "color",
+    "size",
+    "style",
+    "brand",
+    "feature",
+    "use_case",
+    "category",
+)
 _NUMERIC_FILTER_FIELDS = ("budget_max", "budget_min")
 
 
 def _tokens(text: str) -> list[str]:
-    return [t.lower() for t in _TOKEN_RE.findall(text or "") if len(t) > 1 and t.lower() not in _STOPWORDS]
+    return [
+        t.lower()
+        for t in _TOKEN_RE.findall(text or "")
+        if len(t) > 1 and t.lower() not in _STOPWORDS
+    ]
 
 
 def _field_text(value) -> str:
@@ -72,7 +117,7 @@ class _BM25OkapiFallback:
         scores = np.zeros(len(self.corpus), dtype=np.float64)
         q_terms = set(query)
         avgdl = self.avgdl or 1.0
-        for i, (freqs, dl) in enumerate(zip(self.doc_freqs, self.doc_len)):
+        for i, (freqs, dl) in enumerate(zip(self.doc_freqs, self.doc_len, strict=True)):
             denom = self.k1 * (1 - self.b + self.b * dl / avgdl)
             total = 0.0
             for t in q_terms:
@@ -93,17 +138,18 @@ class _WeightedBM25Index:
         self.models: dict[str, object] = {}
         try:
             from rank_bm25 import BM25Okapi  # 首选库
+
             self._cls = BM25Okapi
         except ImportError:
             logger.warning("[retriever] rank_bm25 未安装，使用内置 BM25Okapi 等价实现")
             self._cls = None
         for field in self.fields:
             corpus = [
-                _tokens(_field_text(catalog.products[asin].get(field)))
-                for asin in catalog.ids
+                _tokens(_field_text(catalog.products[asin].get(field))) for asin in catalog.ids
             ]
-            self.models[field] = (self._cls(corpus) if self._cls is not None
-                                  else _BM25OkapiFallback(corpus))
+            self.models[field] = (
+                self._cls(corpus) if self._cls is not None else _BM25OkapiFallback(corpus)
+            )
         logger.info("[retriever] weighted BM25 index built (fields=%s)", self.fields)
 
     def score(self, query: str) -> dict[str, float]:
@@ -134,8 +180,8 @@ class _QueryEncoder:
 
     def __init__(self, model_name: str) -> None:
         self.model_name = model_name
-        self._model = None          # None=未加载, False=加载失败, 其它=编码器实例
-        self._max_length = 512      # 官方示例 max_length=512（查询文本通常很短）
+        self._model = None  # None=未加载, False=加载失败, 其它=编码器实例
+        self._max_length = 512  # 官方示例 max_length=512（查询文本通常很短）
 
     def _ensure(self):
         if self._model is not None:
@@ -143,22 +189,33 @@ class _QueryEncoder:
         # 首选：transformers AutoModel（BLaIR CLS 规范用法）
         try:
             import os
+
             import torch
             from transformers import AutoModel, AutoTokenizer
+
             torch.set_num_threads(max(1, os.cpu_count() or 8))
             tokenizer = AutoTokenizer.from_pretrained(self.model_name)
             model = AutoModel.from_pretrained(self.model_name)
             model.eval()
             self._model = {"tokenizer": tokenizer, "model": model}
-            logger.info("[retriever] BLaIR query encoder loaded (transformers): %s", self.model_name)
+            logger.info(
+                "[retriever] BLaIR query encoder loaded (transformers): %s", self.model_name
+            )
             return self._model
         except Exception as exc:
-            logger.warning("[retriever] transformers BLaIR 加载失败（%s）→ 尝试 sentence-transformers", exc)
+            logger.warning(
+                "[retriever] transformers BLaIR 加载失败（%s）→ 尝试 sentence-transformers",
+                exc,
+            )
         # 兜底：sentence-transformers（部分环境只装了它）
         try:
             from sentence_transformers import SentenceTransformer
+
             self._model = SentenceTransformer(self.model_name)
-            logger.info("[retriever] BLaIR query encoder loaded (sentence-transformers): %s", self.model_name)
+            logger.info(
+                "[retriever] BLaIR query encoder loaded (sentence-transformers): %s",
+                self.model_name,
+            )
             return self._model
         except Exception as exc:
             logger.warning("[retriever] BLaIR 查询编码器不可用（%s）→ 稠密通道禁用", exc)
@@ -172,13 +229,17 @@ class _QueryEncoder:
         try:
             if isinstance(model, dict):
                 import torch
+
                 inputs = model["tokenizer"](
-                    [text], padding=True, truncation=True, max_length=self._max_length,
+                    [text],
+                    padding=True,
+                    truncation=True,
+                    max_length=self._max_length,
                     return_tensors="pt",
                 )
                 with torch.no_grad():
                     last_hidden = model["model"](**inputs, return_dict=True).last_hidden_state
-                vec = last_hidden[:, 0]                                  # CLS pooling
+                vec = last_hidden[:, 0]  # CLS pooling
                 vec = torch.nn.functional.normalize(vec, p=2, dim=1)[0]  # L2 归一化
                 return vec.detach().cpu().numpy().astype(np.float32)
             vec = model.encode([text], normalize_embeddings=True)[0]
@@ -191,8 +252,12 @@ class _QueryEncoder:
 class RetrieverPipeline:
     """第5步：三通道检索 + RRF 融合。"""
 
-    def __init__(self, catalog: CatalogStore, blair_store: BlairEmbeddingStore | None = None,
-                 query_encoder: _QueryEncoder | None = None) -> None:
+    def __init__(
+        self,
+        catalog: CatalogStore,
+        blair_store: BlairEmbeddingStore | None = None,
+        query_encoder: _QueryEncoder | None = None,
+    ) -> None:
         self.catalog = catalog
         self.blair = blair_store
         self.bm25 = _WeightedBM25Index(catalog, config.BM25_FIELD_WEIGHTS)
@@ -226,15 +291,25 @@ class RetrieverPipeline:
         candidates = sorted(fused.items(), key=lambda x: x[1], reverse=True)[:pool_size]
         # 硬性约束 8：过滤不在目录中的 ID（双保险）
         candidates = [(a, s) for a, s in candidates if self.catalog.valid_asin(a)]
-        logger.info("[retriever] fused candidates: %d (recovery=%s alpha=%.2f)",
-                    len(candidates), recovery, alpha)
+        logger.info(
+            "[retriever] fused candidates: %d (recovery=%s alpha=%.2f)",
+            len(candidates),
+            recovery,
+            alpha,
+        )
         return candidates
 
     # ------------------------------------------------------------------
     # 通道1：结构化约束匹配（第5步-通道1）
     # ------------------------------------------------------------------
     def _channel_structured(self, filters: dict, recovery: bool) -> list[tuple[str, int]]:
-        """返回 [(parent_asin, rank)]，按结构分排序。普通模式硬过滤；RECOVER 改为惩罚。"""
+        """返回 [(parent_asin, rank)]，按结构分排序。普通模式硬过滤；RECOVER 改为惩罚。
+
+        字段感知（field_mapping.json，Pillar I 结构化过滤精度）：
+          - 文本约束只查映射的 lookup_fields（material→details.Material/features/title/…），
+            不再全文乱找；budget→price 数值检查（price 缺失放行，79% 无价不做硬过滤）；
+          - brand→store 缺失放行（missing_policy=pass）。
+        """
         if not filters:
             return []
         scored: list[tuple[str, float]] = []
@@ -247,15 +322,19 @@ class RetrieverPipeline:
                     continue
                 value = filters[key]
                 values = value if isinstance(value, (list, tuple)) else [value]
-                if not any(str(v).lower() in text for v in values):
+                ok = False
+                for v in values:
+                    if fm.constraint_hit(key, str(v), None, product=product, text=text) > 0:
+                        ok = True
+                        break
+                if not ok:
                     unmet.append(key)
             for key in _NUMERIC_FILTER_FIELDS:
                 if key not in filters:
                     continue
                 price = product.get("price")
                 if not isinstance(price, (int, float)):
-                    unmet.append("budget")
-                    continue
+                    continue  # price 缺失 → 放行（field_mapping budget missing_policy=pass）
                 limit = float(filters[key])
                 if key == "budget_max" and price > limit:
                     unmet.append("budget")
@@ -264,8 +343,10 @@ class RetrieverPipeline:
 
             if recovery:
                 # 惩罚打分：budget 最先放宽（惩罚最小）→ material 最后放宽（惩罚最大）
-                penalty = sum(config.STRUCT_UNMET_PENALTY.get(u, config.STRUCT_UNMET_PENALTY["other"])
-                              for u in unmet)
+                penalty = sum(
+                    config.STRUCT_UNMET_PENALTY.get(u, config.STRUCT_UNMET_PENALTY["other"])
+                    for u in unmet
+                )
                 scored.append((asin, config.STRUCT_BASE_SCORE - penalty))
             else:
                 if not unmet:
@@ -295,11 +376,10 @@ class RetrieverPipeline:
         if qv is None:
             return []
         try:
-            sims = self.blair.matrix @ qv          # 点积相似度（向量已归一化）
+            sims = self.blair.matrix @ qv  # 点积相似度（向量已归一化）
             top_n = min(len(self.blair.asins), config.BM25_TOP_N)
             order = np.argsort(-sims)[:top_n]
-            return [(self.blair.asins[int(i)], rank)
-                    for rank, i in enumerate(order)]
+            return [(self.blair.asins[int(i)], rank) for rank, i in enumerate(order)]
         except Exception as exc:
             logger.warning("[retriever] 稠密通道失败: %s", exc)
             return []

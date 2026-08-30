@@ -77,7 +77,11 @@ class FalseyLLMClient:
 
 def env_with_rerank(enabled: bool = True, candidates: int = 12) -> object:
     return SimpleNamespace(
-        llm=SimpleNamespace(rerank_enabled=enabled, rerank_candidates=candidates)
+        llm=SimpleNamespace(
+            rerank_enabled=enabled,
+            rerank_candidates=candidates,
+            rerank_backend="chat",  # 这些测试测旧 chat LLM 语义重排路径
+        )
     )
 
 

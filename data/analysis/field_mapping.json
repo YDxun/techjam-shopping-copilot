@@ -1,0 +1,396 @@
+{
+  "version": "1.1.0",
+  "generated_by": "scripts/build_field_mapping.py (manual finalize)",
+  "generated_at": "2026-08-29",
+  "source_stats": "data/analysis/field_mapping_raw.json",
+  "notes": "属性→去哪找+多严 的静态表。消费方：agent/reranker.py 约束覆盖打分、agent/retriever.py 结构化路由、retrieval_pipeline 通道1。权重来自全量 50k 商品按字段覆盖统计；details.<Key> 命中即高置信（authoritative）。",
+  "attributes": {
+    "material": {
+      "lookup_fields": [
+        {
+          "field": "details.Material",
+          "weight": 1.0,
+          "authoritative": true
+        },
+        {
+          "field": "features",
+          "weight": 0.9,
+          "authoritative": false
+        },
+        {
+          "field": "title",
+          "weight": 0.45,
+          "authoritative": false
+        },
+        {
+          "field": "description",
+          "weight": 0.3,
+          "authoritative": false
+        }
+      ],
+      "primary_field": "details.Material",
+      "tolerance": "strict",
+      "missing_policy": "unmet",
+      "hit_rate_reference": {
+        "title": {
+          "hit_rate": 0.438,
+          "overall": 0.3774
+        },
+        "features": {
+          "hit_rate": 0.906,
+          "overall": 0.7811
+        },
+        "store": {
+          "hit_rate": 0.008,
+          "overall": 0.0073
+        },
+        "categories": {
+          "hit_rate": 0.067,
+          "overall": 0.0614
+        },
+        "description": {
+          "hit_rate": 0.44,
+          "overall": 0.4038
+        }
+      }
+    },
+    "color": {
+      "lookup_fields": [
+        {
+          "field": "details.Color",
+          "weight": 1.0,
+          "authoritative": true
+        },
+        {
+          "field": "title",
+          "weight": 0.65,
+          "authoritative": false
+        },
+        {
+          "field": "features",
+          "weight": 0.65,
+          "authoritative": false
+        },
+        {
+          "field": "description",
+          "weight": 0.35,
+          "authoritative": false
+        }
+      ],
+      "primary_field": "details.Color",
+      "tolerance": "strict",
+      "missing_policy": "unmet",
+      "hit_rate_reference": {
+        "title": {
+          "hit_rate": 0.654,
+          "overall": 0.4981
+        },
+        "features": {
+          "hit_rate": 0.678,
+          "overall": 0.5163
+        },
+        "store": {
+          "hit_rate": 0.024,
+          "overall": 0.0184
+        },
+        "categories": {
+          "hit_rate": 0.079,
+          "overall": 0.0822
+        },
+        "description": {
+          "hit_rate": 0.372,
+          "overall": 0.3664
+        }
+      }
+    },
+    "size": {
+      "lookup_fields": [
+        {
+          "field": "details.Size",
+          "weight": 1.0,
+          "authoritative": true
+        },
+        {
+          "field": "title",
+          "weight": 0.8,
+          "authoritative": false
+        },
+        {
+          "field": "features",
+          "weight": 0.7,
+          "authoritative": false
+        },
+        {
+          "field": "description",
+          "weight": 0.4,
+          "authoritative": false
+        }
+      ],
+      "primary_field": "details.Size",
+      "tolerance": "lenient",
+      "missing_policy": "soft_unmet",
+      "hit_rate_reference": {
+        "title": {
+          "hit_rate": 0.808,
+          "overall": 0.7382
+        },
+        "features": {
+          "hit_rate": 0.683,
+          "overall": 0.6241
+        },
+        "store": {
+          "hit_rate": 0.027,
+          "overall": 0.025
+        },
+        "categories": {
+          "hit_rate": 0.021,
+          "overall": 0.021
+        },
+        "description": {
+          "hit_rate": 0.425,
+          "overall": 0.4131
+        }
+      }
+    },
+    "style": {
+      "lookup_fields": [
+        {
+          "field": "details.Style",
+          "weight": 1.0,
+          "authoritative": true
+        },
+        {
+          "field": "features",
+          "weight": 0.85,
+          "authoritative": false
+        },
+        {
+          "field": "title",
+          "weight": 0.5,
+          "authoritative": false
+        },
+        {
+          "field": "categories",
+          "weight": 0.45,
+          "authoritative": false
+        },
+        {
+          "field": "description",
+          "weight": 0.4,
+          "authoritative": false
+        }
+      ],
+      "primary_field": "details.Style",
+      "tolerance": "lenient",
+      "missing_policy": "soft_unmet",
+      "hit_rate_reference": {
+        "title": {
+          "hit_rate": 0.509,
+          "overall": 0.3892
+        },
+        "features": {
+          "hit_rate": 0.857,
+          "overall": 0.6559
+        },
+        "store": {
+          "hit_rate": 0.021,
+          "overall": 0.0168
+        },
+        "categories": {
+          "hit_rate": 0.224,
+          "overall": 0.2192
+        },
+        "description": {
+          "hit_rate": 0.402,
+          "overall": 0.3901
+        }
+      }
+    },
+    "use_case": {
+      "lookup_fields": [
+        {
+          "field": "details.UseCase",
+          "weight": 1.0,
+          "authoritative": true
+        },
+        {
+          "field": "features",
+          "weight": 0.75,
+          "authoritative": false
+        },
+        {
+          "field": "title",
+          "weight": 0.55,
+          "authoritative": false
+        },
+        {
+          "field": "categories",
+          "weight": 0.4,
+          "authoritative": false
+        },
+        {
+          "field": "description",
+          "weight": 0.3,
+          "authoritative": false
+        }
+      ],
+      "primary_field": "details.UseCase",
+      "tolerance": "lenient",
+      "missing_policy": "soft_unmet",
+      "hit_rate_reference": {
+        "title": {
+          "hit_rate": 0.541,
+          "overall": 0.2636
+        },
+        "features": {
+          "hit_rate": 0.754,
+          "overall": 0.3676
+        },
+        "store": {
+          "hit_rate": 0.017,
+          "overall": 0.0092
+        },
+        "categories": {
+          "hit_rate": 0.211,
+          "overall": 0.1607
+        },
+        "description": {
+          "hit_rate": 0.316,
+          "overall": 0.2435
+        }
+      }
+    },
+    "category": {
+      "lookup_fields": [
+        {
+          "field": "categories",
+          "weight": 1.0,
+          "authoritative": true
+        },
+        {
+          "field": "title",
+          "weight": 0.85,
+          "authoritative": false
+        },
+        {
+          "field": "features",
+          "weight": 0.5,
+          "authoritative": false
+        }
+      ],
+      "primary_field": "categories",
+      "tolerance": "strict",
+      "missing_policy": "unmet",
+      "hit_rate_reference": {
+        "title": {
+          "hit_rate": 0.842,
+          "overall": 0.4791
+        },
+        "features": {
+          "hit_rate": 0.589,
+          "overall": 0.3352
+        },
+        "store": {
+          "hit_rate": 0.019,
+          "overall": 0.0108
+        },
+        "categories": {
+          "hit_rate": 0.262,
+          "overall": 0.2176
+        },
+        "description": {
+          "hit_rate": 0.336,
+          "overall": 0.2333
+        }
+      }
+    },
+    "brand": {
+      "lookup_fields": [
+        {
+          "field": "store",
+          "weight": 1.0,
+          "authoritative": true
+        },
+        {
+          "field": "details.Brand",
+          "weight": 0.8,
+          "authoritative": false
+        },
+        {
+          "field": "title",
+          "weight": 0.5,
+          "authoritative": false
+        }
+      ],
+      "primary_field": "store",
+      "tolerance": "lenient",
+      "missing_policy": "pass"
+    },
+    "budget": {
+      "lookup_fields": [
+        {
+          "field": "price",
+          "weight": 1.0,
+          "authoritative": true
+        }
+      ],
+      "primary_field": "price",
+      "tolerance": "lenient",
+      "missing_policy": "pass",
+      "price_missing_ratio": 0.7895
+    },
+    "feature": {
+      "lookup_fields": [
+        {
+          "field": "features",
+          "weight": 1.0,
+          "authoritative": false
+        },
+        {
+          "field": "title",
+          "weight": 0.6,
+          "authoritative": false
+        },
+        {
+          "field": "description",
+          "weight": 0.5,
+          "authoritative": false
+        }
+      ],
+      "primary_field": "features",
+      "tolerance": "lenient",
+      "missing_policy": "soft_unmet"
+    },
+    "other": {
+      "lookup_fields": [
+        {
+          "field": "title",
+          "weight": 1.0,
+          "authoritative": false
+        },
+        {
+          "field": "features",
+          "weight": 0.9,
+          "authoritative": false
+        },
+        {
+          "field": "categories",
+          "weight": 0.6,
+          "authoritative": false
+        },
+        {
+          "field": "description",
+          "weight": 0.5,
+          "authoritative": false
+        }
+      ],
+      "primary_field": "title",
+      "tolerance": "lenient",
+      "missing_policy": "soft_unmet"
+    }
+  },
+  "default": {
+    "tolerance": "lenient",
+    "missing_policy": "soft_unmet"
+  }
+}

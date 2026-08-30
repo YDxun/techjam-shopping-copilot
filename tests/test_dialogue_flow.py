@@ -51,7 +51,7 @@ class StaticRetriever:
     def iter_products(self) -> tuple[dict, ...]:
         return PRODUCTS
 
-    def search(self, route, top_k: int, mode: str) -> list[dict]:
+    def search(self, route, top_k: int, mode: str, shelf: str | None = None) -> list[dict]:
         self.search_calls += 1
         self.last_top_k = top_k
         self.last_candidates = [
@@ -97,7 +97,7 @@ class StaticReranker:
 
 
 class EmptyRetriever(StaticRetriever):
-    def search(self, route, top_k: int, mode: str) -> list[dict]:
+    def search(self, route, top_k: int, mode: str, shelf: str | None = None) -> list[dict]:
         self.search_calls += 1
         self.last_candidates = []
         return self.last_candidates
@@ -338,12 +338,15 @@ class DialogueFlowTest(unittest.TestCase):
         # Rebuilding either immutable derived structure per pipeline defeats the
         # shared-catalog comparison and makes extractor setup scale with agents.
         resources = DialogueCatalogResources.from_products(PRODUCTS, include_attribute_cache=True)
-        with patch(
-            "agent.dialogue.catalog_resources.CatalogQuestionSignals.from_products",
-            side_effect=AssertionError("injected signals must be reused"),
-        ), patch(
-            "agent.dialogue.catalog_resources.CatalogAttributeCache.from_products",
-            side_effect=AssertionError("injected cache must be reused"),
+        with (
+            patch(
+                "agent.dialogue.catalog_resources.CatalogQuestionSignals.from_products",
+                side_effect=AssertionError("injected signals must be reused"),
+            ),
+            patch(
+                "agent.dialogue.catalog_resources.CatalogAttributeCache.from_products",
+                side_effect=AssertionError("injected cache must be reused"),
+            ),
         ):
             first = DialogueUnderstandingPipeline(
                 env=self.hybrid_env(),
@@ -703,12 +706,15 @@ class DialogueFlowTest(unittest.TestCase):
     def test_disabled_dynamic_pipeline_never_constructs_dynamic_cache_or_calculator(self) -> None:
         # Constructing either dynamic dependency while disabled would make rollback
         # pay the catalog-extraction cost and raises this sentinel error.
-        with patch(
-            "agent.dialogue.catalog_resources.CatalogAttributeCache.from_products",
-            side_effect=AssertionError("disabled path must not build cache"),
-        ), patch(
-            "agent.dialogue.pipeline.CandidateSignalCalculator",
-            side_effect=AssertionError("disabled path must not build calculator"),
+        with (
+            patch(
+                "agent.dialogue.catalog_resources.CatalogAttributeCache.from_products",
+                side_effect=AssertionError("disabled path must not build cache"),
+            ),
+            patch(
+                "agent.dialogue.pipeline.CandidateSignalCalculator",
+                side_effect=AssertionError("disabled path must not build calculator"),
+            ),
         ):
             pipeline = DialogueUnderstandingPipeline(
                 env=self.env(candidate_enabled=False),

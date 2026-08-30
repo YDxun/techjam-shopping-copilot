@@ -141,9 +141,7 @@ class LLMIntentRecognizer:
         self.last_usage = result.usage
         if not result.success:
             category = (
-                result.error_category.value
-                if result.error_category is not None
-                else "unknown"
+                result.error_category.value if result.error_category is not None else "unknown"
             )
             self.last_failure_reason = f"request_failed:{category}"
             return None
@@ -171,9 +169,9 @@ class LLMIntentRecognizer:
             "user_message": request.user_message,
         }
         response_schema = deepcopy(INTENT_RESPONSE_SCHEMA)
-        operation_properties = response_schema["properties"]["constraint_operations"][
-            "items"
-        ]["properties"]
+        operation_properties = response_schema["properties"]["constraint_operations"]["items"][
+            "properties"
+        ]
         operation_properties["evidence"]["maxLength"] = self.max_evidence_length
         replace_example = {
             "dialogue_act": "replace_constraint",
@@ -201,6 +199,19 @@ class LLMIntentRecognizer:
                         (
                             "Extract the user's shopping intent from the supplied conversation "
                             "context."
+                        ),
+                        (
+                            "Only extract requirements stated in this turn: never infer product "
+                            "attributes, repeat prior constraints, invent ASINs, or recommend products."
+                        ),
+                        (
+                            "Use hard strength for necessary language (must, need, require, important, "
+                            "key requirement); use replace only for a new requirement that supersedes an "
+                            "earlier preference; use remove for explicit no-preference statements."
+                        ),
+                        (
+                            "For reject_products, explicit_rejected_asins may contain only IDs from "
+                            "recently_shown_asins. Evidence must be an exact substring of user_message."
                         ),
                         "Return exactly one JSON object matching this JSON Schema:",
                         json.dumps(
@@ -276,9 +287,7 @@ class LLMIntentRecognizer:
             confidence=confidence,
             source=RecognitionSource.LLM,
             ambiguities=ambiguities,
-            explicit_no_more_preferences=bool(
-                RE_EXPLICIT_NO_MORE_PREFERENCES.search(user_message)
-            ),
+            explicit_no_more_preferences=bool(RE_EXPLICIT_NO_MORE_PREFERENCES.search(user_message)),
         )
 
     def _operations(

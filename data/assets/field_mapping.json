@@ -1,0 +1,183 @@
+{
+  "meta": {
+    "version": "1.0.0",
+    "built_from": [
+      "metadata_stats.json",
+      "field_mapping_stats_fixed.json",
+      "size_field_stats.json",
+      "brand_field_stats.json"
+    ],
+    "catalog_products_analyzed": 7218481,
+    "purpose": "Static attribute-to-field routing, initial field weights, and filtering policy for structured retrieval.",
+    "weight_note": "Initial retrieval weights derived from full-catalog coverage plus field semantic specificity; tune on public-set HR@10/MRR rather than treating them as learned optima."
+  },
+  "material": {
+    "lookup_fields": [
+      "details.Material",
+      "details.Fabric Type",
+      "details.Outer Material",
+      "details.Material Type",
+      "details.Inner Material",
+      "features",
+      "title",
+      "description"
+    ],
+    "bm25_weight": {
+      "details.Material": 6.0,
+      "details.Fabric Type": 6.0,
+      "details.Outer Material": 6.0,
+      "details.Material Type": 5.5,
+      "details.Inner Material": 5.0,
+      "features": 4.0,
+      "title": 3.5,
+      "description": 2.0
+    },
+    "filter_mode": "soft",
+    "missing_policy": "allow",
+    "matcher": "trusted_vocab_boundary",
+    "evidence": {
+      "any_field_match_coverage": 0.741883,
+      "features_global_match_coverage": 0.677806,
+      "details.Material_nonempty_coverage": 0.042285,
+      "details.Material_match_rate_when_nonempty": 0.54192,
+      "details.Fabric Type_match_rate_when_nonempty": 0.875339,
+      "details.Outer Material_match_rate_when_nonempty": 0.85195
+    }
+  },
+  "color": {
+    "lookup_fields": [
+      "details.Color",
+      "title",
+      "features",
+      "description"
+    ],
+    "bm25_weight": {
+      "details.Color": 6.0,
+      "title": 4.5,
+      "features": 3.0,
+      "description": 2.0
+    },
+    "filter_mode": "soft",
+    "missing_policy": "allow",
+    "matcher": "trusted_vocab_boundary",
+    "exclude_canonical": [
+      "pattern"
+    ],
+    "evidence": {
+      "any_field_match_coverage": 0.511005,
+      "title_global_match_coverage": 0.362918,
+      "details.Color_nonempty_coverage": 0.049581,
+      "details.Color_match_rate_when_nonempty": 0.789401
+    }
+  },
+  "size": {
+    "lookup_fields": [
+      "details.Size",
+      "features",
+      "description",
+      "title"
+    ],
+    "bm25_weight": {
+      "details.Size": 6.0,
+      "features": 3.5,
+      "description": 2.5,
+      "title": 3.0
+    },
+    "filter_mode": "soft",
+    "missing_policy": "allow",
+    "matcher": "size_context_matcher_v2",
+    "matcher_rules": {
+      "accept": [
+        "letter size with explicit size context",
+        "letter size ranges such as S/M or S-3XL",
+        "US numeric sizes",
+        "numeric size with size/shoe size/waist/inseam context",
+        "cleaned structured details.Size values"
+      ],
+      "reject": [
+        "generic single-letter substring matches",
+        "physical dimensions in inch/inches/cm/mm/feet/ft",
+        "LxW or multiplication-style dimensions",
+        "known non-wearable structured size values"
+      ]
+    },
+    "evidence": {
+      "features_global_match_coverage": 0.092896,
+      "description_global_match_coverage": 0.060103,
+      "title_global_match_coverage": 0.038357,
+      "details.Size_nonempty_coverage": 0.018476,
+      "details.Size_match_rate_when_nonempty": 0.517429
+    }
+  },
+  "brand": {
+    "lookup_fields": [
+      "store",
+      "details.Brand",
+      "details.Brand Name",
+      "title"
+    ],
+    "bm25_weight": {
+      "store": 7.0,
+      "details.Brand": 7.0,
+      "details.Brand Name": 7.0,
+      "title": 3.0
+    },
+    "filter_mode": "soft",
+    "missing_policy": "allow",
+    "matcher": "normalized_brand_exact_or_boundary",
+    "ignore_values": [
+      "generic",
+      "n/a",
+      "na",
+      "no brand",
+      "none",
+      "unbranded",
+      "unknown"
+    ],
+    "evidence": {
+      "store_valid_brand_coverage": 0.988469,
+      "store_vs_details.Brand_agreement": 0.987617,
+      "store_vs_details.Brand_Name_agreement": 0.990683,
+      "store_appears_in_title_rate": 0.802953
+    }
+  },
+  "budget": {
+    "lookup_fields": [
+      "price"
+    ],
+    "filter_mode": "lenient",
+    "missing_policy": "allow",
+    "matcher": "numeric_price",
+    "comparison": "upper_bound_or_range",
+    "note": "Price is sparse; a missing price must not eliminate a candidate.",
+    "evidence": {
+      "price_nonempty_coverage": 0.2045,
+      "price_missing_coverage": 0.7955
+    }
+  },
+  "style": {
+    "lookup_fields": [
+      "details.Style",
+      "features",
+      "description",
+      "title"
+    ],
+    "bm25_weight": {
+      "details.Style": 5.5,
+      "features": 3.5,
+      "description": 2.5,
+      "title": 3.0
+    },
+    "filter_mode": "soft",
+    "missing_policy": "allow",
+    "matcher": "trusted_vocab_boundary",
+    "evidence": {
+      "any_field_match_coverage": 0.670572,
+      "features_global_match_coverage": 0.410829,
+      "description_global_match_coverage": 0.316452,
+      "title_global_match_coverage": 0.283804,
+      "details.Style_nonempty_coverage": 0.034851,
+      "details.Style_match_rate_when_nonempty": 0.37991
+    }
+  }
+}

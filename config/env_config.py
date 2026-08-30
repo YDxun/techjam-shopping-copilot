@@ -52,6 +52,30 @@ class EnvConfig:
         return self._app_config.diagnostics
 
     @property
+    def retrieval_mode(self):
+        return self._app_config.retrieval_mode
+
+    @property
+    def hard_cue_enabled(self) -> bool:
+        return self._app_config.hard_cue_enabled
+
+    @property
+    def retrieval(self):
+        return self._app_config.retrieval
+
+    @property
+    def rerank_weights(self) -> dict[str, float]:
+        return self._app_config.rerank_weights
+
+    @property
+    def fingerprint(self):
+        return self._app_config.fingerprint
+
+    @property
+    def retrieval_pool_size(self) -> int:
+        return self._app_config.retrieval_pool_size
+
+    @property
     def env_mode(self) -> str:
         return self._app_config.env_mode
 
@@ -137,6 +161,54 @@ class EnvConfig:
     @property
     def llm_intent_enabled(self) -> bool:
         return self._app_config.llm_intent_enabled
+
+    @property
+    def asset_vocab_expand(self) -> bool:
+        return self._app_config.asset_vocab_expand
+
+    @property
+    def asset_category_expand(self) -> bool:
+        return self._app_config.asset_category_expand
+
+    @property
+    def asset_paraphrase(self) -> bool:
+        return self._app_config.asset_paraphrase
+
+    @property
+    def asset_field_map(self) -> bool:
+        return self._app_config.asset_field_map
+
+    @property
+    def emit_gate(self) -> bool:
+        return self._app_config.emit_gate
+
+    @property
+    def emit_late_turn(self) -> int:
+        return self._app_config.emit_late_turn
+
+    @property
+    def emit_k0(self) -> int:
+        return self._app_config.emit_k0
+
+    @property
+    def emit_k1(self) -> int:
+        return self._app_config.emit_k1
+
+    @property
+    def emit_k2(self) -> int:
+        return self._app_config.emit_k2
+
+    @property
+    def emit_fp_confident(self) -> int:
+        return self._app_config.emit_fp_confident
+
+    @property
+    def emit_margin_confident(self) -> float:
+        return self._app_config.emit_margin_confident
+
+    @property
+    def emit_commit_constraints(self) -> int:
+        return self._app_config.emit_commit_constraints
 
     @property
     def llm_clarify_enabled(self) -> bool:

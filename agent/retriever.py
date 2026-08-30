@@ -23,6 +23,7 @@ from agent.intent_router import IntentRoute
 from config.env_config import EnvConfig
 from utils import blair as blair_utils
 from utils import session_utils as su
+from utils import shelf as shelf_utils
 
 logger = logging.getLogger(__name__)
 
@@ -45,8 +46,16 @@ class HybridRetriever:
         self._products: dict[str, dict] = {}
         self._text_lower: dict[str, str] = {}
         self._cat_lower: dict[str, str] = {}
+        self._shelf_of: dict[str, str] = {}
+        self._by_shelf: dict[str, list[str]] = {}
         self._dense = None  # 惰性加载的稠密模型
         self._dense_matrix = None
+        self._retrieval_cfg = self.env.retrieval  # Step1：检索旋钮进 config
+        self._bm25_weights_sql = (
+            "bm25(products, "
+            + ", ".join(str(float(w)) for w in self._retrieval_cfg.bm25_field_weights)
+            + ")"
+        )
         self._build_index()
 
     # ------------------------------------------------------------------
@@ -81,6 +90,8 @@ class HybridRetriever:
         if batch:
             cur.executemany("INSERT INTO products VALUES (?,?,?,?,?,?,?)", batch)
         self._conn.commit()
+        # 货架索引：turn-1 品类 -> 候选货架（赛题机制：目标必在货架内，过滤零召回损失）
+        self._shelf_of, self._by_shelf = shelf_utils.build_shelf_index(self._products.values())
         logger.info(
             "[retriever] indexed %d products (backend=%s)", len(self._products), self.backend
         )
@@ -118,15 +129,31 @@ class HybridRetriever:
         return str(value)
 
     # ------------------------------------------------------------------
-    def search(self, route: IntentRoute, top_k: int = 300, mode: str = "probe") -> list[dict]:
+    def search(
+        self,
+        route: IntentRoute,
+        top_k: int = 300,
+        mode: str = "probe",
+        shelf: str | None = None,
+    ) -> list[dict]:
         """多路由召回 + RRF 融合，返回候选（parent_asin + 融合分 + 路由命中标记）。"""
         pool: dict[str, dict] = {}
-        self._route_bm25(route, pool, top_k=top_k * 2)
+        self._route_bm25(route, pool, top_k=top_k * self._retrieval_cfg.bm25_limit_mult)
         self._route_category(route, pool, top_k=top_k)
         self._route_constraints(route, pool, top_k=top_k)  # 硬约束 AND（保命中）
         if self.backend in ("dense", "hybrid"):
-            self._route_dense(route, pool, top_k=top_k)
+            self._route_dense(route, pool, top_k=top_k, mode=mode)
 
+        # 货架硬过滤（可选）：只保留品类货架内商品（目标必在货架内，零召回损失）。
+        # 匹配失败必须回退"不过滤"，任何异常都不能让整场 miss。
+        if shelf:
+            try:
+                shelf_key = shelf_utils.match_shelf(shelf, self._by_shelf)
+                if shelf_key is not None:
+                    allowed = set(self._by_shelf[shelf_key])
+                    pool = {asin: entry for asin, entry in pool.items() if asin in allowed}
+            except Exception:
+                logger.warning("[retriever] shelf filter failed, skip filtering")
         ranked = sorted(pool.values(), key=lambda x: x["rrf"], reverse=True)
         return ranked[:top_k]
 
@@ -139,13 +166,13 @@ class HybridRetriever:
         try:
             rows = self._conn.execute(
                 "SELECT parent_asin FROM products WHERE products MATCH ? "
-                "ORDER BY bm25(products, 0.0, 6.0, 4.0, 2.5, 2.5, 1.5, 1.0) LIMIT ?",
+                f"ORDER BY {self._bm25_weights_sql} LIMIT ?",
                 (expr, top_k),
             ).fetchall()
         except sqlite3.OperationalError:
             return
         for rank, (asin,) in enumerate(rows, start=1):
-            self._accumulate(pool, str(asin), 1.0 / (60.0 + rank), "bm25")
+            self._accumulate(pool, str(asin), 1.0 / (self._retrieval_cfg.rrf_k + rank), "bm25")
 
     # -- 路由 2：类别过滤（品类域命中） ------------------------------------
     def _route_category(self, route: IntentRoute, pool: dict, top_k: int) -> None:
@@ -159,7 +186,7 @@ class HybridRetriever:
                 hits.append((asin, frac + math.log1p(rating) * 0.01))
         hits.sort(key=lambda x: x[1], reverse=True)
         for rank, (asin, _) in enumerate(hits[:top_k], start=1):
-            self._accumulate(pool, asin, 1.0 / (60.0 + rank), "category")
+            self._accumulate(pool, asin, 1.0 / (self._retrieval_cfg.rrf_k + rank), "category")
 
     # -- 路由 3：硬约束 AND（保证必中候选进池，Pillar I 高精度过滤） ----------
     def _route_constraints(self, route: IntentRoute, pool: dict, top_k: int) -> None:
@@ -170,7 +197,7 @@ class HybridRetriever:
             try:
                 rows = self._conn.execute(
                     "SELECT parent_asin FROM products WHERE products MATCH ? LIMIT ?",
-                    (expr, top_k * 2),
+                    (expr, top_k * self._retrieval_cfg.bm25_limit_mult),
                 ).fetchall()
             except sqlite3.OperationalError:
                 continue
@@ -183,7 +210,12 @@ class HybridRetriever:
                     )
                     if frac / len(route.category_tokens) <= 0.5:
                         continue
-                self._accumulate(pool, asin, 1.0 / (10.0 + rank) + 0.1, "constraint")
+                self._accumulate(
+                    pool,
+                    asin,
+                    1.0 / (self._retrieval_cfg.rrf_constraint_k + rank) + 0.1,
+                    "constraint",
+                )
         # 轻权重"召回补齐"路由：'（group）AND （cat1 OR cat2）'，低 RRF 权重，
         # 只把此前被挤出 LIMIT 的强相关候选补进池（Pillar I 召回保障），不扰动主流排序
         self._route_constraint_recall(route, pool, top_k)
@@ -205,16 +237,30 @@ class HybridRetriever:
             try:
                 rows = self._conn.execute(
                     "SELECT parent_asin FROM products WHERE products MATCH ? "
-                    "ORDER BY bm25(products, 0.0, 6.0, 4.0, 2.5, 2.5, 1.5, 1.0) LIMIT ?",
-                    (expr, top_k * 3),
+                    f"ORDER BY {self._bm25_weights_sql} LIMIT ?",
+                    (expr, top_k * self._retrieval_cfg.recall_limit_mult),
                 ).fetchall()
             except sqlite3.OperationalError:
                 continue
             for rank, (asin,) in enumerate(rows, start=1):
-                self._accumulate(pool, str(asin), 1.0 / (60.0 + rank) + 0.02, "constraint_recall")
+                self._accumulate(
+                    pool,
+                    str(asin),
+                    1.0 / (self._retrieval_cfg.rrf_k + rank) + 0.02,
+                    "constraint_recall",
+                )
 
     # -- 路由 4：稠密向量（可选，离线本地 embedding） -----------------------
-    def _route_dense(self, route: IntentRoute, pool: dict, top_k: int) -> None:
+    def _route_dense(self, route: IntentRoute, pool: dict, top_k: int, mode: str = "probe") -> None:
+        """BLaIR 稠密语义召回（模式自适应 + 硬约束回验）。
+
+        - 仅 recover（连续 miss≥2，需扩召回）启用：probe/exploit 下语义候选会扰动
+          已对齐的规则排序（A/B：dense-on 时 boundary/browsing MRR 掉）；
+        - 硬约束覆盖回验：违反任一 hard 组的 dense 候选跳过（防语义噪音注入）；
+        - 权重 0.5x 降为纯"召回补充"，不反客为主。
+        """
+        if mode != "recover":
+            return
         encoder, store = self._ensure_dense()
         if encoder is None or store is None:
             return
@@ -228,11 +274,26 @@ class HybridRetriever:
             sims = store.matrix @ qv
             order = np.argsort(-sims)[:top_k]
             for rank, idx in enumerate(order, start=1):
+                asin = store.asins[int(idx)]
+                if route.hard_groups and not self._dense_passes_hard(route.hard_groups, asin):
+                    continue  # 硬约束回验：不满足则跳过
                 self._accumulate(
-                    pool, store.asins[int(idx)], float(sims[idx]) / (60.0 + rank), "dense"
+                    pool,
+                    asin,
+                    self._retrieval_cfg.dense_weight
+                    * float(sims[idx])
+                    / (self._retrieval_cfg.rrf_k + rank),
+                    "dense",
                 )
         except Exception as exc:  # 稠密路由任何异常都不影响主流程（环境自感知回退）
             logger.warning("[retriever] dense route failed, fallback to bm25: %s", exc)
+
+    def _dense_passes_hard(self, hard_groups: list[tuple[str, ...]], asin: str) -> bool:
+        """dense 候选硬约束覆盖回验：每个 hard 组（组内 AND）全部命中才放行。"""
+        text = self._text_lower.get(asin, "")
+        if not text:
+            return False
+        return all(all(tok in text for tok in group) for group in hard_groups)
 
     def _ensure_dense(self):
         """惰性加载 BLaIR 查询编码器 + 离线商品向量 npy；失败返回 (None,None)。

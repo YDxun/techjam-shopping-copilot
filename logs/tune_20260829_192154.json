@@ -1,0 +1,501 @@
+{
+  "timestamp": "2026-08-29 19:08:16",
+  "group": "strategy",
+  "n_tune": 100,
+  "runs": [
+    {
+      "label": "exploit_min_hard=1",
+      "overrides": {
+        "retrieval_mode": {
+          "exploit_min_hard": 1
+        }
+      },
+      "tune": {
+        "ts": 0.865835,
+        "hr": 1.0,
+        "mrr": 0.602782,
+        "mttc": 1.75,
+        "scenarios": {
+          "boundary": [
+            1.0,
+            0.714286,
+            1.0
+          ],
+          "browsing": [
+            1.0,
+            0.566631,
+            1.5
+          ],
+          "buying": [
+            1.0,
+            0.589626,
+            1.114286
+          ],
+          "intent_override": [
+            1.0,
+            0.698148,
+            3.722222
+          ]
+        }
+      },
+      "validation": {
+        "ts": 0.887938,
+        "hr": 1.0,
+        "mrr": 0.693125,
+        "mttc": 2.0,
+        "scenarios": {
+          "boundary": [
+            1.0,
+            0.78125,
+            2.75
+          ],
+          "browsing": [
+            1.0,
+            0.600595,
+            1.714286
+          ],
+          "buying": [
+            1.0,
+            0.636979,
+            1.375
+          ],
+          "intent_override": [
+            1.0,
+            1.0,
+            3.833333
+          ]
+        }
+      }
+    },
+    {
+      "label": "exploit_min_hard=3",
+      "overrides": {
+        "retrieval_mode": {
+          "exploit_min_hard": 3
+        }
+      },
+      "tune": {
+        "ts": 0.865835,
+        "hr": 1.0,
+        "mrr": 0.602782,
+        "mttc": 1.75,
+        "scenarios": {
+          "boundary": [
+            1.0,
+            0.714286,
+            1.0
+          ],
+          "browsing": [
+            1.0,
+            0.566631,
+            1.5
+          ],
+          "buying": [
+            1.0,
+            0.589626,
+            1.114286
+          ],
+          "intent_override": [
+            1.0,
+            0.698148,
+            3.722222
+          ]
+        }
+      }
+    },
+    {
+      "label": "exploit_min_constraints=3",
+      "overrides": {
+        "retrieval_mode": {
+          "exploit_min_constraints": 3
+        }
+      },
+      "tune": {
+        "ts": 0.865835,
+        "hr": 1.0,
+        "mrr": 0.602782,
+        "mttc": 1.75,
+        "scenarios": {
+          "boundary": [
+            1.0,
+            0.714286,
+            1.0
+          ],
+          "browsing": [
+            1.0,
+            0.566631,
+            1.5
+          ],
+          "buying": [
+            1.0,
+            0.589626,
+            1.114286
+          ],
+          "intent_override": [
+            1.0,
+            0.698148,
+            3.722222
+          ]
+        }
+      }
+    },
+    {
+      "label": "exploit_min_constraints=5",
+      "overrides": {
+        "retrieval_mode": {
+          "exploit_min_constraints": 5
+        }
+      },
+      "tune": {
+        "ts": 0.865835,
+        "hr": 1.0,
+        "mrr": 0.602782,
+        "mttc": 1.75,
+        "scenarios": {
+          "boundary": [
+            1.0,
+            0.714286,
+            1.0
+          ],
+          "browsing": [
+            1.0,
+            0.566631,
+            1.5
+          ],
+          "buying": [
+            1.0,
+            0.589626,
+            1.114286
+          ],
+          "intent_override": [
+            1.0,
+            0.698148,
+            3.722222
+          ]
+        }
+      }
+    },
+    {
+      "label": "max_questions=2",
+      "overrides": {
+        "decision": {
+          "max_questions": 2
+        }
+      },
+      "tune": {
+        "ts": 0.865835,
+        "hr": 1.0,
+        "mrr": 0.602782,
+        "mttc": 1.75,
+        "scenarios": {
+          "boundary": [
+            1.0,
+            0.714286,
+            1.0
+          ],
+          "browsing": [
+            1.0,
+            0.566631,
+            1.5
+          ],
+          "buying": [
+            1.0,
+            0.589626,
+            1.114286
+          ],
+          "intent_override": [
+            1.0,
+            0.698148,
+            3.722222
+          ]
+        }
+      }
+    },
+    {
+      "label": "max_questions=4",
+      "overrides": {
+        "decision": {
+          "max_questions": 4
+        }
+      },
+      "tune": {
+        "ts": 0.865835,
+        "hr": 1.0,
+        "mrr": 0.602782,
+        "mttc": 1.75,
+        "scenarios": {
+          "boundary": [
+            1.0,
+            0.714286,
+            1.0
+          ],
+          "browsing": [
+            1.0,
+            0.566631,
+            1.5
+          ],
+          "buying": [
+            1.0,
+            0.589626,
+            1.114286
+          ],
+          "intent_override": [
+            1.0,
+            0.698148,
+            3.722222
+          ]
+        }
+      }
+    },
+    {
+      "label": "ask_ig=0.2",
+      "overrides": {
+        "decision": {
+          "ask_utility": {
+            "weights": {
+              "information_gain": 0.2
+            }
+          }
+        }
+      },
+      "tune": {
+        "ts": 0.865835,
+        "hr": 1.0,
+        "mrr": 0.602782,
+        "mttc": 1.75,
+        "scenarios": {
+          "boundary": [
+            1.0,
+            0.714286,
+            1.0
+          ],
+          "browsing": [
+            1.0,
+            0.566631,
+            1.5
+          ],
+          "buying": [
+            1.0,
+            0.589626,
+            1.114286
+          ],
+          "intent_override": [
+            1.0,
+            0.698148,
+            3.722222
+          ]
+        }
+      }
+    },
+    {
+      "label": "ask_ig=0.4",
+      "overrides": {
+        "decision": {
+          "ask_utility": {
+            "weights": {
+              "information_gain": 0.4
+            }
+          }
+        }
+      },
+      "tune": {
+        "ts": 0.865835,
+        "hr": 1.0,
+        "mrr": 0.602782,
+        "mttc": 1.75,
+        "scenarios": {
+          "boundary": [
+            1.0,
+            0.714286,
+            1.0
+          ],
+          "browsing": [
+            1.0,
+            0.566631,
+            1.5
+          ],
+          "buying": [
+            1.0,
+            0.589626,
+            1.114286
+          ],
+          "intent_override": [
+            1.0,
+            0.698148,
+            3.722222
+          ]
+        }
+      }
+    },
+    {
+      "label": "rule_conf=0.6",
+      "overrides": {
+        "dialogue_understanding": {
+          "rule_confidence_threshold": 0.6
+        }
+      },
+      "tune": {
+        "ts": 0.865835,
+        "hr": 1.0,
+        "mrr": 0.602782,
+        "mttc": 1.75,
+        "scenarios": {
+          "boundary": [
+            1.0,
+            0.714286,
+            1.0
+          ],
+          "browsing": [
+            1.0,
+            0.566631,
+            1.5
+          ],
+          "buying": [
+            1.0,
+            0.589626,
+            1.114286
+          ],
+          "intent_override": [
+            1.0,
+            0.698148,
+            3.722222
+          ]
+        }
+      }
+    },
+    {
+      "label": "rule_conf=0.9",
+      "overrides": {
+        "dialogue_understanding": {
+          "rule_confidence_threshold": 0.9
+        }
+      },
+      "tune": {
+        "ts": 0.865835,
+        "hr": 1.0,
+        "mrr": 0.602782,
+        "mttc": 1.75,
+        "scenarios": {
+          "boundary": [
+            1.0,
+            0.714286,
+            1.0
+          ],
+          "browsing": [
+            1.0,
+            0.566631,
+            1.5
+          ],
+          "buying": [
+            1.0,
+            0.589626,
+            1.114286
+          ],
+          "intent_override": [
+            1.0,
+            0.698148,
+            3.722222
+          ]
+        }
+      }
+    },
+    {
+      "label": "hard_cue_off",
+      "overrides": {
+        "hard_cue_enabled": false
+      },
+      "tune": {
+        "ts": 0.865835,
+        "hr": 1.0,
+        "mrr": 0.602782,
+        "mttc": 1.75,
+        "scenarios": {
+          "boundary": [
+            1.0,
+            0.714286,
+            1.0
+          ],
+          "browsing": [
+            1.0,
+            0.566631,
+            1.5
+          ],
+          "buying": [
+            1.0,
+            0.589626,
+            1.114286
+          ],
+          "intent_override": [
+            1.0,
+            0.698148,
+            3.722222
+          ]
+        }
+      }
+    }
+  ],
+  "best": {
+    "label": "exploit_min_hard=1",
+    "overrides": {
+      "retrieval_mode": {
+        "exploit_min_hard": 1
+      }
+    },
+    "tune": {
+      "ts": 0.865835,
+      "hr": 1.0,
+      "mrr": 0.602782,
+      "mttc": 1.75,
+      "scenarios": {
+        "boundary": [
+          1.0,
+          0.714286,
+          1.0
+        ],
+        "browsing": [
+          1.0,
+          0.566631,
+          1.5
+        ],
+        "buying": [
+          1.0,
+          0.589626,
+          1.114286
+        ],
+        "intent_override": [
+          1.0,
+          0.698148,
+          3.722222
+        ]
+      }
+    },
+    "validation": {
+      "ts": 0.887938,
+      "hr": 1.0,
+      "mrr": 0.693125,
+      "mttc": 2.0,
+      "scenarios": {
+        "boundary": [
+          1.0,
+          0.78125,
+          2.75
+        ],
+        "browsing": [
+          1.0,
+          0.600595,
+          1.714286
+        ],
+        "buying": [
+          1.0,
+          0.636979,
+          1.375
+        ],
+        "intent_override": [
+          1.0,
+          1.0,
+          3.833333
+        ]
+      }
+    }
+  }
+}

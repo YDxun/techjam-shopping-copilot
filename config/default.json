@@ -1,6 +1,6 @@
 {
   "env_mode": "dev",
-  "retrieval_backend": "bm25",
+  "retrieval_backend": "auto",
   "top_k": 10,
   "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
   "reranker_model": "BAAI/bge-reranker-v2-m3",
@@ -12,7 +12,7 @@
   "sample_limit": null,
   "output_path": "results.json",
   "max_constraint_asks": 3,
-  "llm_intent_enabled": false,
+  "llm_intent_enabled": true,
   "llm_clarify_enabled": false,
   "reranker_model_enabled": false,
   "dialogue_understanding": {
@@ -153,6 +153,59 @@
         "token_limit_parameter": "max_completion_tokens",
         "supports_temperature": true
       }
-    }
-  }
+    },
+    "rerank_backend": "text",
+    "qwen_rerank_model": "qwen3-rerank",
+    "dashscope_workspace_id": "",
+    "qwen_rerank_base_url": ""
+  },
+  "asset_vocab_expand": false,
+  "asset_category_expand": true,
+  "asset_paraphrase": true,
+  "asset_field_map": false,
+  "hard_cue_enabled": true,
+  "retrieval_mode": {
+    "exploit_min_hard": 2,
+    "exploit_min_constraints": 4
+  },
+  "retrieval_pool_size": 300,
+  "retrieval": {
+    "bm25_field_weights": [
+      0.0,
+      6.0,
+      4.0,
+      2.5,
+      2.5,
+      1.5,
+      1.0
+    ],
+    "rrf_k": 100.0,
+    "rrf_constraint_k": 10.0,
+    "dense_weight": 0.5,
+    "bm25_limit_mult": 2,
+    "recall_limit_mult": 3
+  },
+  "rerank_weights": {
+    "coverage": 0.5,
+    "combo": 0.1,
+    "category": 0.25,
+    "rrf": 0.15,
+    "popularity": 0.05,
+    "profile": 0.05
+  },
+  "fingerprint": {
+    "enable": true,
+    "bonus_unique": 1.0,
+    "bonus_ten": 0.5,
+    "bonus_fifty": 0.2,
+    "max_count": 50
+  },
+  "emit_gate": false,
+  "emit_late_turn": 5,
+  "emit_k0": 1,
+  "emit_k1": 1,
+  "emit_k2": 1,
+  "emit_fp_confident": 3,
+  "emit_margin_confident": 0.1,
+  "emit_commit_constraints": 4
 }

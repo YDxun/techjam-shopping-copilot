@@ -39,7 +39,7 @@ class CascadedIntentRecognizer:
         self.last_usage = LLMUsage()
         self.last_fallback_reason = ""
         rule_result = self.rule_recognizer.recognize(request)
-        if self.mode == "rule_only" or not self._should_consult_llm(rule_result):
+        if self.mode == "rule_only" or not self._should_consult_llm(rule_result, request):
             self._rule_resolutions += 1
             return rule_result
         self._llm_attempts += 1
@@ -81,11 +81,15 @@ class CascadedIntentRecognizer:
             "fallback_reasons": dict(sorted(self._fallback_reasons.items())),
         }
 
-    def _should_consult_llm(self, result: RecognitionResult) -> bool:
+    def _should_consult_llm(self, result: RecognitionResult, request: RecognitionRequest) -> bool:
         if not self.llm_recognizer.available:
             return False
+        hard_cue = self.rule_recognizer._hard_cue_present(request.user_message or "")
+        new_constraints_late = request.turn >= 2 and bool(result.constraint_operations)
         return (
             result.confidence < self.rule_confidence_threshold
             or bool(result.ambiguities)
             or result.dialogue_act in {DialogueAct.AMBIGUOUS, DialogueAct.REPLACE_CONSTRAINT}
+            or hard_cue
+            or new_constraints_late
         )

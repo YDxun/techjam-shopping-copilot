@@ -519,3 +519,21 @@ See `docs/TECHNICAL_REPORT.md` (section 5) for the same breakdown with more deta
 - Tuning report & LUT: `logs/tuning_report.md`, `data/assets/env_config_lut.json` (16 environment fingerprints x 5 config profiles,
   with measured latency and cost estimates, rebuilt by `scripts/build_lut.py`; the automation-control paths are covered by `tests/test_lut.py` /
   `tests/test_env_fallback.py` / `tests/test_config_profiles.py` / `tests/test_circuit_breaker.py`)
+
+## Local Web Demo
+
+```bash
+pip install -r requirements-web.txt
+LLM_PROVIDER=none python -m webapp
+# custom participant-kit catalog:
+LLM_PROVIDER=none python -m webapp --catalog /path/to/catalog.jsonl --port 8080
+```
+
+The default catalog path is `data/catalog.jsonl`; use `--catalog` to select a participant-kit
+catalog at another path. The demo binds locally to `http://127.0.0.1:8000` by default (or the
+chosen local port), serves no external assets, and returns ordinary non-streaming responses.
+
+Chats persist only in the browser while the page remains available: refresh can recover the
+current chat, while restarting the service resets its in-memory sessions. The frontend does not
+impose a turn cap. It runs the existing Agent pipeline and retains its automatic existing-model
+fallback behavior; `LLM_PROVIDER=none` keeps the demo offline.

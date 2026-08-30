@@ -2,6 +2,7 @@ import asyncio
 import json
 import threading
 import time
+from contextlib import suppress
 from pathlib import Path
 from uuid import uuid4
 
@@ -206,6 +207,76 @@ def test_shutdown_waits_for_blocking_initializer_worker(tmp_path: Path) -> None:
     finally:
         unblock.set()
         lifecycle.join(timeout=1.0)
+
+
+def test_cancelled_lifespan_waits_for_blocking_initializer_worker(tmp_path: Path) -> None:
+    """A cancellation must not complete the lifespan before its worker finishes."""
+    runtime, _ = make_runtime(tmp_path)
+    started = threading.Event()
+    unblock = threading.Event()
+    initializer_finished = threading.Event()
+
+    def initializer(path: Path) -> WebRuntime:
+        started.set()
+        assert unblock.wait(timeout=2.0)
+        initializer_finished.set()
+        return runtime
+
+    app = create_app(catalog_path=tmp_path / "catalog.jsonl", initializer=initializer)
+
+    async def exercise_lifespan() -> None:
+        async with app.router.lifespan_context(app):
+            await asyncio.Event().wait()
+
+    async def scenario() -> None:
+        lifecycle = asyncio.create_task(exercise_lifespan())
+        try:
+            assert await asyncio.to_thread(started.wait, 1.0)
+            lifecycle.cancel()
+            await asyncio.sleep(0.05)
+            assert not lifecycle.done()
+
+            unblock.set()
+            with pytest.raises(asyncio.CancelledError):
+                await lifecycle
+            assert initializer_finished.is_set()
+        finally:
+            unblock.set()
+            if not lifecycle.done():
+                with suppress(asyncio.CancelledError):
+                    await lifecycle
+
+    asyncio.run(scenario())
+
+
+def test_sparse_product_summary_is_a_valid_chat_response(tmp_path: Path) -> None:
+    class SparseSessions:
+        async def send_message(self, session_id, message_id, message):
+            return {
+                "session_id": str(session_id),
+                "message_id": str(message_id),
+                "turn": 1,
+                "agent_response": {
+                    "message": "Here is an option.",
+                    "ask_attribute": None,
+                    "recommendations": [{"parent_asin": "A1"}],
+                    "usage": {"prompt_tokens": 0, "completion_tokens": 0},
+                },
+                "products": {"A1": {"parent_asin": "A1", "title": "Sparse product"}},
+            }
+
+    runtime, _ = make_runtime(tmp_path)
+    sparse_runtime = WebRuntime(SparseSessions(), runtime.catalog)
+    with TestClient(create_app(runtime=sparse_runtime)) as client:
+        response = client.post(
+            f"/api/sessions/{uuid4()}/messages",
+            json={"message_id": str(uuid4()), "message": "cotton"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["products"] == {
+        "A1": {"parent_asin": "A1", "title": "Sparse product"}
+    }
 
 
 def test_initializer_failure_is_sanitized(tmp_path: Path) -> None:

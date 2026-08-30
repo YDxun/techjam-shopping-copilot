@@ -93,29 +93,25 @@ function normalizeRecommendations(value) {
   return recommendations;
 }
 
+function normalizeOptionalNumber(value) {
+  const number = Number(value);
+  return value === null || value === undefined || !Number.isFinite(number) ? null : number;
+}
+
 function normalizeProduct(asin, value) {
-  if (!isPlainObject(value) || value.parent_asin !== asin || typeof value.title !== "string"
-    || typeof value.store !== "string") {
+  if (!isPlainObject(value) || value.parent_asin !== asin || typeof value.title !== "string") {
     return null;
   }
-  const categories = normalizeStringList(value.categories);
-  const features = normalizeStringList(value.features);
-  if (categories === null || features === null) {
-    return null;
-  }
-  const numericFields = ["price", "average_rating", "rating_number"];
-  for (const field of numericFields) {
-    if (value[field] !== null && !Number.isFinite(Number(value[field]))) {
-      return null;
-    }
-  }
+  const store = typeof value.store === "string" ? value.store : "";
+  const categories = normalizeStringList(value.categories) || [];
+  const features = normalizeStringList(value.features) || [];
   return {
     parent_asin: asin,
     title: value.title,
-    price: value.price === null ? null : Number(value.price),
-    average_rating: value.average_rating === null ? null : Number(value.average_rating),
-    rating_number: value.rating_number === null ? null : Number(value.rating_number),
-    store: value.store,
+    price: normalizeOptionalNumber(value.price),
+    average_rating: normalizeOptionalNumber(value.average_rating),
+    rating_number: normalizeOptionalNumber(value.rating_number),
+    store,
     categories,
     features,
   };

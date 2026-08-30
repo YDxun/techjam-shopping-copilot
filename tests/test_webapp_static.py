@@ -48,6 +48,16 @@ def test_restore_state_validates_complete_persisted_chat_shape() -> None:
     assert "payload.products || {}" in script
 
 
+def test_restore_state_normalizes_sparse_product_summaries() -> None:
+    script = (STATIC / "app.js").read_text(encoding="utf-8")
+    assert 'const store = typeof value.store === "string" ? value.store : "";' in script
+    assert "const categories = normalizeStringList(value.categories) || [];" in script
+    assert "const features = normalizeStringList(value.features) || [];" in script
+    assert 'price: normalizeOptionalNumber(value.price)' in script
+    assert 'average_rating: normalizeOptionalNumber(value.average_rating)' in script
+    assert 'rating_number: normalizeOptionalNumber(value.rating_number)' in script
+
+
 def test_async_recovery_has_static_safety_guards() -> None:
     script = (STATIC / "app.js").read_text(encoding="utf-8")
     assert "let serviceReady = false;" in script

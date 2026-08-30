@@ -43,6 +43,19 @@ class RuntimeContainer:
 Initializer = Callable[[Path], WebRuntime]
 
 
+async def wait_for_initializer(task: asyncio.Task[None]) -> None:
+    """Wait for a thread-backed initializer without abandoning it on cancellation."""
+    cancelled = False
+    while True:
+        try:
+            await asyncio.shield(task)
+            break
+        except asyncio.CancelledError:
+            cancelled = True
+    if cancelled:
+        raise asyncio.CancelledError
+
+
 def error_response(status: int, code: str, message: str) -> JSONResponse:
     return JSONResponse(status_code=status, content={"error": {"code": code, "message": message}})
 
@@ -97,8 +110,10 @@ def create_app(
                 container.status = "ready"
 
         task = asyncio.create_task(initialize())
-        yield
-        await task
+        try:
+            yield
+        finally:
+            await wait_for_initializer(task)
 
     app = FastAPI(lifespan=lifespan)
     app.state.runtime_container = container

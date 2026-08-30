@@ -82,7 +82,11 @@ def create_app(
 
     @app.middleware("http")
     async def security_headers(request: Request, call_next: Callable):
-        response = await call_next(request)
+        try:
+            response = await call_next(request)
+        except Exception:
+            logger.exception("unexpected unhandled web error")
+            response = error_response(500, "internal_error", "An internal error occurred.")
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; img-src 'none'; object-src 'none'; frame-ancestors 'none'"
         )
@@ -172,6 +176,7 @@ def create_app(
             envelope = await active_runtime.sessions.send_message(
                 session_id, message.message_id, message.message
             )
+            return ChatResponse.model_validate(envelope)
         except SessionNotFound:
             return session_not_found_response()
         except InvalidMessage:
@@ -184,7 +189,6 @@ def create_app(
         except Exception:
             logger.exception("unexpected adapter error while sending message")
             return internal_error_response()
-        return ChatResponse.model_validate(envelope)
 
     @app.get("/api/products/{parent_asin}", response_model=None)
     async def get_product(parent_asin: str) -> dict[str, object] | JSONResponse:

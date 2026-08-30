@@ -66,7 +66,12 @@ The encoding convention matches the official `hyp1231/AmazonReviews2023 generate
 
 ## Running the demo
 ```bash
-# core deps (pydantic numpy rank-bm25) are optional and listed in requirements.txt; everything degrades gracefully when absent
+pip install -r retrieval_pipeline/requirements-pipeline.txt   # pydantic numpy rank-bm25
+
+# Optional: enable BLaIR dense retrieval or local bge reranking
+pip install -r requirements-blair.txt
+pip install -r requirements-reranker.txt
+
 python retrieval_pipeline/test_pipeline.py
 ```
 The demo covers: normal hard filter / RECOVER (penalty + synonyms + variants + pool 100) / override-cleared constraints.

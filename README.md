@@ -83,20 +83,24 @@ The default config runs with zero external dependencies and clearly beats the we
 # Python >= 3.10 (developed on 3.12); the core offline mode uses sqlite3 FTS5
 python --version
 
-# install the unified dependency list (offline + online, see requirements.txt; core offline is stdlib-only)
+# Default application: official Agent entry, BM25, and optional DeepSeek/OpenAI-compatible calls
 pip install -r requirements.txt
-# Note: requirements.txt is the latest unified "offline + online" list; everything is an optional enhancement,
-# missing packages auto-degrade, and the default runs fully offline with zero API.
 
-# optional local retrieval enhancements (auto-degrade when not installed)
-# pip install sentence-transformers numpy torch
-# BLaIR dense retrieval (recommended; offline encoding + query encoding, CPU-capable):
-#   pip install "transformers>=4.40" torch
-#   python scripts/encode_catalog_blair.py          # one-time 50k product-vector pre-computation (CPU ~6h)
-# bge-reranker-v2-m3 local setup (optional, cross-encoder fine-rank):
-#   pip install "FlagEmbedding>=1.3" "huggingface-hub>=0.20"
-#   python -c "from huggingface_hub import snapshot_download; snapshot_download('BAAI/bge-reranker-v2-m3')"
+# Development and tests
+pip install -r requirements-dev.txt
+
+# Optional BLaIR dense retrieval; pre-compute catalog vectors after installation
+pip install -r requirements-blair.txt
+python scripts/encode_catalog_blair.py          # full 50k; CPU ~6h; resume supported
+
+# Optional local bge-reranker-v2-m3 cross-encoder reranking
+pip install -r requirements-reranker.txt
+python -c "from huggingface_hub import snapshot_download; snapshot_download('BAAI/bge-reranker-v2-m3')"
 ```
+
+The default requirements exclude large local-model libraries. Missing BLaIR or bge dependencies
+automatically degrade without affecting BM25, rule clarification, or optional online LLM paths.
+The standalone experiment pipeline uses `retrieval_pipeline/requirements-pipeline.txt`.
 
 The dataset comes from the frozen toolkit's `data/catalog.jsonl` (50,000 rows) and `data/public_set.jsonl` (200 rows). The first run
 auto-verifies SHA256 integrity (`utils/data_verify.py`); `SKIP_DATA_VERIFY=1` skips it.

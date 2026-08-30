@@ -1,0 +1,8 @@
+-r requirements.txt
+
+# BLaIR product preprocessing and query encoding.
+torch>=2.0
+transformers>=4.40
+
+# Fallback query encoder when transformers-based loading is unavailable.
+sentence-transformers>=2.2

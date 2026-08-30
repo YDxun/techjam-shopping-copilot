@@ -1,0 +1,8 @@
+# Standalone retrieval_pipeline core dependencies.
+numpy>=1.24
+pydantic>=2.0
+rank-bm25>=0.2.2
+
+# Optional model profiles are maintained at the repository root:
+#   pip install -r requirements-blair.txt
+#   pip install -r requirements-reranker.txt

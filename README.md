@@ -268,8 +268,16 @@ python -m pytest
 4. The public 200 sessions and private 800 may differ in difficulty distribution; the LUT is measured on public data and needs recalibration.
 5. LUT latency is measured on this machine; absolute CPU/cloud latency differs (relative ordering holds).
 
-### Next steps
-- Recalibrate the LUT for the private difficulty distribution; adversarial auto-tuning; cross-session profile learning.
+### If we had more time
+- **Recalibrate the LUT for the private set**: the LUT is measured on the public 200; a private-800 run would retrain the
+  environment-to-config table so startup selection matches the real difficulty distribution.
+- **Adversarial auto-tuning**: replace manual A/B with an automated opponent loop that mines worst-case messages (paraphrases,
+  partial overrides, ambiguous mentions) and tunes the dialogue/retrieval knobs against them.
+- **Cross-session profile learning**: the long-term profile is currently a weak prior; learning richer per-user preference
+  vectors across sessions could help when private profiles are more discriminative.
+- **Cheaper/faster dense path**: distill or quantize the BLaIR encoder and pre-computed vectors so hybrid retrieval is practical
+  on CPU-only submission machines.
+- **Latency profiling on reference hardware**: publish measured latency for cpu-only and cloud environments, not just this GPU laptop.
 
 ## 6. Competition deliverable adaptation (Devpost highlights)
 - See `docs/devpost_draft.md` for the full description, `docs/TECHNICAL_REPORT.md` for the independent technical report,
@@ -488,6 +496,20 @@ confidence signal -- the smaller the count, the more the combination locks onto 
 Acceptance: `python -m unittest discover tests` Ran 143 OK; pytest 164 collected (163 passed / 1 skipped); the default public set stays at 0.9543.
 
 ---
+
+## 7. Team contributions
+
+This project was built by a 5-member team (not an individual submission). Division of labor:
+
+| Member | Role | Main outputs |
+|---|---|---|
+| A - Data | data inventory / product dictionary / question-value analysis | `scripts/build_index.py`, `data/analysis/*` (vocab / field_mapping / question_value / stats / report), `data/assets/*` (category_mapping / review_paraphrases / refined vocab) |
+| B - Dialogue | dialogue understanding pipeline (Pillars II/III) | `agent/dialogue/` (recognizers / reducer / question_policy / catalog_signals / product_history / pipeline) |
+| C - Retrieval | retrieval & rerank pipeline (Pillar I) | `agent/retriever.py` (BM25 / category / hard-constraint AND / BLaIR dense), `agent/reranker.py` (rules + combo + fingerprint), `retrieval_pipeline/`, `scripts/encode_catalog_blair.py`, `utils/blair.py` |
+| D - Evaluation | evaluation alignment / tuning / LUT / automation control | `run_local_eval.py`, `scripts/tune_*.py`, `scripts/build_lut.py`, `data/assets/env_config_lut.json`, `agent/runtime_controller.py`, circuit-breaker & rewrite-guard A/B |
+| E - Coordination | integration / documentation / delivery | four-pillar engineering integration, `README.md`, `docs/*` (technical report / cost disclosure / demo / devpost), unified dependencies & environment awareness |
+
+See `docs/TECHNICAL_REPORT.md` (section 5) for the same breakdown with more detail.
 
 ## Competition deliverables
 - [Independent technical report (four pillars + models + team contributions)](docs/TECHNICAL_REPORT.md)

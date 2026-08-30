@@ -17,6 +17,7 @@ import time
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
+from urllib import error as urllib_error
 from urllib import request as urllib_request
 
 logger = logging.getLogger(__name__)
@@ -25,6 +26,19 @@ _DEFAULT_REGION = "cn-beijing"
 # 国际版 DashScope 通用端点（无需 workspace ID，用户实测可用）
 _DEFAULT_BASE_URL = "https://dashscope-intl.aliyuncs.com/compatible-api/v1"
 _DEFAULT_MODEL = "qwen3-rerank"
+
+
+class _RejectRedirectHandler(urllib_request.HTTPRedirectHandler):
+    """Reject API redirects before a bearer-authenticated follow-up request."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise urllib_error.HTTPError(
+            req.full_url,
+            code,
+            "qwen3-rerank redirects are not allowed",
+            headers,
+            fp,
+        )
 
 
 class RerankState(str, Enum):
@@ -188,7 +202,8 @@ class RerankClient:
             },
             method="POST",
         )
-        with urllib_request.urlopen(request, timeout=self._timeout_seconds) as response:
+        opener = urllib_request.build_opener(_RejectRedirectHandler())
+        with opener.open(request, timeout=self._timeout_seconds) as response:
             data = json.loads(response.read().decode("utf-8"))
         if isinstance(data, dict):
             results = data.get("results") or data.get("data") or []

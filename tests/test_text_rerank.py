@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import json
 import sys
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from threading import Thread
 
 from agent.capability_probe import CapabilityProfile
 from agent.runtime_controller import RuntimeController
@@ -27,46 +29,119 @@ def test_rerank_client_disabled_without_config():
 
 
 def test_rerank_client_parses_results_without_requests_dependency(monkeypatch):
-    class FakeResponse:
-        def read(self):
-            return json.dumps(
-                {
-                    "results": [
-                        {"index": 1, "relevance_score": 0.91},
-                        {"index": 0, "relevance_score": 0.32},
-                    ]
-                }
-            ).encode("utf-8")
+    request_count = 0
+    authorization_seen = False
 
-        def __enter__(self):
-            return self
+    class SuccessHandler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            nonlocal request_count, authorization_seen
+            request_count += 1
+            authorization_seen = authorization_seen or ("Authorization" in self.headers)
+            payload = json.loads(
+                self.rfile.read(int(self.headers["Content-Length"])).decode("utf-8")
+            )
+            assert self.path == "/reranks"
+            assert payload["model"] == "qwen3-rerank"
+            assert "query" in payload and "documents" in payload
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(
+                b'{"results": [{"index": 1, "relevance_score": 0.91}, '
+                b'{"index": 0, "relevance_score": 0.32}]}'
+            )
 
-        def __exit__(self, exc_type, exc, traceback):
-            return False
+        def log_message(self, format, *args):
+            return None
 
-    def fake_urlopen(request, timeout=None):
-        assert request.full_url.endswith("/reranks")
-        payload = json.loads(request.data.decode("utf-8"))
-        assert payload["model"] == "qwen3-rerank"
-        assert "query" in payload and "documents" in payload
-        assert timeout == 10.0
-        return FakeResponse()
+    server = ThreadingHTTPServer(("127.0.0.1", 0), SuccessHandler)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
 
     # The text reranker is optional, but selecting it must not require an
     # undeclared third-party HTTP package. Exercise the real request path with
     # its standard-library transport and ensure no external request is made.
     monkeypatch.setitem(sys.modules, "requests", None)
-    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
-    rc = RerankClient(
-        api_key="sk-test", base_url="https://dashscope-intl.aliyuncs.com/compatible-api/v1"
-    )
-    rc.initialize()
-    assert rc.available is True
-    results = rc.rerank("black cotton t-shirt", ["docA", "docB"], top_n=2)
-    assert results is not None
-    # 按分数降序：index 1 优先
-    assert [r.index for r in results] == [1, 0]
-    assert abs(results[0].score - 0.91) < 1e-6
+    try:
+        rc = RerankClient(
+            api_key="sk-test", base_url=f"http://127.0.0.1:{server.server_port}"
+        )
+        rc.initialize()
+        assert rc.available is True
+        results = rc.rerank("black cotton t-shirt", ["docA", "docB"], top_n=2)
+        assert results is not None
+        # 按分数降序：index 1 优先
+        assert [r.index for r in results] == [1, 0]
+        assert abs(results[0].score - 0.91) < 1e-6
+        assert request_count == 2
+        assert authorization_seen is True
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
+
+
+def test_rerank_client_rejects_redirect_before_other_origin_is_reached():
+    target_requests = 0
+    authorization_forwarded = False
+
+    class TargetHandler(BaseHTTPRequestHandler):
+        def _record_request(self):
+            nonlocal target_requests, authorization_forwarded
+            target_requests += 1
+            authorization_forwarded = authorization_forwarded or (
+                "Authorization" in self.headers
+            )
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"results": [{"index": 0, "relevance_score": 1.0}]}')
+
+        do_GET = _record_request
+        do_POST = _record_request
+
+        def log_message(self, format, *args):
+            return None
+
+    target_server = ThreadingHTTPServer(("127.0.0.1", 0), TargetHandler)
+    target_thread = Thread(target=target_server.serve_forever, daemon=True)
+    target_thread.start()
+
+    class RedirectHandler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            self.send_response(302)
+            self.send_header(
+                "Location",
+                f"http://127.0.0.1:{target_server.server_port}/redirect-target",
+            )
+            self.end_headers()
+
+        def log_message(self, format, *args):
+            return None
+
+    redirect_server = ThreadingHTTPServer(("127.0.0.1", 0), RedirectHandler)
+    redirect_thread = Thread(target=redirect_server.serve_forever, daemon=True)
+    redirect_thread.start()
+    try:
+        client = RerankClient(
+            api_key="sk-test",
+            base_url=f"http://127.0.0.1:{redirect_server.server_port}",
+            timeout_seconds=1.0,
+        )
+        status = client.initialize()
+
+        assert status.state == RerankState.UNAVAILABLE
+        assert client.available is False
+        assert client.rerank("query", ["document"]) is None
+        assert target_requests == 0
+        assert authorization_forwarded is False
+    finally:
+        redirect_server.shutdown()
+        redirect_server.server_close()
+        redirect_thread.join()
+        target_server.shutdown()
+        target_server.server_close()
+        target_thread.join()
 
 
 def test_rerank_client_base_url_resolution(monkeypatch):

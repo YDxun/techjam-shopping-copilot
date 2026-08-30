@@ -51,6 +51,8 @@ async def wait_for_initializer(task: asyncio.Task[None]) -> None:
             await asyncio.shield(task)
             break
         except asyncio.CancelledError:
+            if task.cancelled():
+                raise
             cancelled = True
     if cancelled:
         raise asyncio.CancelledError

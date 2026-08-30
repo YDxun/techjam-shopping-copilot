@@ -1,5 +1,7 @@
 import asyncio
 import json
+import subprocess
+import sys
 import threading
 import time
 from contextlib import suppress
@@ -249,6 +251,37 @@ def test_cancelled_lifespan_waits_for_blocking_initializer_worker(tmp_path: Path
     asyncio.run(scenario())
 
 
+def test_wait_for_cancelled_initializer_task_propagates_without_busy_loop() -> None:
+    script = """
+import asyncio
+
+from webapp.app import wait_for_initializer
+
+
+async def scenario():
+    initializer = asyncio.create_task(asyncio.sleep(60))
+    initializer.cancel()
+    try:
+        await wait_for_initializer(initializer)
+    except asyncio.CancelledError:
+        return
+    raise AssertionError("cancelled initializer did not propagate cancellation")
+
+
+asyncio.run(scenario())
+"""
+    try:
+        completed = subprocess.run(
+            [sys.executable, "-c", script],
+            check=False,
+            cwd=Path.cwd(),
+            timeout=2.0,
+        )
+    except subprocess.TimeoutExpired:
+        pytest.fail("wait_for_initializer did not terminate within two seconds")
+    assert completed.returncode == 0
+
+
 def test_sparse_product_summary_is_a_valid_chat_response(tmp_path: Path) -> None:
     class SparseSessions:
         async def send_message(self, session_id, message_id, message):
@@ -259,10 +292,13 @@ def test_sparse_product_summary_is_a_valid_chat_response(tmp_path: Path) -> None
                 "agent_response": {
                     "message": "Here is an option.",
                     "ask_attribute": None,
-                    "recommendations": [{"parent_asin": "A1"}],
+                    "recommendations": [{"parent_asin": "A1"}, {"parent_asin": "A2"}],
                     "usage": {"prompt_tokens": 0, "completion_tokens": 0},
                 },
-                "products": {"A1": {"parent_asin": "A1", "title": "Sparse product"}},
+                "products": {
+                    "A1": {},
+                    "A2": {"title": "Design contract product", "price": 27.99},
+                },
             }
 
     runtime, _ = make_runtime(tmp_path)
@@ -275,7 +311,8 @@ def test_sparse_product_summary_is_a_valid_chat_response(tmp_path: Path) -> None
 
     assert response.status_code == 200
     assert response.json()["products"] == {
-        "A1": {"parent_asin": "A1", "title": "Sparse product"}
+        "A1": {},
+        "A2": {"title": "Design contract product", "price": 27.99},
     }
 
 

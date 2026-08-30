@@ -99,7 +99,7 @@ function normalizeOptionalNumber(value) {
 }
 
 function normalizeProduct(asin, value) {
-  if (!isPlainObject(value) || value.parent_asin !== asin || typeof value.title !== "string") {
+  if (!isPlainObject(value)) {
     return null;
   }
   const store = typeof value.store === "string" ? value.store : "";
@@ -107,7 +107,7 @@ function normalizeProduct(asin, value) {
   const features = normalizeStringList(value.features) || [];
   return {
     parent_asin: asin,
-    title: value.title,
+    title: typeof value.title === "string" ? value.title : "Untitled product",
     price: normalizeOptionalNumber(value.price),
     average_rating: normalizeOptionalNumber(value.average_rating),
     rating_number: normalizeOptionalNumber(value.rating_number),

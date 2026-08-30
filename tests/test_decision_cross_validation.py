@@ -23,6 +23,41 @@ def _samples() -> list[dict]:
 
 
 class DecisionCrossValidationTest(unittest.TestCase):
+    def test_global_fold_objective_balances_realistic_grouped_public_set(self) -> None:
+        # Candidate-fold-only costs can strand a fold and omit common scenarios.
+        from experiments.decision_cross_validation import grouped_stratified_folds
+
+        scenarios = (
+            ["buying"] * 20
+            + ["browsing"] * 15
+            + ["intent_override"] * 9
+            + ["boundary"] * 6
+        )
+        samples = [
+            {
+                "sample_id": f"public-{target}-{duplicate}",
+                "scenario_type": scenario,
+                "coarse_category": f"category-{target % 5}",
+                "initial_candidate_bin": ("small", "medium", "large")[target % 3],
+                "ground_truth": {"parent_asin": f"target-{target}"},
+            }
+            for target, scenario in enumerate(scenarios)
+            for duplicate in range(4)
+        ]
+
+        folds = grouped_stratified_folds(samples, fold_count=3, seed=20260829)
+        target_folds: dict[str, set[int]] = {}
+        for index, fold in enumerate(folds):
+            for row in fold:
+                target_folds.setdefault(row["ground_truth"]["parent_asin"], set()).add(index)
+        self.assertEqual(len(target_folds), 50)
+        self.assertTrue(all(len(indices) == 1 for indices in target_folds.values()))
+        self.assertLessEqual(max(map(len, folds)) - min(map(len, folds)), 4)
+        for scenario in {row["scenario_type"] for row in samples}:
+            self.assertTrue(
+                all(any(row["scenario_type"] == scenario for row in fold) for fold in folds)
+            )
+
     def test_grouped_folds_are_deterministic_and_do_not_leak_targets(self) -> None:
         # Assigning one target to two folds would leak its outcome into model selection.
         from experiments.decision_cross_validation import grouped_stratified_folds
@@ -126,6 +161,63 @@ class DecisionCrossValidationTest(unittest.TestCase):
         )
         self.assertIn("outer_fold_hr10_regression", reasons)
         self.assertIn("latency_budget_exceeded", reasons)
+
+    def test_final_fit_filters_predeclared_training_fold_regressions_before_one_se(self) -> None:
+        # Selecting the higher technical score despite 3/3 HR regressions would leak an unsafe fit.
+        from experiments.decision_cross_validation import _final_training_cv
+
+        samples = [
+            {
+                "sample_id": f"selection-{target}-{duplicate}",
+                "scenario_type": "buying",
+                "coarse_category": "category-0",
+                "initial_candidate_bin": "large",
+                "ground_truth": {"parent_asin": f"selection-target-{target}"},
+            }
+            for target in range(9)
+            for duplicate in range(4)
+        ]
+        outcomes = {"legacy": {"sessions": []}, "candidate": {"sessions": []}}
+        for row in samples:
+            sample_id = row["sample_id"]
+            target_row = int(sample_id.rsplit("-", 1)[1]) == 0
+            base = {
+                "sample_id": sample_id,
+                "scenario_type": row["scenario_type"],
+                "hit": True,
+                "reciprocal_rank": 0.1,
+                "first_hit_turn": 10,
+            }
+            outcomes["legacy"]["sessions"].append(base)
+            outcomes["candidate"]["sessions"].append(
+                {
+                    **base,
+                    "hit": not target_row,
+                    "reciprocal_rank": 0.0 if target_row else 1.0,
+                    "first_hit_turn": None if target_row else 1,
+                }
+            )
+        configs = [
+            {
+                "id": "legacy",
+                "overlay": {},
+                "complexity": 0,
+                "latency_p95_ms": 0.0,
+                "catalog_stability": 1.0,
+            },
+            {
+                "id": "candidate",
+                "overlay": {"decision": {"candidate_question_value": {"enabled": True}}},
+                "complexity": 1,
+                "latency_p95_ms": 10.0,
+                "catalog_stability": 1.0,
+            },
+        ]
+
+        selected, rows, _ = _final_training_cv(configs, outcomes, samples, seed=20260829)
+        candidate = next(item for item in rows if item["id"] == "candidate")
+        self.assertEqual(selected["id"], "legacy")
+        self.assertIn("outer_fold_hr10_regression", candidate["selection_eligibility_reasons"])
 
     def test_two_of_three_nonregressing_folds_are_eligible(self) -> None:
         # Requiring the old four-of-five rule would reject a valid moderate three-fold run.

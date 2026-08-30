@@ -112,9 +112,16 @@ def grouped_stratified_folds(
             group_rows: Sequence[dict[str, Any]] = rows,
             group_counts: Mapping[str, Counter[str]] = group_marginals,
         ) -> tuple[float, int]:
-            # During greedy construction, penalize already-full folds rather than
-            # distance from the final target; the latter ties every empty fold.
-            size_cost = (fold_sizes[index] + len(group_rows)) / max(len(samples) / fold_count, 1)
+            # Score the entire hypothetical assignment, not just the candidate
+            # fold.  Candidate-fold-only distance can keep selecting a locally
+            # attractive fold and strand another fold empty.
+            hypothetical_sizes = list(fold_sizes)
+            hypothetical_sizes[index] += len(group_rows)
+            size_target = len(samples) / fold_count
+            size_cost = sum(
+                ((size - size_target) / max(size_target, 1)) ** 2
+                for size in hypothetical_sizes
+            )
             marginal_cost = 0.0
             for field, weight in (
                 ("scenario_type", 5.0),
@@ -124,14 +131,15 @@ def grouped_stratified_folds(
                 marginal_cost += weight * sum(
                     (
                         (
-                            fold_marginals[field][index][value]
-                            + count
+                            fold_marginals[field][fold_index][value]
+                            + (group_counts[field][value] if fold_index == index else 0)
                             - marginal_totals[field][value] / fold_count
                         )
                         / max(marginal_totals[field][value] / fold_count, 1)
                     )
                     ** 2
-                    for value, count in group_counts[field].items()
+                    for fold_index in range(fold_count)
+                    for value in marginal_totals[field]
                 )
             return (marginal_cost + size_cost, index)
 
@@ -612,6 +620,8 @@ def _final_training_cv(
         identifier: {str(row["sample_id"]): row for row in value["sessions"]}
         for identifier, value in outcomes.items()
     }
+    legacy_by_id = by_id[LEGACY_ID]
+    legacy_summary = _session_summary(list(legacy_by_id.values()))
     rows: list[dict[str, Any]] = []
     for config in configs:
         sessions = list(by_id[config["id"]].values())
@@ -620,20 +630,98 @@ def _final_training_cv(
             _session_summary([by_id[config["id"]][str(row["sample_id"])] for row in fold])
             for fold in folds
         ]
+        legacy_fold_summaries = [
+            _session_summary([legacy_by_id[str(row["sample_id"])] for row in fold])
+            for fold in folds
+        ]
         fold_means = [summary["mean"] for summary in fold_summaries]
-        rows.append(
+        scenario_hr10_deltas = {
+            name: value - legacy_summary["scenario_hr10"].get(name, 0.0)
+            for name, value in summary["scenario_hr10"].items()
+        }
+        row = {
+            **config,
+            **summary,
+            "training_cv_fold_metrics": [
+                {
+                    "fold": index,
+                    "hr10_delta_vs_legacy": fold_summary["hr10"] - legacy_summary["hr10"],
+                    **fold_summary["official_components"],
+                }
+                for index, (fold_summary, legacy_summary) in enumerate(
+                    zip(fold_summaries, legacy_fold_summaries, strict=True)
+                )
+            ],
+            "training_cv_fold_hr10_deltas": [
+                fold_summary["hr10"] - legacy_summary["hr10"]
+                for fold_summary, legacy_summary in zip(
+                    fold_summaries, legacy_fold_summaries, strict=True
+                )
+            ],
+            "scenario_hr10_deltas": scenario_hr10_deltas,
+            "standard_error": statistics.stdev(fold_means) / math.sqrt(len(fold_means)),
+            "canonical_json": canonical_json(config["overlay"]),
+        }
+        row["selection_eligibility_reasons"] = eligibility_reasons(
             {
-                **config,
-                **summary,
-                "training_cv_fold_metrics": [
-                    {"fold": index, **summary["official_components"]}
-                    for index, summary in enumerate(fold_summaries)
-                ],
-                "standard_error": statistics.stdev(fold_means) / math.sqrt(len(fold_means)),
-                "canonical_json": canonical_json(config["overlay"]),
+                **row,
+                "outer_fold_hr10_deltas": row["training_cv_fold_hr10_deltas"],
+            },
+            hr10_tolerance=0.005,
+            scenario_tolerance=0.02,
+            latency_budget_ms=MODERATE_LATENCY_BUDGET_MS,
+        )
+        row["selection_eligible"] = not row["selection_eligibility_reasons"]
+        rows.append(row)
+    eligible_rows = [row for row in rows if row["selection_eligible"]]
+    return select_one_standard_error(eligible_rows), rows, folds
+
+
+def _outer_audit_eligibility(
+    configs: Sequence[dict[str, Any]],
+    outcomes: Mapping[str, Mapping[str, Any]],
+    folds: Sequence[Sequence[dict[str, Any]]],
+) -> list[dict[str, Any]]:
+    """Report outer eligibility after final selection has already been frozen."""
+    by_id = {
+        identifier: {str(row["sample_id"]): row for row in value["sessions"]}
+        for identifier, value in outcomes.items()
+    }
+    legacy_by_id = by_id[LEGACY_ID]
+    legacy_summary = _session_summary(list(legacy_by_id.values()))
+    reports: list[dict[str, Any]] = []
+    for config in configs:
+        candidate_by_id = by_id[config["id"]]
+        fold_deltas = [
+            _session_summary([candidate_by_id[str(row["sample_id"])] for row in fold])["hr10"]
+            - _session_summary([legacy_by_id[str(row["sample_id"])] for row in fold])["hr10"]
+            for fold in folds
+        ]
+        candidate_summary = _session_summary(list(candidate_by_id.values()))
+        candidate = {
+            **config,
+            "outer_fold_hr10_deltas": fold_deltas,
+            "scenario_hr10_deltas": {
+                name: value - legacy_summary["scenario_hr10"].get(name, 0.0)
+                for name, value in candidate_summary["scenario_hr10"].items()
+            },
+        }
+        reasons = eligibility_reasons(
+            candidate,
+            hr10_tolerance=0.005,
+            scenario_tolerance=0.02,
+            latency_budget_ms=MODERATE_LATENCY_BUDGET_MS,
+        )
+        reports.append(
+            {
+                "id": config["id"],
+                "outer_fold_hr10_deltas": fold_deltas,
+                "scenario_hr10_deltas_session_weighted": candidate["scenario_hr10_deltas"],
+                "eligibility_reasons": reasons,
+                "eligible": not reasons,
             }
         )
-    return select_one_standard_error(rows), rows, folds
+    return reports
 
 
 def _commit_sha() -> str:
@@ -737,6 +825,11 @@ def run_cross_validation(
     final_config, candidate_reports, final_fit_folds = _final_training_cv(
         all_configs, outcomes, annotated, seed
     )
+    # The final ID is frozen by all-public training CV before any outer-test
+    # eligibility evidence is computed or reported.
+    outer_audit_eligibility = _outer_audit_eligibility(
+        all_configs, outcomes, outer_grouped_folds
+    )
     baseline_by_id = {
         str(session["sample_id"]): session for session in outcomes[LEGACY_ID]["sessions"]
     }
@@ -782,15 +875,23 @@ def run_cross_validation(
             "evaluation_environ": EVALUATION_ENV,
         },
         "procedure_audit": {
-            "purpose": "nested-procedure held-out evidence only; frozen before final fit",
+            "purpose": (
+                "nested-procedure held-out evidence only; audit selections frozen before "
+                "final fit and per-candidate eligibility reported read-only after final ID freeze"
+            ),
             "outer_fold_manifest": [
                 [str(row["sample_id"]) for row in fold] for fold in outer_grouped_folds
             ],
             "outer_results": outer_reports,
             "selected_ids_by_outer_fold": nested["selected_ids"],
+            "final_fit_selected_config_id_frozen": final_config["id"],
+            "per_candidate_eligibility_read_only": outer_audit_eligibility,
         },
         "final_fit": {
-            "purpose": "all-public-data deterministic grouped training-CV selection",
+            "purpose": (
+                "all-public-data deterministic grouped training-CV selection with "
+                "predeclared final-fit eligibility gates"
+            ),
             "fold_manifest": [[str(row["sample_id"]) for row in fold] for fold in final_fit_folds],
             "configurations": candidate_reports,
             "selected_config_id": final_config["id"],
@@ -814,7 +915,10 @@ def run_cross_validation(
         "recommendation": {
             "config_id": final_config["id"],
             "overlay": final_config["overlay"],
-            "selection": "one_standard_error_then_complexity_then_latency_then_canonical_json",
+            "selection": (
+                "final_fit_predeclared_eligibility_then_one_standard_error_then_complexity_"
+                "then_latency_then_canonical_json"
+            ),
         },
     }
     return report_payload, complete

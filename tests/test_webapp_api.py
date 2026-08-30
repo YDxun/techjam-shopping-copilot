@@ -4,6 +4,7 @@ import time
 from pathlib import Path
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 
 from tests.test_webapp_catalog import write_rows
@@ -154,7 +155,25 @@ def test_outer_framework_errors_are_sanitized_and_secured(tmp_path: Path) -> Non
     assert response.headers["referrer-policy"] == "no-referrer"
 
 
-def test_runtime_routes_return_stable_503_while_loading_and_after_failure(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("method", "path_template"),
+    [
+        ("POST", "/api/sessions"),
+        ("GET", "/api/sessions/{session_id}"),
+        ("POST", "/api/sessions/{session_id}/messages"),
+        ("GET", "/api/products/A1"),
+    ],
+    ids=["create-session", "get-session", "send-message", "get-product"],
+)
+def test_all_runtime_routes_return_stable_503_while_loading_and_after_failure(
+    tmp_path: Path, method: str, path_template: str
+) -> None:
+    path = path_template.format(session_id=uuid4())
+    request_kwargs = (
+        {"json": {"message_id": str(uuid4()), "message": "cotton"}}
+        if path.endswith("/messages")
+        else {}
+    )
     gate = threading.Event()
 
     def loading_initializer(path: Path) -> WebRuntime:
@@ -165,7 +184,7 @@ def test_runtime_routes_return_stable_503_while_loading_and_after_failure(tmp_pa
         catalog_path=tmp_path / "catalog.jsonl", initializer=loading_initializer
     )
     with TestClient(loading_app) as client:
-        loading = client.post("/api/sessions")
+        loading = client.request(method, path, **request_kwargs)
         assert loading.status_code == 503
         assert loading.json()["error"]["code"] == "service_initializing"
         gate.set()
@@ -178,6 +197,6 @@ def test_runtime_routes_return_stable_503_while_loading_and_after_failure(tmp_pa
     )
     with TestClient(failed_app) as client:
         assert wait_for_status(client, "failed")["status"] == "failed"
-        failed = client.post("/api/sessions")
+        failed = client.request(method, path, **request_kwargs)
     assert failed.status_code == 503
     assert failed.json()["error"]["code"] == "service_failed"

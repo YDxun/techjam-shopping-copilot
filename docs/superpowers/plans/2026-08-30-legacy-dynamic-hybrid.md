@@ -187,6 +187,7 @@ git commit -m "feat: configure hybrid question replacement"
 **Interfaces:**
 - Consumes: `HybridQuestionPolicyConfig`, Legacy `QuestionDecision`, `DialogueState`, `CatalogQuestionSignals`, and `CandidateQuestionSignals`.
 - Produces: `HybridQuestionPolicy.consider(state, legacy_decision, catalog_signals, candidate_signals) -> QuestionDecision`.
+- Produces: `HybridQuestionPolicy.statistics() -> dict[str, object]` with bounded aggregate reason, selected-attribute, replacement, and latency data.
 - Produces: `QuestionPolicy.needs_candidate_signals(state, recognition) -> bool`.
 - Produces: `DialogueUnderstandingPipeline.needs_candidate_signals(pending) -> bool`, which rejects Guard-owned turns before delegating to `QuestionPolicy`.
 
@@ -219,6 +220,8 @@ assert replacement.reason_code == "hybrid_specific_replacement"
 
 Cover an existing constraint, previously asked attribute, no-preference attribute, known category, non-finite signal, failed threshold, absent signals, counter already used, and deterministic tie order. Assert no case converts a Legacy stop or concrete question into another action.
 
+Add one statistics test that makes a preserved-first-other call and a replacement call, then asserts reason counts, selected-attribute counts, replacement count, and finite nonnegative p50/p95 decision latency without retaining user text or product IDs.
+
 - [ ] **Step 2: Run pure-policy tests and verify RED**
 
 ```bash
@@ -241,6 +244,8 @@ Expected: module missing.
 7. Calculate the exact fixed-weight `HybridGain` from the spec.
 8. Apply every threshold before selecting by score and `ATTRIBUTE_ORDER`.
 9. Return one of the documented Hybrid reason codes and privacy-safe numeric components.
+
+Maintain a lock-protected, bounded in-memory latency sample plus aggregate reason and selected-attribute counters only while Hybrid is enabled. `statistics()` must return a JSON-compatible snapshot and must never retain session IDs, user text, ASINs, titles, or raw candidate values.
 
 - [ ] **Step 4: Integrate Legacy-first orchestration**
 
@@ -302,6 +307,7 @@ git commit -m "feat: add legacy-first hybrid question policy"
 - Extends: `DialogueUnderstandingPipeline(..., catalog_resources: DialogueCatalogResources | None = None)`.
 - Extends: `Agent(..., dialogue_catalog_resources: DialogueCatalogResources | None = None)`.
 - Extends: `CandidateSignalCalculator.calculate(..., include_other: bool = True)`.
+- Produces: `Agent.hybrid_question_statistics() -> dict[str, object]`, forwarding the current Agent's independent Hybrid-policy snapshot.
 
 - [ ] **Step 1: Write failing resource-sharing and concrete-only tests**
 

@@ -1,7 +1,7 @@
 # Legacy 主控与单次动态替换混合提问架构
 
 日期：2026-08-30  
-状态：已完成讨论，待用户审阅  
+状态：用户已批准
 适用项目：TechJam Shopping Copilot
 
 ## 1. 目标
@@ -128,6 +128,9 @@ HybridGain(attribute) =
   "enabled": false,
   "max_replacements_per_session": 1,
   "only_after_other_asked": true,
+  "pool_size": 300,
+  "prior_alpha": 0.25,
+  "prior_temperature": 1.0,
   "minimum_coverage": 0.60,
   "maximum_missing_rate": 0.40,
   "minimum_expected_shrink": 0.25,
@@ -150,9 +153,12 @@ HybridGain(attribute) =
 - 默认 `enabled=false`，保持当前 Legacy 行为。
 - `max_replacements_per_session` 本版只接受 `0` 或 `1`。
 - `only_after_other_asked` 本版固定为 `true`；配置字段用于明确语义，不支持首问替换。
+- `pool_size`、`prior_alpha` 和 `prior_temperature` 只控制 Hybrid 的候选信号生成，不隐式启用完整动态策略。
 - 所有权重和阈值在启动时校验并冻结。
 - Hybrid 启用时可以构建候选属性缓存；构建或计算失败必须回退 Legacy。
 - 现有 `candidate_question_value.enabled` 的完整动态模式保持兼容，但 Hybrid 与完整动态模式不得同时启用。
+
+生产 Agent 仍自行拥有并构建一份目录资源。轻量对比实验则必须显式构建一个只读资源包，包含商品快照、检索索引、全局品类信号和 `CatalogAttributeCache`，Legacy 与三组 Hybrid 顺序共享该资源包。共享范围只限不可变目录数据；每个版本必须新建自己的 `DialogueUnderstandingPipeline`、`QuestionPolicy`、状态容器、Reranker 和诊断计数，防止会话状态或上一配置的结果泄漏。
 
 ## 6. 诊断与错误处理
 
@@ -177,6 +183,9 @@ Hybrid 决策复用现有隐私安全 trace，只记录聚合数值和原因码�
 - 所有版本使用完全相同的样本顺序、检索设置、规则意图模式和随机种子。
 - 比较 Legacy 加三组 Hybrid 门控，共 80 个会话 rollout。
 - 不调用外部 LLM，不运行大规模嵌套交叉验证。
+- 商品目录、检索索引、全局目录信号和逐商品属性缓存只构建一次，三组 Hybrid 共享；各版本的会话状态完全独立。
+- 关闭两步前瞻和无关诊断导出，只保留结果报告所需的聚合计数与耗时。
+- 从实验进程启动开始设置 1,200 秒硬截止；截止时停止剩余 rollout，原子写出已完成配置、已完成样本数、超时位置和 `status="time_budget_exceeded"`，不得把不完整结果作为胜负结论。
 
 ### 7.2 三组门控
 

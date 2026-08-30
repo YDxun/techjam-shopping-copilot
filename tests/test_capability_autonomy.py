@@ -27,7 +27,7 @@ class _FakeLLM:
     def initialize(self) -> LLMStatus:
         return self._state
 
-    def chat(self, messages, *, temperature=None, max_tokens=None):
+    def chat(self, messages, *, temperature=None, max_tokens=None, request_options=None):
         self.calls += 1
         if not self.reply:
             return LLMResult(

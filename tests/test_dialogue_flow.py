@@ -173,7 +173,7 @@ class UnavailableClient:
     def initialize(self) -> LLMStatus:
         return self.status
 
-    def chat(self, messages, *, temperature=None, max_tokens=None):
+    def chat(self, messages, *, temperature=None, max_tokens=None, request_options=None):
         raise AssertionError("unavailable client must not be called")
 
 
@@ -192,7 +192,9 @@ class ScriptedIntentClient:
     def initialize(self) -> LLMStatus:
         return self.status
 
-    def chat(self, messages, *, temperature=None, max_tokens=None) -> LLMResult:
+    def chat(
+        self, messages, *, temperature=None, max_tokens=None, request_options=None
+    ) -> LLMResult:
         return LLMResult(True, "test", "test-model", content=self._response)
 
 

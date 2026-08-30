@@ -45,8 +45,10 @@ class FakeLLMClient:
     def initialize(self) -> LLMStatus:
         return self._status
 
-    def chat(self, messages, *, temperature=None, max_tokens=None) -> LLMResult:
-        self.calls.append((messages, temperature, max_tokens))
+    def chat(
+        self, messages, *, temperature=None, max_tokens=None, request_options=None
+    ) -> LLMResult:
+        self.calls.append((messages, temperature, max_tokens, request_options))
         return self.result
 
 

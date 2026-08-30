@@ -53,6 +53,14 @@ class LLMResult:
     error_message: str = ""
 
 
+@dataclass(frozen=True)
+class LLMRequestOptions:
+    """Optional per-call capabilities understood by compatible providers."""
+
+    json_output: bool = False
+    thinking_mode: str = "default"
+
+
 class LLMClient(Protocol):
     @property
     def status(self) -> LLMStatus: ...
@@ -68,6 +76,7 @@ class LLMClient(Protocol):
         *,
         temperature: float | None = None,
         max_tokens: int | None = None,
+        request_options: LLMRequestOptions | None = None,
     ) -> LLMResult: ...
 
 
@@ -94,6 +103,7 @@ class DisabledLLMClient:
         *,
         temperature: float | None = None,
         max_tokens: int | None = None,
+        request_options: LLMRequestOptions | None = None,
     ) -> LLMResult:
         return LLMResult(
             False,

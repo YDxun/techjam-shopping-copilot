@@ -19,6 +19,12 @@
     "mode": "cascaded",
     "rule_confidence_threshold": 0.75,
     "max_evidence_length": 180,
+    "intent_llm": {
+      "json_output": true,
+      "thinking_mode": "disabled",
+      "normalization_vocab_enabled": true,
+      "normalization_min_product_count": 1
+    },
     "transition_guard": {
       "enabled": false,
       "add_min_confidence": 0.65,
@@ -143,7 +149,7 @@
     },
     "providers": {
       "deepseek": {
-        "model": "deepseek-chat",
+        "model": "deepseek-v4-flash",
         "base_url": "https://api.deepseek.com",
         "token_limit_parameter": "max_tokens",
         "supports_temperature": true

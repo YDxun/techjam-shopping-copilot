@@ -136,11 +136,20 @@ and they never appear in the config summary, startup output, or error text.
 | `LLM_RETRY_BASE_DELAY_SECONDS` / `LLM_RETRY_MAX_DELAY_SECONDS` | `0.5` / `1.5` | retry backoff range (s) |
 | `LLM_CIRCUIT_BREAKER_FAILURE_THRESHOLD` | `2` | runtime failure threshold before opening the circuit breaker |
 | `LLM_INTENT_ENABLE` | `0` | use the LLM for intent recognition (off by default; truly enabled only when probed available; rule fallback on failure) |
+| `LLM_INTENT_JSON_OUTPUT` | `1` | request provider-supported JSON output for intent recognition |
+| `LLM_INTENT_THINKING_MODE` | `disabled` | DeepSeek intent-call thinking mode: `default` / `disabled` / `enabled` |
+| `LLM_INTENT_NORMALIZATION_VOCAB` | `1` | provide catalog-supported English canonical values for Chinese intent normalization |
+| `LLM_INTENT_NORMALIZATION_MIN_PRODUCT_COUNT` | `1` | minimum catalog support required before a canonical value is exposed to the LLM |
 | `LLM_CLARIFY_ENABLE` | `0` | use the LLM for clarify decisions (off by default; same semantics) |
 | `CAPABILITY_NETWORK_PROBE` | `0` | additionally probe external connectivity when the LLM is unavailable (1=on, httpx 2s) |
 | `EMBEDDING_MODEL` / `RERANKER_MODEL` | see `config/default.json` | optional retrieval and rerank models |
 | `CLARIFY_STRATEGY` / `OVERRIDE_ERASE` / `LLM_RERANK` | `other` / `0` / `1` | dialogue policy; `LLM_RERANK=0` forces deterministic rule rerank |
 | `SAMPLE_LIMIT` / `SKIP_DATA_VERIFY` / `OUTPUT_PATH` | empty / `0` / `results.json` | smoke scope, data verification, and result path |
+
+Chinese-containing intent requests keep the existing English JSON contract. Closed attributes
+(`category`, `material`, `color`, `size`, `style`, and `use_case`) receive canonical values from
+`data/assets/vocab_v2_clean.json`, filtered by catalog `product_count`; Chinese is preserved only in
+the grounded `evidence` span. Open attributes such as `feature`, `brand`, and `other` remain free-form.
 
 Every `run_local_eval.py` startup prints the sanitized LLM state before data verification: provider, model, state, attempts, and the error category when available:
 

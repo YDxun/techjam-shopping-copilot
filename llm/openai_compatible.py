@@ -8,7 +8,14 @@ from typing import Callable, Sequence
 
 from config.models import LLMConfig, ProviderConfig
 
-from .base import LLMErrorCategory, LLMResult, LLMState, LLMStatus, LLMUsage
+from .base import (
+    LLMErrorCategory,
+    LLMRequestOptions,
+    LLMResult,
+    LLMState,
+    LLMStatus,
+    LLMUsage,
+)
 
 
 @dataclass(frozen=True)
@@ -136,6 +143,7 @@ class OpenAICompatibleClient:
         messages: Sequence[dict[str, str]],
         temperature: float | None,
         max_tokens: int | None,
+        request_options: LLMRequestOptions | None = None,
     ) -> dict[str, object]:
         profile = self._require_profile()
         requested_max_tokens = self._config.max_tokens if max_tokens is None else max_tokens
@@ -144,6 +152,16 @@ class OpenAICompatibleClient:
         kwargs[profile.token_limit_parameter] = requested_max_tokens
         if profile.supports_temperature and requested_temperature is not None:
             kwargs["temperature"] = requested_temperature
+        if request_options is not None and request_options.json_output:
+            kwargs["response_format"] = {"type": "json_object"}
+        if (
+            request_options is not None
+            and self._config.provider == "deepseek"
+            and request_options.thinking_mode != "default"
+        ):
+            kwargs["extra_body"] = {
+                "thinking": {"type": request_options.thinking_mode}
+            }
         return kwargs
 
     def _create(
@@ -151,9 +169,10 @@ class OpenAICompatibleClient:
         messages: Sequence[dict[str, str]],
         temperature: float | None,
         max_tokens: int | None,
+        request_options: LLMRequestOptions | None = None,
     ) -> object:
         return self._make_sdk().chat.completions.create(
-            **self._request_kwargs(messages, temperature, max_tokens)
+            **self._request_kwargs(messages, temperature, max_tokens, request_options)
         )
 
     def _attempt(
@@ -161,6 +180,7 @@ class OpenAICompatibleClient:
         messages: Sequence[dict[str, str]],
         temperature: float | None,
         max_tokens: int | None,
+        request_options: LLMRequestOptions | None = None,
         max_retries: int | None = None,
     ) -> tuple[object | None, int, Exception | None, FailureDisposition | None]:
         allowed_retries = self._config.retry.max_retries if max_retries is None else max_retries
@@ -168,7 +188,12 @@ class OpenAICompatibleClient:
         while True:
             attempts += 1
             try:
-                return self._create(messages, temperature, max_tokens), attempts, None, None
+                return (
+                    self._create(messages, temperature, max_tokens, request_options),
+                    attempts,
+                    None,
+                    None,
+                )
             except Exception as error:
                 disposition = self._failure_classifier(error)
                 if not disposition.retryable or attempts > allowed_retries:
@@ -263,6 +288,7 @@ class OpenAICompatibleClient:
         *,
         temperature: float | None = None,
         max_tokens: int | None = None,
+        request_options: LLMRequestOptions | None = None,
     ) -> LLMResult:
         if self._runtime_failures >= self._config.circuit_breaker.failure_threshold:
             self._open_circuit()
@@ -284,7 +310,12 @@ class OpenAICompatibleClient:
                     error_message=status.error_message,
                 )
         start = self._clock()
-        response, _, error, disposition = self._attempt(messages, temperature, max_tokens)
+        response, _, error, disposition = self._attempt(
+            messages,
+            temperature,
+            max_tokens,
+            request_options,
+        )
         latency_ms = (self._clock() - start) * 1000
         if error is not None:
             self._runtime_failures += 1

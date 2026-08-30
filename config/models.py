@@ -50,11 +50,20 @@ class TransitionGuardConfig:
 
 
 @dataclass(frozen=True)
+class IntentLLMConfig:
+    json_output: bool = True
+    thinking_mode: str = "disabled"
+    normalization_vocab_enabled: bool = True
+    normalization_min_product_count: int = 1
+
+
+@dataclass(frozen=True)
 class DialogueUnderstandingConfig:
     mode: str = "cascaded"
     rule_confidence_threshold: float = 0.75
     max_evidence_length: int = 180
     transition_guard: TransitionGuardConfig = field(default_factory=TransitionGuardConfig)
+    intent_llm: IntentLLMConfig = field(default_factory=IntentLLMConfig)
 
 
 @dataclass(frozen=True)
@@ -210,7 +219,9 @@ class ProviderConfigs:
 
 def _default_provider_configs() -> ProviderConfigs:
     return ProviderConfigs(
-        deepseek=ProviderConfig("deepseek-chat", "https://api.deepseek.com", "max_tokens", True),
+        deepseek=ProviderConfig(
+            "deepseek-v4-flash", "https://api.deepseek.com", "max_tokens", True
+        ),
         openai=ProviderConfig(
             "gpt-4o-mini", "https://api.openai.com/v1", "max_completion_tokens", True
         ),

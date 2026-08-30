@@ -8,6 +8,7 @@ from pathlib import Path
 
 from config.env_config import EnvConfig
 from config.loader import ConfigError, load_config
+from config.models import LLMConfig
 
 
 def contains_string(value: object, expected: str) -> bool:
@@ -177,7 +178,7 @@ class ConfigLoaderTest(unittest.TestCase):
 
     def test_default_provider_profiles(self) -> None:
         config = load_config(environ={})
-        self.assertEqual(config.llm.providers.deepseek.model, "deepseek-chat")
+        self.assertEqual(config.llm.providers.deepseek.model, "deepseek-v4-flash")
         self.assertEqual(config.llm.providers.deepseek.base_url, "https://api.deepseek.com")
         self.assertEqual(config.llm.providers.deepseek.token_limit_parameter, "max_tokens")
         self.assertTrue(config.llm.providers.deepseek.supports_temperature)
@@ -185,6 +186,46 @@ class ConfigLoaderTest(unittest.TestCase):
         self.assertEqual(config.llm.providers.openai.base_url, "https://api.openai.com/v1")
         self.assertEqual(config.llm.providers.openai.token_limit_parameter, "max_completion_tokens")
         self.assertTrue(config.llm.providers.openai.supports_temperature)
+
+    def test_intent_llm_defaults_use_json_without_thinking_and_catalog_vocab(self) -> None:
+        config = load_config(environ={})
+        intent = config.dialogue_understanding.intent_llm
+
+        self.assertTrue(intent.json_output)
+        self.assertEqual(intent.thinking_mode, "disabled")
+        self.assertTrue(intent.normalization_vocab_enabled)
+        self.assertEqual(intent.normalization_min_product_count, 1)
+
+    def test_intent_llm_environment_overrides_are_applied(self) -> None:
+        config = load_config(
+            environ={
+                "LLM_INTENT_JSON_OUTPUT": "0",
+                "LLM_INTENT_THINKING_MODE": "default",
+                "LLM_INTENT_NORMALIZATION_VOCAB": "0",
+                "LLM_INTENT_NORMALIZATION_MIN_PRODUCT_COUNT": "3",
+            }
+        )
+        intent = config.dialogue_understanding.intent_llm
+
+        self.assertFalse(intent.json_output)
+        self.assertEqual(intent.thinking_mode, "default")
+        self.assertFalse(intent.normalization_vocab_enabled)
+        self.assertEqual(intent.normalization_min_product_count, 3)
+
+    def test_intent_llm_configuration_rejects_invalid_domains(self) -> None:
+        cases = (
+            ({"thinking_mode": "sometimes"}, "thinking_mode"),
+            ({"normalization_min_product_count": -1}, "normalization_min_product_count"),
+        )
+        for intent_llm, field in cases:
+            with self.subTest(field=field), self.assertRaisesRegex(ConfigError, field):
+                load_config(
+                    overrides={"dialogue_understanding": {"intent_llm": intent_llm}},
+                    environ={},
+                )
+
+    def test_builtin_deepseek_profile_defaults_to_v4_flash(self) -> None:
+        self.assertEqual(LLMConfig().providers.deepseek.model, "deepseek-v4-flash")
 
     def test_dataclass_serialization_never_contains_selected_provider_key(self) -> None:
         secret = "selected-provider-secret"

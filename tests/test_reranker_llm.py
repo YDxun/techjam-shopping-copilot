@@ -70,7 +70,12 @@ class FalseyLLMClient:
         return self._status
 
     def chat(
-        self, messages: object, *, temperature: float | None = None, max_tokens: int | None = None
+        self,
+        messages: object,
+        *,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        request_options: object | None = None,
     ) -> LLMResult:
         return LLMResult(True, "deepseek", "deepseek-chat", content='["A", "B"]')
 

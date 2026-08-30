@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import unittest
+from types import SimpleNamespace
 
 from agent.dialogue.models import (
     ConstraintStrength,
@@ -33,8 +34,15 @@ class FakeLLMClient:
     def initialize(self) -> LLMStatus:
         return self._status
 
-    def chat(self, messages, *, temperature=None, max_tokens=None) -> LLMResult:
-        self.calls.append((messages, temperature, max_tokens))
+    def chat(
+        self,
+        messages,
+        *,
+        temperature=None,
+        max_tokens=None,
+        request_options=None,
+    ) -> LLMResult:
+        self.calls.append((messages, temperature, max_tokens, request_options))
         return self.result
 
 
@@ -197,6 +205,149 @@ class RecognizerTest(unittest.TestCase):
         )
         self.assertIn('"operation":"replace"', system_prompt)
         self.assertIn("shortest exact span", system_prompt)
+
+    def test_pure_english_prompt_does_not_include_chinese_guidance(self) -> None:
+        recognizer = LLMIntentRecognizer(
+            FakeLLMClient(successful_result("{}")),
+            max_evidence_length=180,
+        )
+
+        system_prompt = recognizer._messages(
+            self.request("I need a waterproof hiking jacket.")
+        )[0]["content"]
+
+        self.assertNotIn("Chinese-language input mode", system_prompt)
+
+    def test_chinese_and_mixed_inputs_select_english_normalization_guidance(self) -> None:
+        recognizer = LLMIntentRecognizer(
+            FakeLLMClient(successful_result("{}")),
+            max_evidence_length=180,
+        )
+
+        messages = (
+            "我想买一件必须防水的徒步外套。",
+            "我想買一件必須防水的徒步外套。",
+            "我想要 waterproof 的外套，预算不超过 100 USD。",
+        )
+        for message in messages:
+            with self.subTest(message=message):
+                system_prompt = recognizer._messages(self.request(message))[0]["content"]
+                self.assertIn("Chinese-language input mode", system_prompt)
+                self.assertIn(
+                    "category, constraint values, and ambiguity descriptions in English",
+                    system_prompt,
+                )
+                self.assertIn("Evidence is the only language exception", system_prompt)
+                self.assertIn("必须防水", system_prompt)
+                self.assertIn("改成深蓝色", system_prompt)
+                self.assertIn('"category":"jacket"', system_prompt)
+                self.assertIn('"attribute":"use_case","value":"hiking"', system_prompt)
+                self.assertNotIn('"category":"hiking jackets"', system_prompt)
+
+    def test_chinese_prompt_includes_only_catalog_supported_canonical_values(self) -> None:
+        vocabulary = SimpleNamespace(
+            allowed_values={
+                "category": ("jacket",),
+                "color": ("navy",),
+            },
+            canonicalize=lambda attribute, value: value,
+        )
+        try:
+            recognizer = LLMIntentRecognizer(
+                FakeLLMClient(successful_result("{}")),
+                max_evidence_length=180,
+                normalization_vocabulary=vocabulary,
+            )
+        except TypeError as error:
+            self.fail(f"recognizer rejected normalization vocabulary: {error}")
+
+        system_prompt = recognizer._messages(
+            self.request("我想买一件深蓝色外套。")
+        )[0]["content"]
+
+        self.assertIn('"category":["jacket"]', system_prompt)
+        self.assertIn('"color":["navy"]', system_prompt)
+        self.assertIn("use the exact canonical value", system_prompt)
+
+    def test_chinese_llm_values_are_canonicalized_after_parsing(self) -> None:
+        aliases = {
+            ("category", "windbreaker"): "jacket",
+            ("color", "navy blue"): "navy",
+        }
+        vocabulary = SimpleNamespace(
+            allowed_values={"category": ("jacket",), "color": ("navy",)},
+            canonicalize=lambda attribute, value: aliases.get((attribute, value), value),
+        )
+        try:
+            recognizer = LLMIntentRecognizer(
+                FakeLLMClient(successful_result("{}")),
+                max_evidence_length=180,
+                normalization_vocabulary=vocabulary,
+            )
+        except TypeError as error:
+            self.fail(f"recognizer rejected normalization vocabulary: {error}")
+        response = (
+            '{"dialogue_act":"new_search","category":"windbreaker",'
+            '"constraint_operations":[{"operation":"add","attribute":"color",'
+            '"value":"navy blue","polarity":"include","strength":"soft",'
+            '"evidence":"深蓝色","confidence":0.95}],'
+            '"explicit_rejected_asins":[],"confidence":0.95,"ambiguities":[]}'
+        )
+
+        result = recognizer._parse(response, (), "我想买一件深蓝色外套。")
+
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertEqual(result.category, "jacket")
+        self.assertEqual(result.constraint_operations[0].value, "navy")
+
+    def test_intent_request_uses_configured_structured_output_options(self) -> None:
+        client = FakeLLMClient(
+            successful_result(
+                '{"dialogue_act":"ambiguous","category":null,'
+                '"constraint_operations":[],"explicit_rejected_asins":[],'
+                '"confidence":0.5,"ambiguities":[]}'
+            )
+        )
+        request_options = SimpleNamespace(json_output=True, thinking_mode="disabled")
+        try:
+            recognizer = LLMIntentRecognizer(
+                client,
+                max_evidence_length=180,
+                request_options=request_options,
+            )
+        except TypeError as error:
+            self.fail(f"recognizer rejected structured request options: {error}")
+
+        recognizer.recognize(self.request("我想看看别的选择。"))
+
+        self.assertIs(client.calls[0][3], request_options)
+
+    def test_chinese_evidence_parses_with_english_framework_values(self) -> None:
+        recognizer = LLMIntentRecognizer(
+            FakeLLMClient(successful_result("{}")),
+            max_evidence_length=180,
+        )
+        response = (
+            '{"dialogue_act":"new_search","category":"hiking jackets",'
+            '"constraint_operations":[{"operation":"add","attribute":"feature",'
+            '"value":"waterproof","polarity":"include","strength":"hard",'
+            '"evidence":"必须防水","confidence":0.97}],'
+            '"explicit_rejected_asins":[],"confidence":0.97,"ambiguities":[]}'
+        )
+
+        result = recognizer._parse(
+            response,
+            (),
+            "我想买一件徒步外套，必须防水。",
+        )
+
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertEqual(result.dialogue_act, DialogueAct.NEW_SEARCH)
+        self.assertEqual(result.category, "hiking jackets")
+        self.assertEqual(result.constraint_operations[0].value, "waterproof")
+        self.assertEqual(result.constraint_operations[0].evidence, "必须防水")
 
     def test_cascade_statistics_count_an_accepted_llm_result(self) -> None:
         client = FakeLLMClient(
@@ -421,6 +572,23 @@ class RecognizerTest(unittest.TestCase):
         assert ungrounded is not None
         self.assertTrue(grounded.explicit_no_more_preferences)
         self.assertFalse(ungrounded.explicit_no_more_preferences)
+
+    def test_llm_chinese_no_more_signal_is_derived_from_the_user_message(self) -> None:
+        recognizer = LLMIntentRecognizer(
+            FakeLLMClient(successful_result("{}")), max_evidence_length=180
+        )
+        response = (
+            '{"dialogue_act":"no_more_preferences","category":null,'
+            '"constraint_operations":[],"explicit_rejected_asins":[],'
+            '"confidence":0.99,"ambiguities":[]}'
+        )
+
+        for message in ("没有其他要求了。", "沒有其他要求了。"):
+            with self.subTest(message=message):
+                result = recognizer._parse(response, (), message)
+                self.assertIsNotNone(result)
+                assert result is not None
+                self.assertTrue(result.explicit_no_more_preferences)
 
 
 if __name__ == "__main__":

@@ -21,6 +21,8 @@ import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import MappingProxyType
+from typing import Mapping
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +32,28 @@ _VOCAB_FILE = "vocab_v2_clean.json"
 _CATEGORY_FILE = "category_mapping.json"
 _PARAPHRASE_FILE = "review_paraphrases.json"
 _FIELD_FILE = "field_mapping.json"
+
+_NORMALIZATION_DICTIONARIES = {
+    "category": "category_product_type",
+    "material": "material",
+    "color": "color",
+    "size": "size",
+    "style": "style",
+    "use_case": "use_case",
+}
+
+
+def _normalization_key(value: str) -> str:
+    return " ".join((value or "").strip().casefold().split())
+
+
+@dataclass(frozen=True)
+class NormalizationVocabulary:
+    allowed_values: Mapping[str, tuple[str, ...]]
+    _synonym_index: Mapping[tuple[str, str], str] = field(repr=False)
+
+    def canonicalize(self, attribute: str, value: str) -> str:
+        return self._synonym_index.get((attribute, _normalization_key(value)), value)
 
 
 @dataclass(frozen=True)
@@ -43,6 +67,37 @@ class DataAssets:
     @property
     def available(self) -> bool:
         return bool(self.loaded)
+
+    def normalization_vocabulary(
+        self,
+        *,
+        min_product_count: int = 1,
+    ) -> NormalizationVocabulary:
+        dictionaries = self.vocab.get("dictionaries") or {}
+        allowed: dict[str, tuple[str, ...]] = {}
+        synonym_index: dict[tuple[str, str], str] = {}
+        for attribute, dictionary_name in _NORMALIZATION_DICTIONARIES.items():
+            entries = dictionaries.get(dictionary_name) or {}
+            canonical_values: list[str] = []
+            for raw_canonical, raw_entry in entries.items():
+                if not isinstance(raw_entry, dict):
+                    continue
+                if int(raw_entry.get("product_count") or 0) < min_product_count:
+                    continue
+                canonical = str(raw_entry.get("canonical") or raw_canonical).strip()
+                if not canonical:
+                    continue
+                canonical_values.append(canonical)
+                terms = [canonical, *(raw_entry.get("synonyms") or [])]
+                for term in terms:
+                    if isinstance(term, str) and _normalization_key(term):
+                        synonym_index[(attribute, _normalization_key(term))] = canonical
+            if canonical_values:
+                allowed[attribute] = tuple(sorted(dict.fromkeys(canonical_values)))
+        return NormalizationVocabulary(
+            allowed_values=MappingProxyType(allowed),
+            _synonym_index=MappingProxyType(synonym_index),
+        )
 
     # ------------------------------------------------------------------
     # vocab: constraint value -> synonym phrases (for BM25 query expansion)

@@ -71,6 +71,45 @@ def make_client(provider: str = "deepseek", config: LLMConfig | None = None, **k
 
 
 class OpenAICompatibleClientTest(unittest.TestCase):
+    def test_deepseek_structured_intent_options_disable_thinking_and_request_json(self) -> None:
+        client, sdk = make_client(provider="deepseek")
+        client.initialize()
+
+        try:
+            client.chat(
+                [{"role": "user", "content": "extract intent"}],
+                max_tokens=256,
+                request_options=SimpleNamespace(
+                    json_output=True,
+                    thinking_mode="disabled",
+                ),
+            )
+        except TypeError as error:
+            self.fail(f"client rejected structured intent options: {error}")
+
+        kwargs = sdk.chat.completions.create.call_args.kwargs
+        self.assertEqual(kwargs["response_format"], {"type": "json_object"})
+        self.assertEqual(kwargs["extra_body"], {"thinking": {"type": "disabled"}})
+
+    def test_openai_structured_intent_options_do_not_send_deepseek_thinking_parameter(self) -> None:
+        client, sdk = make_client(provider="openai")
+        client.initialize()
+
+        try:
+            client.chat(
+                [{"role": "user", "content": "extract intent"}],
+                request_options=SimpleNamespace(
+                    json_output=True,
+                    thinking_mode="disabled",
+                ),
+            )
+        except TypeError as error:
+            self.fail(f"client rejected structured intent options: {error}")
+
+        kwargs = sdk.chat.completions.create.call_args.kwargs
+        self.assertEqual(kwargs["response_format"], {"type": "json_object"})
+        self.assertNotIn("extra_body", kwargs)
+
     def test_deepseek_uses_max_tokens_and_temperature(self) -> None:
         client, sdk = make_client(provider="deepseek")
         client.initialize()

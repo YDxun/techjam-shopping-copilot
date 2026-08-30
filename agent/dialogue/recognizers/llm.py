@@ -17,7 +17,8 @@ from agent.dialogue.models import (
     RecognitionResult,
     RecognitionSource,
 )
-from llm.base import LLMClient, LLMState, LLMUsage
+from llm.base import LLMClient, LLMRequestOptions, LLMState, LLMUsage
+from utils.data_assets import NormalizationVocabulary
 
 TOP_LEVEL_FIELDS = {
     "dialogue_act",
@@ -37,8 +38,11 @@ OPERATION_FIELDS = {
     "confidence",
 }
 RE_EXPLICIT_NO_MORE_PREFERENCES = re.compile(
-    r"\b(?:no more preferences|no additional preferences)\b",
+    r"(?:\b(?:no more preferences|no additional preferences)\b|没有其他要求了|沒有其他要求了)",
     re.I,
+)
+RE_CJK_IDEOGRAPH = re.compile(
+    r"[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\U00020000-\U0002fa1f]"
 )
 
 INTENT_RESPONSE_SCHEMA = {
@@ -101,10 +105,14 @@ class LLMIntentRecognizer:
         *,
         max_evidence_length: int,
         max_tokens: int = 256,
+        request_options: LLMRequestOptions | None = None,
+        normalization_vocabulary: NormalizationVocabulary | None = None,
     ) -> None:
         self.client = client
         self.max_evidence_length = max_evidence_length
         self.max_tokens = max_tokens
+        self.request_options = request_options or LLMRequestOptions()
+        self.normalization_vocabulary = normalization_vocabulary
         self._local = threading.local()
 
     @property
@@ -137,6 +145,7 @@ class LLMIntentRecognizer:
             self._messages(request),
             temperature=0.0,
             max_tokens=self.max_tokens,
+            request_options=self.request_options,
         )
         self.last_usage = result.usage
         if not result.success:
@@ -191,59 +200,151 @@ class LLMIntentRecognizer:
             "confidence": 0.95,
             "ambiguities": [],
         }
+        instructions = [
+            "Extract the user's shopping intent from the supplied conversation context.",
+            (
+                "Only extract requirements stated in this turn: never infer product "
+                "attributes, repeat prior constraints, invent ASINs, or recommend products."
+            ),
+            (
+                "Use hard strength for necessary language (must, need, require, important, "
+                "key requirement); use replace only for a new requirement that supersedes an "
+                "earlier preference; use remove for explicit no-preference statements."
+            ),
+            (
+                "For reject_products, explicit_rejected_asins may contain only IDs from "
+                "recently_shown_asins. Evidence must be an exact substring of user_message."
+            ),
+        ]
+        if RE_CJK_IDEOGRAPH.search(request.user_message):
+            instructions.extend(self._chinese_language_guidance())
+            if self.normalization_vocabulary is not None:
+                instructions.extend(self._normalization_vocabulary_guidance())
+        instructions.extend(
+            (
+                "Return exactly one JSON object matching this JSON Schema:",
+                json.dumps(
+                    response_schema,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                ),
+                (
+                    "Include every required field, use no additional fields, and output "
+                    "no markdown or commentary."
+                ),
+                (
+                    "Use category=null when no category is stated. Use empty arrays when "
+                    "there are no operations, rejected ASINs, or ambiguities."
+                ),
+                (
+                    "For each constraint operation, copy evidence from user_message and "
+                    f"keep it at most {self.max_evidence_length} characters long."
+                ),
+                (
+                    "Every constraint operation must include all seven required fields. "
+                    "Use the shortest exact span from user_message as evidence; never copy "
+                    "the whole user_message."
+                ),
+                "Valid replace-constraint example:",
+                json.dumps(replace_example, ensure_ascii=False, separators=(",", ":")),
+                "Only include explicit_rejected_asins that appear in recently_shown_asins.",
+            )
+        )
         return [
             {
                 "role": "system",
-                "content": "\n".join(
-                    (
-                        (
-                            "Extract the user's shopping intent from the supplied conversation "
-                            "context."
-                        ),
-                        (
-                            "Only extract requirements stated in this turn: never infer product "
-                            "attributes, repeat prior constraints, invent ASINs, or recommend products."
-                        ),
-                        (
-                            "Use hard strength for necessary language (must, need, require, important, "
-                            "key requirement); use replace only for a new requirement that supersedes an "
-                            "earlier preference; use remove for explicit no-preference statements."
-                        ),
-                        (
-                            "For reject_products, explicit_rejected_asins may contain only IDs from "
-                            "recently_shown_asins. Evidence must be an exact substring of user_message."
-                        ),
-                        "Return exactly one JSON object matching this JSON Schema:",
-                        json.dumps(
-                            response_schema,
-                            ensure_ascii=False,
-                            separators=(",", ":"),
-                        ),
-                        (
-                            "Include every required field, use no additional fields, and output "
-                            "no markdown or commentary."
-                        ),
-                        (
-                            "Use category=null when no category is stated. Use empty arrays when "
-                            "there are no operations, rejected ASINs, or ambiguities."
-                        ),
-                        (
-                            "For each constraint operation, copy evidence from user_message and "
-                            f"keep it at most {self.max_evidence_length} characters long."
-                        ),
-                        (
-                            "Every constraint operation must include all seven required fields. "
-                            "Use the shortest exact span from user_message as evidence; never copy "
-                            "the whole user_message."
-                        ),
-                        "Valid replace-constraint example:",
-                        json.dumps(replace_example, ensure_ascii=False, separators=(",", ":")),
-                        "Only include explicit_rejected_asins that appear in recently_shown_asins.",
-                    )
-                ),
+                "content": "\n".join(instructions),
             },
             {"role": "user", "content": json.dumps(context, ensure_ascii=False)},
         ]
+
+    def _normalization_vocabulary_guidance(self) -> tuple[str, ...]:
+        assert self.normalization_vocabulary is not None
+        allowed_values = {
+            attribute: list(values)
+            for attribute, values in self.normalization_vocabulary.allowed_values.items()
+        }
+        return (
+            (
+                "For category, material, color, size, style, and use_case, use the exact "
+                "canonical value from allowed_values when it faithfully matches the user's "
+                "meaning. Do not force a wrong match; keep a concise English value when no "
+                "canonical value is suitable. feature, brand, budget, and other remain open."
+            ),
+            "allowed_values="
+            + json.dumps(allowed_values, ensure_ascii=False, separators=(",", ":")),
+        )
+
+    @staticmethod
+    def _chinese_language_guidance() -> tuple[str, ...]:
+        example = {
+            "dialogue_act": "new_search",
+            "category": "jacket",
+            "constraint_operations": [
+                {
+                    "operation": "add",
+                    "attribute": "use_case",
+                    "value": "hiking",
+                    "polarity": "include",
+                    "strength": "hard",
+                    "evidence": "徒步",
+                    "confidence": 0.97,
+                },
+                {
+                    "operation": "add",
+                    "attribute": "feature",
+                    "value": "waterproof",
+                    "polarity": "include",
+                    "strength": "hard",
+                    "evidence": "必须防水",
+                    "confidence": 0.97,
+                }
+            ],
+            "explicit_rejected_asins": [],
+            "confidence": 0.97,
+            "ambiguities": [],
+        }
+        return (
+            (
+                "Chinese-language input mode: user_message contains Simplified Chinese, "
+                "Traditional Chinese, or mixed Chinese and English."
+            ),
+            (
+                "Keep all JSON keys and protocol enum values in English. Normalize category, "
+                "constraint values, and ambiguity descriptions in English; do not return Chinese "
+                "semantic values."
+            ),
+            (
+                "Evidence is the only language exception: copy the shortest supporting span "
+                "verbatim from user_message, preserving Chinese characters and punctuation."
+            ),
+            (
+                "Treat 必须/必須, 一定, 务必/務必, 最重要, and 不能接受 as hard necessity; "
+                "treat 希望, 偏好, 最好, and 倾向于/傾向於 as soft preference."
+            ),
+            (
+                "Treat 不要, 排除, and 不能是 as exclude constraints. Distinguish them from "
+                "single-attribute no preference such as 品牌都可以 or 没有颜色偏好/沒有顏色偏好."
+            ),
+            (
+                "Use replace_constraint and a replace operation for 改成, 换成/換成, "
+                "不要之前的, or 忽略前面的 when a new value supersedes an earlier one, "
+                "for example 改成深蓝色."
+            ),
+            (
+                "Distinguish 没有其他要求了/沒有其他要求了 (no_more_preferences) from "
+                "这些都不合适/這些都不合適 (reject_products)."
+            ),
+            (
+                "For mixed input such as 我想要 waterproof 的外套，预算不超过 100 USD, "
+                "normalize the values to English while grounding each evidence span in the input."
+            ),
+            "Valid Chinese normalization example input: 我想买一件徒步外套，必须防水。",
+            (
+                "Valid Chinese normalization example output: "
+                + json.dumps(example, ensure_ascii=False, separators=(",", ":"))
+            ),
+        )
 
     def _parse(
         self,
@@ -264,7 +365,15 @@ class LLMIntentRecognizer:
             dialogue_act = DialogueAct(payload["dialogue_act"])
             category = payload["category"]
             confidence = self._confidence(payload["confidence"])
-            operations = self._operations(payload["constraint_operations"], user_message)
+            normalize_values = bool(
+                self.normalization_vocabulary is not None
+                and RE_CJK_IDEOGRAPH.search(user_message)
+            )
+            operations = self._operations(
+                payload["constraint_operations"],
+                user_message,
+                normalize_values=normalize_values,
+            )
             rejected = self._strings(payload["explicit_rejected_asins"])
             ambiguities = self._strings(payload["ambiguities"])
         except (KeyError, TypeError, ValueError):
@@ -279,9 +388,15 @@ class LLMIntentRecognizer:
             self.last_failure_reason = "rejected_asin_out_of_scope"
             return None
         self.last_failure_reason = None
+        normalized_category = category.strip() if isinstance(category, str) else None
+        if normalize_values and normalized_category is not None:
+            assert self.normalization_vocabulary is not None
+            normalized_category = self.normalization_vocabulary.canonicalize(
+                "category", normalized_category
+            )
         return RecognitionResult(
             dialogue_act=dialogue_act,
-            category=category.strip() if isinstance(category, str) else None,
+            category=normalized_category,
             constraint_operations=operations,
             explicit_rejected_asins=rejected,
             confidence=confidence,
@@ -294,6 +409,8 @@ class LLMIntentRecognizer:
         self,
         value: object,
         user_message: str,
+        *,
+        normalize_values: bool = False,
     ) -> tuple[ConstraintOperation, ...]:
         if not isinstance(value, list):
             raise TypeError
@@ -317,11 +434,18 @@ class LLMIntentRecognizer:
             if evidence not in user_message:
                 self.last_failure_reason = "evidence_not_grounded"
                 raise ValueError
+            normalized_value = raw_value.strip()
+            if normalize_values:
+                assert self.normalization_vocabulary is not None
+                normalized_value = self.normalization_vocabulary.canonicalize(
+                    attribute,
+                    normalized_value,
+                )
             operations.append(
                 ConstraintOperation(
                     operation=OperationKind(item["operation"]),
                     attribute=attribute,
-                    value=raw_value.strip(),
+                    value=normalized_value,
                     polarity=Polarity(item["polarity"]),
                     strength=ConstraintStrength(item["strength"]),
                     evidence=evidence,

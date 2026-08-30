@@ -23,6 +23,7 @@ from config.models import (
     FinishWeights,
     HybridQuestionPolicyConfig,
     HybridQuestionWeights,
+    IntentLLMConfig,
     LLMConfig,
     ProviderConfig,
     ProviderConfigs,
@@ -214,6 +215,26 @@ def _environment_overrides(
         ),
         "SHOPPING_DIALOGUE__MAX_EVIDENCE_LENGTH": (
             ("dialogue_understanding", "max_evidence_length"),
+            _parse_int,
+        ),
+        "LLM_INTENT_JSON_OUTPUT": (
+            ("dialogue_understanding", "intent_llm", "json_output"),
+            _parse_bool,
+        ),
+        "LLM_INTENT_THINKING_MODE": (
+            ("dialogue_understanding", "intent_llm", "thinking_mode"),
+            _parse_text,
+        ),
+        "LLM_INTENT_NORMALIZATION_VOCAB": (
+            ("dialogue_understanding", "intent_llm", "normalization_vocab_enabled"),
+            _parse_bool,
+        ),
+        "LLM_INTENT_NORMALIZATION_MIN_PRODUCT_COUNT": (
+            (
+                "dialogue_understanding",
+                "intent_llm",
+                "normalization_min_product_count",
+            ),
             _parse_int,
         ),
         "SHOPPING_DIALOGUE__TRANSITION_GUARD__ENABLED": (
@@ -496,6 +517,9 @@ def _build_and_validate(data: Mapping[str, Any], selected_key: SecretValue) -> A
     transition_guard_data = _mapping(
         dialogue_data.get("transition_guard"), "dialogue_understanding.transition_guard"
     )
+    intent_llm_data = _mapping(
+        dialogue_data.get("intent_llm"), "dialogue_understanding.intent_llm"
+    )
     decision_data = _mapping(data.get("decision"), "decision")
     ask_data = _mapping(decision_data.get("ask_utility"), "decision.ask_utility")
     ask_weights_data = _mapping(ask_data.get("weights"), "decision.ask_utility.weights")
@@ -667,6 +691,24 @@ def _build_and_validate(data: Mapping[str, Any], selected_key: SecretValue) -> A
                 destructive_failure_action=_string_value(
                     transition_guard_data.get("destructive_failure_action"),
                     "dialogue_understanding.transition_guard.destructive_failure_action",
+                ),
+            ),
+            intent_llm=IntentLLMConfig(
+                json_output=_bool_value(
+                    intent_llm_data.get("json_output"),
+                    "dialogue_understanding.intent_llm.json_output",
+                ),
+                thinking_mode=_string_value(
+                    intent_llm_data.get("thinking_mode"),
+                    "dialogue_understanding.intent_llm.thinking_mode",
+                ),
+                normalization_vocab_enabled=_bool_value(
+                    intent_llm_data.get("normalization_vocab_enabled"),
+                    "dialogue_understanding.intent_llm.normalization_vocab_enabled",
+                ),
+                normalization_min_product_count=_int_value(
+                    intent_llm_data.get("normalization_min_product_count"),
+                    "dialogue_understanding.intent_llm.normalization_min_product_count",
                 ),
             ),
         ),
@@ -927,6 +969,15 @@ def _validate(config: AppConfig) -> None:
         config.dialogue_understanding.mode,
         "dialogue_understanding.mode",
         {"rule_only", "cascaded"},
+    )
+    _in(
+        config.dialogue_understanding.intent_llm.thinking_mode,
+        "dialogue_understanding.intent_llm.thinking_mode",
+        {"default", "disabled", "enabled"},
+    )
+    _non_negative(
+        config.dialogue_understanding.intent_llm.normalization_min_product_count,
+        "dialogue_understanding.intent_llm.normalization_min_product_count",
     )
     _in(
         config.decision.ask_utility.normalization,

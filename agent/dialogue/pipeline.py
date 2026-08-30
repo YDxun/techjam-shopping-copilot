@@ -32,7 +32,8 @@ from agent.dialogue.recognizers.rule_based import RuleBasedRecognizer
 from agent.dialogue.reducer import StateReducer
 from agent.dialogue.transition_guard import TransitionGuard
 from config.env_config import EnvConfig
-from llm.base import LLMClient
+from llm.base import LLMClient, LLMRequestOptions
+from utils.data_assets import load_assets
 
 logger = logging.getLogger(__name__)
 
@@ -147,6 +148,12 @@ class DialogueUnderstandingPipeline:
             dialogue_config.max_evidence_length,
             override_erase=env.override_erase,
         )
+        intent_llm_config = dialogue_config.intent_llm
+        normalization_vocabulary = None
+        if intent_llm_config.normalization_vocab_enabled:
+            normalization_vocabulary = load_assets().normalization_vocabulary(
+                min_product_count=intent_llm_config.normalization_min_product_count
+            )
         self.recognizer = CascadedIntentRecognizer(
             rule_recognizer=RuleBasedRecognizer(
                 dialogue_config.max_evidence_length,
@@ -158,6 +165,11 @@ class DialogueUnderstandingPipeline:
                 llm_client,
                 max_evidence_length=dialogue_config.max_evidence_length,
                 max_tokens=env.llm.max_tokens,
+                request_options=LLMRequestOptions(
+                    json_output=intent_llm_config.json_output,
+                    thinking_mode=intent_llm_config.thinking_mode,
+                ),
+                normalization_vocabulary=normalization_vocabulary,
             ),
             mode=self._recognition_mode,
             rule_confidence_threshold=dialogue_config.rule_confidence_threshold,

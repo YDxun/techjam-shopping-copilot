@@ -46,6 +46,8 @@ def test_catalog_returns_order_independent_summary_mapping_and_full_detail(tmp_p
     "rows",
     [
         [{"title": "missing id"}],
+        [{"parent_asin": None}],
+        [{"parent_asin": 123}],
         [{"parent_asin": "A1"}, {"parent_asin": "A1"}],
     ],
 )

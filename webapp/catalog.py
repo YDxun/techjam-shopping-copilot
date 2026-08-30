@@ -27,7 +27,8 @@ class CatalogPresenter:
                     row = json.loads(raw.decode("utf-8"))
                     if not isinstance(row, dict):
                         raise CatalogError("catalog row must be a JSON object")
-                    asin = str(row.get("parent_asin", "")).strip()
+                    raw_asin = row.get("parent_asin")
+                    asin = raw_asin.strip() if isinstance(raw_asin, str) else ""
                     if not asin or asin in offsets:
                         raise CatalogError("catalog has a missing or duplicate parent_asin")
                     offsets[asin] = offset

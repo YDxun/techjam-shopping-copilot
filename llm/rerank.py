@@ -10,12 +10,14 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import time
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
+from urllib import request as urllib_request
 
 logger = logging.getLogger(__name__)
 
@@ -169,9 +171,7 @@ class RerankClient:
     def _call_rerank(
         self, query: str, documents: list[str], top_n: int | None
     ) -> list[RerankResult] | None:
-        """POST {base_url}/reranks（requests，用户确认的国际版端点），解析 results。"""
-        import requests
-
+        """POST {base_url}/reranks（标准库 HTTP，解析 results）。"""
         body: dict[str, Any] = {
             "model": self._model,
             "query": query,
@@ -179,17 +179,17 @@ class RerankClient:
         }
         if top_n is not None:
             body["top_n"] = top_n
-        response = requests.post(
+        request = urllib_request.Request(
             f"{self._base_url}/reranks",
+            data=json.dumps(body).encode("utf-8"),
             headers={
                 "Authorization": f"Bearer {self._api_key}",
                 "Content-Type": "application/json",
             },
-            json=body,
-            timeout=self._timeout_seconds,
+            method="POST",
         )
-        response.raise_for_status()
-        data = response.json()
+        with urllib_request.urlopen(request, timeout=self._timeout_seconds) as response:
+            data = json.loads(response.read().decode("utf-8"))
         if isinstance(data, dict):
             results = data.get("results") or data.get("data") or []
         else:

@@ -9,6 +9,9 @@
 
 from __future__ import annotations
 
+import json
+import sys
+
 from agent.capability_probe import CapabilityProfile
 from agent.runtime_controller import RuntimeController
 from config.env_config import EnvConfig
@@ -23,26 +26,37 @@ def test_rerank_client_disabled_without_config():
     assert rc.rerank("q", ["a"]) is None  # 不可用直接返回 None
 
 
-def test_rerank_client_parses_results(monkeypatch):
+def test_rerank_client_parses_results_without_requests_dependency(monkeypatch):
     class FakeResponse:
-        def raise_for_status(self):
-            return None
+        def read(self):
+            return json.dumps(
+                {
+                    "results": [
+                        {"index": 1, "relevance_score": 0.91},
+                        {"index": 0, "relevance_score": 0.32},
+                    ]
+                }
+            ).encode("utf-8")
 
-        def json(self):
-            return {
-                "results": [
-                    {"index": 1, "relevance_score": 0.91},
-                    {"index": 0, "relevance_score": 0.32},
-                ]
-            }
+        def __enter__(self):
+            return self
 
-    def fake_post(url, headers=None, json=None, timeout=None):
-        assert url.endswith("/reranks")
-        assert json["model"] == "qwen3-rerank"
-        assert "query" in json and "documents" in json
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+    def fake_urlopen(request, timeout=None):
+        assert request.full_url.endswith("/reranks")
+        payload = json.loads(request.data.decode("utf-8"))
+        assert payload["model"] == "qwen3-rerank"
+        assert "query" in payload and "documents" in payload
+        assert timeout == 10.0
         return FakeResponse()
 
-    monkeypatch.setattr("requests.post", fake_post)
+    # The text reranker is optional, but selecting it must not require an
+    # undeclared third-party HTTP package. Exercise the real request path with
+    # its standard-library transport and ensure no external request is made.
+    monkeypatch.setitem(sys.modules, "requests", None)
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
     rc = RerankClient(
         api_key="sk-test", base_url="https://dashscope-intl.aliyuncs.com/compatible-api/v1"
     )

@@ -1,171 +1,1535 @@
 {
   "generated_by": "scripts/build_lut.py",
-  "generated_at": "2026-08-29 19:35:10",
-  "n_samples": 40,
-  "note": "score ? device ???????????llm/network ? key ? text_rerank ???????fingerprint_combo/hybrid_dense ??? 200 ?????? 40 ??????????",
+  "generated_at": "2026-08-30 04:08:50",
+  "n_samples": 200,
+  "latency_reps": 3,
+  "latency_samples": 5,
+  "note": "score is device-independent (deterministic evaluator); llm/network without keys force fallback and the post-fallback behavior is recorded; latency_ms_per_turn = measured latency (small-sample x reps median, normalized per turn by mttc)",
   "profiles": {
-    "rule_bm25": "纯规则离线（保底，无 BLaIR/LLM/模型依赖）",
-    "hybrid_dense": "+BLaIR 稠密（dense-recover，需离线 npy + transformers）",
-    "fingerprint_combo": "最优规则 + 约束组合指纹 + combo",
-    "text_rerank": "qwen3-rerank 文本重排（需 DASHSCOPE key+网络；无 key 自动回退）",
-    "reranker_model": "RexReranker-0.6B 交叉编码（需本地模型缓存；recover 模式第二意见）"
+    "rule_bm25": "Pure rule offline (baseline; no BLaIR/LLM/model dependency)",
+    "hybrid_dense": "+BLaIR dense (dense-recover; requires offline npy + transformers)",
+    "fingerprint_combo": "Best rules + constraint-combination fingerprint + combo",
+    "text_rerank": "qwen3-rerank text rerank (requires DASHSCOPE key + network; auto-fallback without key)",
+    "reranker_model": "RexReranker-0.6B cross-encoder (requires local model cache; second opinion in recover mode)"
   },
   "environments": {
-    "device=cuda;dense=no;llm=no;network=no": {
+    "device=cuda;dense=yes;llm=yes;network=yes": {
+      "note": "llm=yes without key -> probe disabled, intent/rerank fall back to rules (post-fallback measured)",
       "configs": [
         {
           "config_id": "rule_bm25",
-          "technical_score": 0.86161,
+          "technical_score": 0.953379,
           "hr": 1.0,
-          "mrr": 0.5887,
-          "mttc": 1.75,
-          "latency_ms_per_turn": 171.8,
+          "mrr": 0.935595,
+          "mttc": 2.365,
+          "latency_ms_per_turn": 123.8,
           "memory_mb": 0,
           "tokens": {
             "prompt_tokens": 0,
             "completion_tokens": 0,
             "total_tokens": 0
           },
-          "measured": true
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "measured",
+          "device": "cuda"
         },
         {
           "config_id": "hybrid_dense",
-          "technical_score": 0.883942,
+          "technical_score": 0.953379,
           "hr": 1.0,
-          "mrr": 0.664474,
-          "mttc": 1.77,
-          "latency_ms_per_turn": 0,
+          "mrr": 0.935595,
+          "mttc": 2.365,
+          "latency_ms_per_turn": 126.9,
           "memory_mb": 0,
           "tokens": {
             "prompt_tokens": 0,
             "completion_tokens": 0,
             "total_tokens": 0
           },
-          "measured": "full200"
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "measured",
+          "device": "cuda"
         },
         {
           "config_id": "fingerprint_combo",
-          "technical_score": 0.885692,
+          "technical_score": 0.954329,
           "hr": 1.0,
-          "mrr": 0.670308,
-          "mttc": 1.77,
-          "latency_ms_per_turn": 0,
+          "mrr": 0.936429,
+          "mttc": 2.33,
+          "latency_ms_per_turn": 125.1,
           "memory_mb": 0,
           "tokens": {
             "prompt_tokens": 0,
             "completion_tokens": 0,
             "total_tokens": 0
           },
-          "measured": "full200"
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "measured",
+          "device": "cuda"
         },
         {
           "config_id": "text_rerank",
-          "technical_score": 0.86161,
+          "technical_score": 0.954329,
           "hr": 1.0,
-          "mrr": 0.5887,
-          "mttc": 1.75,
-          "latency_ms_per_turn": 167.0,
+          "mrr": 0.936429,
+          "mttc": 2.33,
+          "latency_ms_per_turn": 128.3,
           "memory_mb": 0,
           "tokens": {
             "prompt_tokens": 0,
             "completion_tokens": 0,
             "total_tokens": 0
           },
-          "measured": true
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(fingerprint_combo)",
+          "device": "cuda"
         },
         {
           "config_id": "reranker_model",
-          "technical_score": 0.86161,
+          "technical_score": 0.954329,
           "hr": 1.0,
-          "mrr": 0.5887,
-          "mttc": 1.75,
-          "latency_ms_per_turn": 168.5,
+          "mrr": 0.936429,
+          "mttc": 2.33,
+          "latency_ms_per_turn": 128.6,
           "memory_mb": 0,
           "tokens": {
             "prompt_tokens": 0,
             "completion_tokens": 0,
             "total_tokens": 0
           },
-          "measured": true
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "measured",
+          "device": "cuda"
+        }
+      ]
+    },
+    "device=cuda;dense=yes;llm=yes;network=no": {
+      "note": "llm=yes without key -> probe disabled, intent/rerank fall back to rules (post-fallback measured); network=no: text_rerank has no network -> falls back",
+      "configs": [
+        {
+          "config_id": "rule_bm25",
+          "technical_score": 0.953379,
+          "hr": 1.0,
+          "mrr": 0.935595,
+          "mttc": 2.365,
+          "latency_ms_per_turn": 125.5,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(rule_bm25)",
+          "device": "cuda"
+        },
+        {
+          "config_id": "hybrid_dense",
+          "technical_score": 0.953379,
+          "hr": 1.0,
+          "mrr": 0.935595,
+          "mttc": 2.365,
+          "latency_ms_per_turn": 128.7,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(hybrid_dense)",
+          "device": "cuda"
+        },
+        {
+          "config_id": "fingerprint_combo",
+          "technical_score": 0.954329,
+          "hr": 1.0,
+          "mrr": 0.936429,
+          "mttc": 2.33,
+          "latency_ms_per_turn": 134.7,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(fingerprint_combo)",
+          "device": "cuda"
+        },
+        {
+          "config_id": "text_rerank",
+          "technical_score": 0.954329,
+          "hr": 1.0,
+          "mrr": 0.936429,
+          "mttc": 2.33,
+          "latency_ms_per_turn": 142.6,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(fingerprint_combo)",
+          "device": "cuda"
+        },
+        {
+          "config_id": "reranker_model",
+          "technical_score": 0.954329,
+          "hr": 1.0,
+          "mrr": 0.936429,
+          "mttc": 2.33,
+          "latency_ms_per_turn": 132.0,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(reranker_model)",
+          "device": "cuda"
+        }
+      ]
+    },
+    "device=cuda;dense=yes;llm=no;network=yes": {
+      "note": "",
+      "configs": [
+        {
+          "config_id": "rule_bm25",
+          "technical_score": 0.953379,
+          "hr": 1.0,
+          "mrr": 0.935595,
+          "mttc": 2.365,
+          "latency_ms_per_turn": 131.2,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(rule_bm25)",
+          "device": "cuda"
+        },
+        {
+          "config_id": "hybrid_dense",
+          "technical_score": 0.953379,
+          "hr": 1.0,
+          "mrr": 0.935595,
+          "mttc": 2.365,
+          "latency_ms_per_turn": 117.4,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(hybrid_dense)",
+          "device": "cuda"
+        },
+        {
+          "config_id": "fingerprint_combo",
+          "technical_score": 0.954329,
+          "hr": 1.0,
+          "mrr": 0.936429,
+          "mttc": 2.33,
+          "latency_ms_per_turn": 159.8,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(fingerprint_combo)",
+          "device": "cuda"
+        },
+        {
+          "config_id": "text_rerank",
+          "technical_score": 0.954329,
+          "hr": 1.0,
+          "mrr": 0.936429,
+          "mttc": 2.33,
+          "latency_ms_per_turn": 139.6,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(fingerprint_combo)",
+          "device": "cuda"
+        },
+        {
+          "config_id": "reranker_model",
+          "technical_score": 0.954329,
+          "hr": 1.0,
+          "mrr": 0.936429,
+          "mttc": 2.33,
+          "latency_ms_per_turn": 126.8,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(reranker_model)",
+          "device": "cuda"
         }
       ]
     },
     "device=cuda;dense=yes;llm=no;network=no": {
+      "note": "network=no: text_rerank has no network -> falls back",
       "configs": [
         {
           "config_id": "rule_bm25",
-          "technical_score": 0.86161,
+          "technical_score": 0.953379,
           "hr": 1.0,
-          "mrr": 0.5887,
-          "mttc": 1.75,
-          "latency_ms_per_turn": 613.6,
+          "mrr": 0.935595,
+          "mttc": 2.365,
+          "latency_ms_per_turn": 142.3,
           "memory_mb": 0,
           "tokens": {
             "prompt_tokens": 0,
             "completion_tokens": 0,
             "total_tokens": 0
           },
-          "measured": true
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(rule_bm25)",
+          "device": "cuda"
         },
         {
           "config_id": "hybrid_dense",
-          "technical_score": 0.883942,
+          "technical_score": 0.953379,
           "hr": 1.0,
-          "mrr": 0.664474,
-          "mttc": 1.77,
-          "latency_ms_per_turn": 0,
+          "mrr": 0.935595,
+          "mttc": 2.365,
+          "latency_ms_per_turn": 129.9,
           "memory_mb": 0,
           "tokens": {
             "prompt_tokens": 0,
             "completion_tokens": 0,
             "total_tokens": 0
           },
-          "measured": "full200"
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(hybrid_dense)",
+          "device": "cuda"
         },
         {
           "config_id": "fingerprint_combo",
-          "technical_score": 0.885692,
+          "technical_score": 0.954329,
           "hr": 1.0,
-          "mrr": 0.670308,
-          "mttc": 1.77,
-          "latency_ms_per_turn": 0,
+          "mrr": 0.936429,
+          "mttc": 2.33,
+          "latency_ms_per_turn": 121.1,
           "memory_mb": 0,
           "tokens": {
             "prompt_tokens": 0,
             "completion_tokens": 0,
             "total_tokens": 0
           },
-          "measured": "full200"
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(fingerprint_combo)",
+          "device": "cuda"
         },
         {
           "config_id": "text_rerank",
-          "technical_score": 0.86161,
+          "technical_score": 0.954329,
           "hr": 1.0,
-          "mrr": 0.5887,
-          "mttc": 1.75,
-          "latency_ms_per_turn": 175.0,
+          "mrr": 0.936429,
+          "mttc": 2.33,
+          "latency_ms_per_turn": 122.7,
           "memory_mb": 0,
           "tokens": {
             "prompt_tokens": 0,
             "completion_tokens": 0,
             "total_tokens": 0
           },
-          "measured": true
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(fingerprint_combo)",
+          "device": "cuda"
         },
         {
           "config_id": "reranker_model",
-          "technical_score": 0.86161,
+          "technical_score": 0.954329,
           "hr": 1.0,
-          "mrr": 0.5887,
-          "mttc": 1.75,
-          "latency_ms_per_turn": 175.7,
+          "mrr": 0.936429,
+          "mttc": 2.33,
+          "latency_ms_per_turn": 132.6,
           "memory_mb": 0,
           "tokens": {
             "prompt_tokens": 0,
             "completion_tokens": 0,
             "total_tokens": 0
           },
-          "measured": true
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(reranker_model)",
+          "device": "cuda"
+        }
+      ]
+    },
+    "device=cuda;dense=no;llm=yes;network=yes": {
+      "note": "dense=no: missing blair path -> forced fallback to bm25; llm=yes without key -> probe disabled, intent/rerank fall back to rules (post-fallback measured)",
+      "configs": [
+        {
+          "config_id": "rule_bm25",
+          "technical_score": 0.953379,
+          "hr": 1.0,
+          "mrr": 0.935595,
+          "mttc": 2.365,
+          "latency_ms_per_turn": 129.1,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(rule_bm25)",
+          "device": "cuda"
+        },
+        {
+          "config_id": "hybrid_dense",
+          "technical_score": 0.953379,
+          "hr": 1.0,
+          "mrr": 0.935595,
+          "mttc": 2.365,
+          "latency_ms_per_turn": 128.7,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(rule_bm25)",
+          "device": "cuda"
+        },
+        {
+          "config_id": "fingerprint_combo",
+          "technical_score": 0.954329,
+          "hr": 1.0,
+          "mrr": 0.936429,
+          "mttc": 2.33,
+          "latency_ms_per_turn": 129.8,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "measured",
+          "device": "cuda"
+        },
+        {
+          "config_id": "text_rerank",
+          "technical_score": 0.954329,
+          "hr": 1.0,
+          "mrr": 0.936429,
+          "mttc": 2.33,
+          "latency_ms_per_turn": 108.5,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(fingerprint_combo)",
+          "device": "cuda"
+        },
+        {
+          "config_id": "reranker_model",
+          "technical_score": 0.954329,
+          "hr": 1.0,
+          "mrr": 0.936429,
+          "mttc": 2.33,
+          "latency_ms_per_turn": 108.8,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "measured",
+          "device": "cuda"
+        }
+      ]
+    },
+    "device=cuda;dense=no;llm=yes;network=no": {
+      "note": "dense=no: missing blair path -> forced fallback to bm25; llm=yes without key -> probe disabled, intent/rerank fall back to rules (post-fallback measured); network=no: text_rerank has no network -> falls back",
+      "configs": [
+        {
+          "config_id": "rule_bm25",
+          "technical_score": 0.953379,
+          "hr": 1.0,
+          "mrr": 0.935595,
+          "mttc": 2.365,
+          "latency_ms_per_turn": 117.7,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(rule_bm25)",
+          "device": "cuda"
+        },
+        {
+          "config_id": "hybrid_dense",
+          "technical_score": 0.953379,
+          "hr": 1.0,
+          "mrr": 0.935595,
+          "mttc": 2.365,
+          "latency_ms_per_turn": 119.3,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(rule_bm25)",
+          "device": "cuda"
+        },
+        {
+          "config_id": "fingerprint_combo",
+          "technical_score": 0.954329,
+          "hr": 1.0,
+          "mrr": 0.936429,
+          "mttc": 2.33,
+          "latency_ms_per_turn": 119.4,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(fingerprint_combo)",
+          "device": "cuda"
+        },
+        {
+          "config_id": "text_rerank",
+          "technical_score": 0.954329,
+          "hr": 1.0,
+          "mrr": 0.936429,
+          "mttc": 2.33,
+          "latency_ms_per_turn": 110.5,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(fingerprint_combo)",
+          "device": "cuda"
+        },
+        {
+          "config_id": "reranker_model",
+          "technical_score": 0.954329,
+          "hr": 1.0,
+          "mrr": 0.936429,
+          "mttc": 2.33,
+          "latency_ms_per_turn": 107.7,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(reranker_model)",
+          "device": "cuda"
+        }
+      ]
+    },
+    "device=cuda;dense=no;llm=no;network=yes": {
+      "note": "dense=no: missing blair path -> forced fallback to bm25",
+      "configs": [
+        {
+          "config_id": "rule_bm25",
+          "technical_score": 0.953379,
+          "hr": 1.0,
+          "mrr": 0.935595,
+          "mttc": 2.365,
+          "latency_ms_per_turn": 110.0,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(rule_bm25)",
+          "device": "cuda"
+        },
+        {
+          "config_id": "hybrid_dense",
+          "technical_score": 0.953379,
+          "hr": 1.0,
+          "mrr": 0.935595,
+          "mttc": 2.365,
+          "latency_ms_per_turn": 110.7,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(rule_bm25)",
+          "device": "cuda"
+        },
+        {
+          "config_id": "fingerprint_combo",
+          "technical_score": 0.954329,
+          "hr": 1.0,
+          "mrr": 0.936429,
+          "mttc": 2.33,
+          "latency_ms_per_turn": 115.6,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(fingerprint_combo)",
+          "device": "cuda"
+        },
+        {
+          "config_id": "text_rerank",
+          "technical_score": 0.954329,
+          "hr": 1.0,
+          "mrr": 0.936429,
+          "mttc": 2.33,
+          "latency_ms_per_turn": 109.6,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(fingerprint_combo)",
+          "device": "cuda"
+        },
+        {
+          "config_id": "reranker_model",
+          "technical_score": 0.954329,
+          "hr": 1.0,
+          "mrr": 0.936429,
+          "mttc": 2.33,
+          "latency_ms_per_turn": 109.3,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(reranker_model)",
+          "device": "cuda"
+        }
+      ]
+    },
+    "device=cuda;dense=no;llm=no;network=no": {
+      "note": "dense=no: missing blair path -> forced fallback to bm25; network=no: text_rerank has no network -> falls back",
+      "configs": [
+        {
+          "config_id": "rule_bm25",
+          "technical_score": 0.953379,
+          "hr": 1.0,
+          "mrr": 0.935595,
+          "mttc": 2.365,
+          "latency_ms_per_turn": 112.4,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(rule_bm25)",
+          "device": "cuda"
+        },
+        {
+          "config_id": "hybrid_dense",
+          "technical_score": 0.953379,
+          "hr": 1.0,
+          "mrr": 0.935595,
+          "mttc": 2.365,
+          "latency_ms_per_turn": 127.2,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(rule_bm25)",
+          "device": "cuda"
+        },
+        {
+          "config_id": "fingerprint_combo",
+          "technical_score": 0.954329,
+          "hr": 1.0,
+          "mrr": 0.936429,
+          "mttc": 2.33,
+          "latency_ms_per_turn": 113.0,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(fingerprint_combo)",
+          "device": "cuda"
+        },
+        {
+          "config_id": "text_rerank",
+          "technical_score": 0.954329,
+          "hr": 1.0,
+          "mrr": 0.936429,
+          "mttc": 2.33,
+          "latency_ms_per_turn": 110.7,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(fingerprint_combo)",
+          "device": "cuda"
+        },
+        {
+          "config_id": "reranker_model",
+          "technical_score": 0.954329,
+          "hr": 1.0,
+          "mrr": 0.936429,
+          "mttc": 2.33,
+          "latency_ms_per_turn": 111.2,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(reranker_model)",
+          "device": "cuda"
+        }
+      ]
+    },
+    "device=cpu;dense=yes;llm=yes;network=yes": {
+      "note": "llm=yes without key -> probe disabled, intent/rerank fall back to rules (post-fallback measured)",
+      "configs": [
+        {
+          "config_id": "rule_bm25",
+          "technical_score": 0.953379,
+          "hr": 1.0,
+          "mrr": 0.935595,
+          "mttc": 2.365,
+          "latency_ms_per_turn": 110.9,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(rule_bm25)",
+          "device": "cpu"
+        },
+        {
+          "config_id": "hybrid_dense",
+          "technical_score": 0.953379,
+          "hr": 1.0,
+          "mrr": 0.935595,
+          "mttc": 2.365,
+          "latency_ms_per_turn": 110.2,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(hybrid_dense)",
+          "device": "cpu"
+        },
+        {
+          "config_id": "fingerprint_combo",
+          "technical_score": 0.954329,
+          "hr": 1.0,
+          "mrr": 0.936429,
+          "mttc": 2.33,
+          "latency_ms_per_turn": 107.7,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(fingerprint_combo)",
+          "device": "cpu"
+        },
+        {
+          "config_id": "text_rerank",
+          "technical_score": 0.954329,
+          "hr": 1.0,
+          "mrr": 0.936429,
+          "mttc": 2.33,
+          "latency_ms_per_turn": 113.2,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(fingerprint_combo)",
+          "device": "cpu"
+        },
+        {
+          "config_id": "reranker_model",
+          "technical_score": 0.954329,
+          "hr": 1.0,
+          "mrr": 0.936429,
+          "mttc": 2.33,
+          "latency_ms_per_turn": 113.7,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(reranker_model)",
+          "device": "cpu"
+        }
+      ]
+    },
+    "device=cpu;dense=yes;llm=yes;network=no": {
+      "note": "llm=yes without key -> probe disabled, intent/rerank fall back to rules (post-fallback measured); network=no: text_rerank has no network -> falls back",
+      "configs": [
+        {
+          "config_id": "rule_bm25",
+          "technical_score": 0.953379,
+          "hr": 1.0,
+          "mrr": 0.935595,
+          "mttc": 2.365,
+          "latency_ms_per_turn": 109.7,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(rule_bm25)",
+          "device": "cpu"
+        },
+        {
+          "config_id": "hybrid_dense",
+          "technical_score": 0.953379,
+          "hr": 1.0,
+          "mrr": 0.935595,
+          "mttc": 2.365,
+          "latency_ms_per_turn": 115.6,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(hybrid_dense)",
+          "device": "cpu"
+        },
+        {
+          "config_id": "fingerprint_combo",
+          "technical_score": 0.954329,
+          "hr": 1.0,
+          "mrr": 0.936429,
+          "mttc": 2.33,
+          "latency_ms_per_turn": 122.5,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(fingerprint_combo)",
+          "device": "cpu"
+        },
+        {
+          "config_id": "text_rerank",
+          "technical_score": 0.954329,
+          "hr": 1.0,
+          "mrr": 0.936429,
+          "mttc": 2.33,
+          "latency_ms_per_turn": 110.3,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(fingerprint_combo)",
+          "device": "cpu"
+        },
+        {
+          "config_id": "reranker_model",
+          "technical_score": 0.954329,
+          "hr": 1.0,
+          "mrr": 0.936429,
+          "mttc": 2.33,
+          "latency_ms_per_turn": 109.1,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(reranker_model)",
+          "device": "cpu"
+        }
+      ]
+    },
+    "device=cpu;dense=yes;llm=no;network=yes": {
+      "note": "",
+      "configs": [
+        {
+          "config_id": "rule_bm25",
+          "technical_score": 0.953379,
+          "hr": 1.0,
+          "mrr": 0.935595,
+          "mttc": 2.365,
+          "latency_ms_per_turn": 113.8,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(rule_bm25)",
+          "device": "cpu"
+        },
+        {
+          "config_id": "hybrid_dense",
+          "technical_score": 0.953379,
+          "hr": 1.0,
+          "mrr": 0.935595,
+          "mttc": 2.365,
+          "latency_ms_per_turn": 116.1,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(hybrid_dense)",
+          "device": "cpu"
+        },
+        {
+          "config_id": "fingerprint_combo",
+          "technical_score": 0.954329,
+          "hr": 1.0,
+          "mrr": 0.936429,
+          "mttc": 2.33,
+          "latency_ms_per_turn": 107.0,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(fingerprint_combo)",
+          "device": "cpu"
+        },
+        {
+          "config_id": "text_rerank",
+          "technical_score": 0.954329,
+          "hr": 1.0,
+          "mrr": 0.936429,
+          "mttc": 2.33,
+          "latency_ms_per_turn": 110.4,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(fingerprint_combo)",
+          "device": "cpu"
+        },
+        {
+          "config_id": "reranker_model",
+          "technical_score": 0.954329,
+          "hr": 1.0,
+          "mrr": 0.936429,
+          "mttc": 2.33,
+          "latency_ms_per_turn": 109.7,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(reranker_model)",
+          "device": "cpu"
+        }
+      ]
+    },
+    "device=cpu;dense=yes;llm=no;network=no": {
+      "note": "network=no: text_rerank has no network -> falls back",
+      "configs": [
+        {
+          "config_id": "rule_bm25",
+          "technical_score": 0.953379,
+          "hr": 1.0,
+          "mrr": 0.935595,
+          "mttc": 2.365,
+          "latency_ms_per_turn": 111.4,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(rule_bm25)",
+          "device": "cpu"
+        },
+        {
+          "config_id": "hybrid_dense",
+          "technical_score": 0.953379,
+          "hr": 1.0,
+          "mrr": 0.935595,
+          "mttc": 2.365,
+          "latency_ms_per_turn": 112.4,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(hybrid_dense)",
+          "device": "cpu"
+        },
+        {
+          "config_id": "fingerprint_combo",
+          "technical_score": 0.954329,
+          "hr": 1.0,
+          "mrr": 0.936429,
+          "mttc": 2.33,
+          "latency_ms_per_turn": 114.6,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(fingerprint_combo)",
+          "device": "cpu"
+        },
+        {
+          "config_id": "text_rerank",
+          "technical_score": 0.954329,
+          "hr": 1.0,
+          "mrr": 0.936429,
+          "mttc": 2.33,
+          "latency_ms_per_turn": 111.6,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(fingerprint_combo)",
+          "device": "cpu"
+        },
+        {
+          "config_id": "reranker_model",
+          "technical_score": 0.954329,
+          "hr": 1.0,
+          "mrr": 0.936429,
+          "mttc": 2.33,
+          "latency_ms_per_turn": 108.8,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(reranker_model)",
+          "device": "cpu"
+        }
+      ]
+    },
+    "device=cpu;dense=no;llm=yes;network=yes": {
+      "note": "dense=no: missing blair path -> forced fallback to bm25; llm=yes without key -> probe disabled, intent/rerank fall back to rules (post-fallback measured)",
+      "configs": [
+        {
+          "config_id": "rule_bm25",
+          "technical_score": 0.953379,
+          "hr": 1.0,
+          "mrr": 0.935595,
+          "mttc": 2.365,
+          "latency_ms_per_turn": 109.6,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(rule_bm25)",
+          "device": "cpu"
+        },
+        {
+          "config_id": "hybrid_dense",
+          "technical_score": 0.953379,
+          "hr": 1.0,
+          "mrr": 0.935595,
+          "mttc": 2.365,
+          "latency_ms_per_turn": 112.3,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(rule_bm25)",
+          "device": "cpu"
+        },
+        {
+          "config_id": "fingerprint_combo",
+          "technical_score": 0.954329,
+          "hr": 1.0,
+          "mrr": 0.936429,
+          "mttc": 2.33,
+          "latency_ms_per_turn": 127.8,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(fingerprint_combo)",
+          "device": "cpu"
+        },
+        {
+          "config_id": "text_rerank",
+          "technical_score": 0.954329,
+          "hr": 1.0,
+          "mrr": 0.936429,
+          "mttc": 2.33,
+          "latency_ms_per_turn": 107.1,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(fingerprint_combo)",
+          "device": "cpu"
+        },
+        {
+          "config_id": "reranker_model",
+          "technical_score": 0.954329,
+          "hr": 1.0,
+          "mrr": 0.936429,
+          "mttc": 2.33,
+          "latency_ms_per_turn": 106.9,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(reranker_model)",
+          "device": "cpu"
+        }
+      ]
+    },
+    "device=cpu;dense=no;llm=yes;network=no": {
+      "note": "dense=no: missing blair path -> forced fallback to bm25; llm=yes without key -> probe disabled, intent/rerank fall back to rules (post-fallback measured); network=no: text_rerank has no network -> falls back",
+      "configs": [
+        {
+          "config_id": "rule_bm25",
+          "technical_score": 0.953379,
+          "hr": 1.0,
+          "mrr": 0.935595,
+          "mttc": 2.365,
+          "latency_ms_per_turn": 115.7,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(rule_bm25)",
+          "device": "cpu"
+        },
+        {
+          "config_id": "hybrid_dense",
+          "technical_score": 0.953379,
+          "hr": 1.0,
+          "mrr": 0.935595,
+          "mttc": 2.365,
+          "latency_ms_per_turn": 130.3,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(rule_bm25)",
+          "device": "cpu"
+        },
+        {
+          "config_id": "fingerprint_combo",
+          "technical_score": 0.954329,
+          "hr": 1.0,
+          "mrr": 0.936429,
+          "mttc": 2.33,
+          "latency_ms_per_turn": 118.5,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(fingerprint_combo)",
+          "device": "cpu"
+        },
+        {
+          "config_id": "text_rerank",
+          "technical_score": 0.954329,
+          "hr": 1.0,
+          "mrr": 0.936429,
+          "mttc": 2.33,
+          "latency_ms_per_turn": 110.8,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(fingerprint_combo)",
+          "device": "cpu"
+        },
+        {
+          "config_id": "reranker_model",
+          "technical_score": 0.954329,
+          "hr": 1.0,
+          "mrr": 0.936429,
+          "mttc": 2.33,
+          "latency_ms_per_turn": 129.3,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(reranker_model)",
+          "device": "cpu"
+        }
+      ]
+    },
+    "device=cpu;dense=no;llm=no;network=yes": {
+      "note": "dense=no: missing blair path -> forced fallback to bm25",
+      "configs": [
+        {
+          "config_id": "rule_bm25",
+          "technical_score": 0.953379,
+          "hr": 1.0,
+          "mrr": 0.935595,
+          "mttc": 2.365,
+          "latency_ms_per_turn": 111.7,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(rule_bm25)",
+          "device": "cpu"
+        },
+        {
+          "config_id": "hybrid_dense",
+          "technical_score": 0.953379,
+          "hr": 1.0,
+          "mrr": 0.935595,
+          "mttc": 2.365,
+          "latency_ms_per_turn": 110.8,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(rule_bm25)",
+          "device": "cpu"
+        },
+        {
+          "config_id": "fingerprint_combo",
+          "technical_score": 0.954329,
+          "hr": 1.0,
+          "mrr": 0.936429,
+          "mttc": 2.33,
+          "latency_ms_per_turn": 109.9,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(fingerprint_combo)",
+          "device": "cpu"
+        },
+        {
+          "config_id": "text_rerank",
+          "technical_score": 0.954329,
+          "hr": 1.0,
+          "mrr": 0.936429,
+          "mttc": 2.33,
+          "latency_ms_per_turn": 109.7,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(fingerprint_combo)",
+          "device": "cpu"
+        },
+        {
+          "config_id": "reranker_model",
+          "technical_score": 0.954329,
+          "hr": 1.0,
+          "mrr": 0.936429,
+          "mttc": 2.33,
+          "latency_ms_per_turn": 111.1,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(reranker_model)",
+          "device": "cpu"
+        }
+      ]
+    },
+    "device=cpu;dense=no;llm=no;network=no": {
+      "note": "dense=no: missing blair path -> forced fallback to bm25; network=no: text_rerank has no network -> falls back",
+      "configs": [
+        {
+          "config_id": "rule_bm25",
+          "technical_score": 0.953379,
+          "hr": 1.0,
+          "mrr": 0.935595,
+          "mttc": 2.365,
+          "latency_ms_per_turn": 111.2,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(rule_bm25)",
+          "device": "cpu"
+        },
+        {
+          "config_id": "hybrid_dense",
+          "technical_score": 0.953379,
+          "hr": 1.0,
+          "mrr": 0.935595,
+          "mttc": 2.365,
+          "latency_ms_per_turn": 109.1,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(rule_bm25)",
+          "device": "cpu"
+        },
+        {
+          "config_id": "fingerprint_combo",
+          "technical_score": 0.954329,
+          "hr": 1.0,
+          "mrr": 0.936429,
+          "mttc": 2.33,
+          "latency_ms_per_turn": 110.6,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(fingerprint_combo)",
+          "device": "cpu"
+        },
+        {
+          "config_id": "text_rerank",
+          "technical_score": 0.954329,
+          "hr": 1.0,
+          "mrr": 0.936429,
+          "mttc": 2.33,
+          "latency_ms_per_turn": 110.1,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(fingerprint_combo)",
+          "device": "cpu"
+        },
+        {
+          "config_id": "reranker_model",
+          "technical_score": 0.954329,
+          "hr": 1.0,
+          "mrr": 0.936429,
+          "mttc": 2.33,
+          "latency_ms_per_turn": 113.3,
+          "memory_mb": 0,
+          "tokens": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+          },
+          "cost_usd_per_session": 0.0,
+          "measured": true,
+          "score_source": "reused(reranker_model)",
+          "device": "cpu"
         }
       ]
     }

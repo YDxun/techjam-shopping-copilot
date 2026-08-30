@@ -1,12 +1,13 @@
-"""Pillar I：重排序模块（LLM 语义排序 / 规则融合打分，双保险）。
+"""Pillar I: Reranking module (LLM semantic ranking / rule-based fused scoring, dual safety).
 
-- 规则打分（永远可用，无 LLM 也可运行）：
-    final = 0.50*约束覆盖度 + 0.25*品类匹配 + 0.15*RRF融合分 + 0.05*热度 + 0.05*画像弱先验
-- 约束覆盖度：hard 槽位权重 1.0、soft 槽位 0.4；
-  短语子串命中给满分，否则按 token 覆盖率给分。
-- LLM 重排：注入的统一 LLM 客户端可用且 LLM_RERANK 启用时执行；
-  任何异常都回退规则排序，保证离线可用。
-- 目标：Pillar IV —— 把目标商品尽量推到 Top-K 靠前（提升 MRR / HitRate@K）。
+- Rule scoring (always available, runs without an LLM):
+    final = 0.50*constraint coverage + 0.25*category match + 0.15*RRF fusion + 0.05*popularity +
+    0.05*weak profile prior
+- Constraint coverage: hard slots weigh 1.0, soft slots 0.4;
+  exact phrase/substring hits get full credit, otherwise credit is proportional to token coverage.
+- LLM reranking: runs when the injected unified LLM client is available and LLM_RERANK is enabled;
+  any exception falls back to rule ordering, keeping the agent fully offline-capable.
+- Goal (Pillar IV): push the target item toward the top of Top-K to raise MRR / HitRate@K.
 """
 
 from __future__ import annotations
@@ -24,13 +25,17 @@ from llm.base import DisabledLLMClient, LLMClient, LLMState
 from llm.rerank import RerankClient
 from utils import field_mapping as fm_utils
 from utils import session_utils as su
+from utils.circuit_breaker import PhaseCircuitBreaker
 from utils.rex_reranker import RexRerankerScorer, is_generation_reranker
 
 logger = logging.getLogger(__name__)
 
-# 规则打分权重 / combo / 指纹阈值已全部移入 config（env.rerank_weights / env.fingerprint，
-# Step1 暴露：默认=现值，行为不变；tune harness 用 overrides 调参）。
-# 兜底默认（SimpleNamespace 测试环境 / 旧调用方）：与 config 默认严格一致。
+# Rule scoring weights / combo / fingerprint thresholds now live in config (env.rerank_weights /
+# env.fingerprint,
+# Step 1 exposure: defaults equal current values so behavior is unchanged; the tune harness uses
+# overrides).
+# Fallback defaults (SimpleNamespace test env / legacy callers): strictly identical to config
+# defaults.
 _DEFAULT_WEIGHTS = {
     "coverage": 0.50,
     "combo": 0.10,
@@ -51,24 +56,28 @@ _DEFAULT_FP = type(
     },
 )()
 
-BGE_RERANK_CANDIDATES = 50  # bge 交叉编码重排候选规模（与检索管线 RERANK_CANDIDATES_NORMAL 一致）
+BGE_RERANK_CANDIDATES = 50  # bge cross-encoder rerank candidate pool size (matches RERANK_CANDIDATES_NORMAL)  # noqa: E501
 
 
 class Reranker:
-    """候选池精排：约束覆盖 + 品类匹配 + 融合分 + 可选 LLM 语义重排。"""
+    """Fine-ranking of the candidate pool: constraint coverage + category match + fusion score +
+        optional LLM semantic rerank."""
 
     def __init__(self, env: EnvConfig | None = None, llm_client: LLMClient | None = None) -> None:
         self.env = env or EnvConfig.from_env()
         self.llm_client = llm_client if llm_client is not None else DisabledLLMClient()
         self.last_usage: dict = {"prompt_tokens": 0, "completion_tokens": 0}
-        self._bge = None  # 惰性加载的 bge-reranker 实例（None=未加载/加载失败）
-        self._rerank_client = None  # 惰性加载的 qwen3-rerank MaaS 客户端
-        self._fp_texts: dict[str, str] | None = None  # 全目录 asin->text_lower（约束指纹索引）
-        self._fp_satisfy_cache: dict[str, set[str]] = {}  # 约束键->满足该约束的商品集合
+        self._bge = None  # lazily loaded bge-reranker instance (None = not loaded / failed)
+        self._rerank_client = None  # lazily loaded qwen3-rerank MaaS client
+        self._rerank_breaker = PhaseCircuitBreaker(
+            "reranker", failure_threshold=2
+        )  # P1: model rerank trips after consecutive failures -> fall back to rule ordering
+        self._fp_texts: dict[str, str] | None = None  # catalog-wide asin -> text_lower (constraint fingerprint index)  # noqa: E501
+        self._fp_satisfy_cache: dict[str, set[str]] = {}  # constraint key -> products satisfying that constraint  # noqa: E501
         self._weights = dict(getattr(env, "rerank_weights", None) or _DEFAULT_WEIGHTS)
         self._fp = getattr(env, "fingerprint", None) or _DEFAULT_FP
-        self.last_fp_count: int | None = None  # 指纹：全部活跃约束精确满足的商品数（置信信号）
-        self.last_margin: float = 0.0  # top-1 与 top-2 的规则分差（置信信号）
+        self.last_fp_count: int | None = None  # fingerprint: #products exactly satisfying all active constraints (confidence signal)  # noqa: E501
+        self.last_margin: float = 0.0  # rule-score margin between top-1 and top-2 (confidence signal)  # noqa: E501
 
     # ------------------------------------------------------------------
     def rerank(
@@ -87,8 +96,10 @@ class Reranker:
             return []
         max_rrf = max((c.get("rrf", 0.0) for c in candidates), default=1.0) or 1.0
 
-        # 约束组合指纹（默认关）：全目录精确计数"同时满足全部活跃约束的商品数"，
-        # count 越小组合越稀有 → 匹配者越可能是目标；分级加成（count==1 置顶 / ≤10 / ≤50）。
+        # Constraint-combination fingerprint (default off): exact catalog count of products
+        # satisfying all active constraints,
+        # the smaller the count, the rarer the combination -> the match is more likely the target;
+        # tiered bonus (count==1 top / <=10 / <=50).
         fp_count: int | None = None
         fp_set: set[str] | None = None
         self.last_fp_count = None
@@ -105,7 +116,7 @@ class Reranker:
             text = retriever.text_lower(asin)
             cat = self._category_text(product)
             score = self._rule_score(cand, state, route, product, text, cat, max_rrf, mode)
-            # 指纹加成：候选 ∈ 全部约束精确满足集 → 按全局稀有度加分
+            # Fingerprint bonus: candidate in the exact-satisfier set -> add bonus by global rarity
             if fp_set is not None and asin in fp_set:
                 score += self._fp_bonus(fp_count or 0)
             scored.append((score, asin, cand))
@@ -113,41 +124,70 @@ class Reranker:
         scored.sort(key=lambda x: x[0], reverse=True)
         order = [asin for _, asin, _ in scored]
 
-        # 可选文本重排（Pillar I 管道末端；runtime_controller 决定是否启用；失败自动回退）
-        # 后端：text=qwen3-rerank MaaS（默认，替换原 chat JSON 打分）/ chat=旧 LLM /
-        #       auto=text 可用优先，text 失败回退 chat。
-        if use_llm_rerank and self.env.llm.rerank_enabled and len(order) >= 2:
+        # Optional text rerank (end of the Pillar I pipeline; enabled by runtime_controller;
+        # auto-fallback on failure)
+        # Backend: text=qwen3-rerank MaaS (default, replaces the old chat JSON scoring) /
+        # chat=legacy LLM /
+        #       auto=prefer text, fall back to chat when text is unavailable.
+        if (
+            use_llm_rerank
+            and self.env.llm.rerank_enabled
+            and len(order) >= 2
+            and not self._rerank_breaker.open  # P1: already tripped -> fall back to rule ordering on the spot  # noqa: E501
+        ):
             backend = getattr(self.env.llm, "rerank_backend", "text")
             if backend == "chat":
                 if self.llm_client.status.state == LLMState.AVAILABLE:
                     llm_order = self._llm_rerank(order, retriever, state)
                     if llm_order:
                         order = llm_order
-            else:  # text / auto -> qwen3-rerank 文本重排
+                        self._rerank_breaker.record_success()
+                    else:
+                        self._rerank_breaker.record_failure("chat rerank produced no output")
+            else:  # text / auto -> qwen3-rerank text rerank
                 text_order = self._text_rerank(order, retriever, state, route)
                 if text_order:
                     order = text_order
-                elif backend == "auto" and self.llm_client.status.state == LLMState.AVAILABLE:
-                    llm_order = self._llm_rerank(order, retriever, state)
-                    if llm_order:
-                        order = llm_order
-        # 可选重排模型（RexReranker/bge，本地；环境自感知；失败自动回退）。
-        # 仅 recover 模式启用：全量启用会把语义排序强加于已对齐的规则排序（A/B 掉 MRR），
-        # recover（连 miss 需扩召回）时作"第二意见"精排 Top-50 最安全。
-        if use_reranker_model and mode == "recover" and len(order) >= 2:
+                    self._rerank_breaker.record_success()
+                else:
+                    self._rerank_breaker.record_failure("text_rerank produced no output (no key/failure)")  # noqa: E501
+                    if backend == "auto" and self.llm_client.status.state == LLMState.AVAILABLE:
+                        llm_order = self._llm_rerank(order, retriever, state)
+                        if llm_order:
+                            order = llm_order
+                            self._rerank_breaker.record_success()
+        # Optional reranker model (RexReranker/bge, local; environment-aware; auto-fallback on
+        # failure).
+        # Enabled only in recover mode: full enablement forces semantic ordering onto the aligned
+        # rule order (A/B: MRR drops),
+        # in recover (miss streak needs broader recall), a "second opinion" rerank of Top-50 is
+        # safest.
+        if (
+            use_reranker_model
+            and mode == "recover"
+            and len(order) >= 2
+            and not self._rerank_breaker.open  # P1: already tripped -> fall back to rule ordering on the spot  # noqa: E501
+        ):
             bge_order = self._bge_rerank(order, retriever, state, route)
             if bge_order:
                 order = bge_order
+                self._rerank_breaker.record_success()
+            else:
+                self._rerank_breaker.record_failure("reranker_model produced no output")
 
-        # 状态机反馈闭环：已展示过（会话继续 => 非目标）、soft_demoted / hard_rejected
-        # 的商品确认不是目标，直接从本轮输出剔除，强制探索新候选（低轮次命中）。
-        # 注意：若目标是目标，会话早已在命中回合结束，因此排除这些 asin 是安全的。
+        # State-machine feedback loop: already-shown (session continued => not the target),
+        # soft_demoted / hard_rejected
+        # products are confirmed non-targets, so drop them from this turn's output to force
+        # exploring new candidates (early-turn hits).
+        # Note: had a candidate been the target, the session would already have ended at the hit
+        # turn, so excluding these ASINs is safe.
         excluded = set(getattr(state, "evaluation_excluded_asins", None) or ())
         excluded.update(getattr(state, "soft_demoted_asins", None) or ())
         excluded.update(getattr(state, "hard_rejected_asins", None) or ())
         if excluded:
             order = [asin for asin in order if asin not in excluded]
-        # 置信信号：top-1 与 top-2 的规则分差（供输出门控做"高置信提前满仓"）
+        # Confidence signal: rule-score margin between top-1 and top-2 (lets output gating release
+        # full capacity early on high confidence)
         if len(scored) >= 2:
             self.last_margin = scored[0][0] - scored[1][0]
         else:
@@ -155,10 +195,10 @@ class Reranker:
         return order[:top_k]
 
     # ------------------------------------------------------------------
-    # 约束组合指纹（全目录精确计数，默认关）：辅助方法
+    # Constraint-combination fingerprint (exact catalog count, default off): helper methods
     # ------------------------------------------------------------------
     def _ensure_fp_index(self, retriever) -> None:
-        """惰性缓存全目录 asin->text_lower（一次构建，会话/回合间复用）。"""
+        """Lazily cache catalog-wide asin -> text_lower (built once; reused)."""
         if self._fp_texts is not None:
             return
         texts: dict[str, str] = {}
@@ -168,7 +208,8 @@ class Reranker:
         self._fp_texts = texts
 
     def _fp_satisfiers(self, retriever, value: str) -> set[str]:
-        """满足单条约束（精确全命中，phrase_exists 标准）的商品集合，按约束键缓存。"""
+        """Products satisfying a single constraint (exact full hit, phrase_exists rule), cached by
+            constraint key."""
         key = su.constraint_key(value)
         cached = self._fp_satisfy_cache.get(key)
         if cached is not None:
@@ -179,9 +220,9 @@ class Reranker:
         return sset
 
     def _fingerprint(self, retriever, active) -> tuple[int | None, set[str] | None]:
-        """全目录精确计数：同时满足全部活跃约束的商品数 + 满足集合。
+        """Exact catalog count: products satisfying ALL active constraints + the satisfying set.
 
-        返回 (count, satisfied_set)；无活跃约束或开关关 → (None, None)。
+        Returns (count, satisfied_set); no active constraints or feature off -> (None, None).
         """
         if not active or not self._fp.enable:
             return None, None
@@ -196,7 +237,8 @@ class Reranker:
         return count, (sset or set())
 
     def _fp_bonus(self, count: int) -> float:
-        """按全局稀有度给置信度门控加成：count==1 置顶 / ≤10 / ≤50；>max_count 不加。"""
+        """Confidence-gated bonus by global rarity: count==1 top / <=10 / <=50; >max_count no
+            bonus."""
         if count <= 0:
             return 0.0
         if count == 1:
@@ -219,16 +261,18 @@ class Reranker:
         max_rrf: float,
         mode: str,
     ) -> float:
-        # 1) 约束覆盖度（核心强信号，Pillar I 硬约束过滤 + Pillar II 槽位）
-        #    + combo_bonus：隐藏目标来自商品自身元数据（intent card），"同时满足全部披露约束"；
-        #    逐条加权平均是线性信号，此处对"完整命中 ≥2 条约束"加超线性加成（C(n,2) 归一化），
-        #    把全命中目标与"分散命中"的干扰商品区分开，推高 MRR。
+        # 1) Constraint coverage (core strong signal; Pillar I hard filtering + Pillar II slots)
+        # + combo_bonus: the hidden target is generated from its own metadata (intent card),
+        # "satisfies all disclosed constraints";
+        # per-item weighted averaging is a linear signal; here we add a super-linear bonus for
+        # "fully hitting >=2 constraints" (C(n,2) normalized),
+        #    separating the full-hit target from distractors with scattered hits, which lifts MRR.
         hard = state.hard
         soft = state.soft
         cov_numer = 0.0
         cov_denom = 0.0
-        full_count = 0.0  # 完整命中约束的加权计数（hard=1.0, soft=0.5）
-        full_denom = 0.0  # 全部约束的加权总数（用于归一化）
+        full_count = 0.0  # weighted count of fully-hit constraints (hard=1.0, soft=0.5)
+        full_denom = 0.0  # weighted total of all constraints (for normalization)
         for c in hard:
             w = 1.0
             h = self._constraint_hit(c, product, text)
@@ -247,24 +291,25 @@ class Reranker:
             full_denom += 0.5
         coverage = (cov_numer / cov_denom) if cov_denom > 0 else 0.5
 
-        # combo_bonus：完整命中 ≥2 条约束才触发；C(n,2)/C(N,2) 归一化
-        # （"同时满足的约束对"占"全部约束对"的比例，天然超线性，全命中=1.0）
+        # combo_bonus: triggers only when >=2 constraints are fully hit; C(n,2)/C(N,2) normalization
+        # (share of "satisfied constraint pairs" among all pairs; naturally super-linear, full hit =
+        # 1.0)
         combo_norm = 0.0
         if full_denom >= 2.0 and full_count >= 2.0:
             combo_norm = (full_count * (full_count - 1.0)) / (full_denom * (full_denom - 1.0))
 
-        # 2) 品类匹配
+        # 2) Category match
         cat_frac = self._category_match(route.category_tokens, cat, text)
 
-        # 3) RRF 融合分归一
+        # 3) RRF fusion score (normalized)
         rrf_norm = min(1.0, cand.get("rrf", 0.0) / max_rrf)
 
-        # 4) 热度 + 评分（微调 tie-break，Pillar IV 排序稳定性）
+        # 4) Popularity + rating (fine tie-break; Pillar IV ranking stability)
         rating_n = su.safe_float(product.get("rating_number"), 0.0)
         rating_avg = su.safe_float(product.get("average_rating"), 0.0)
         popularity = math.log1p(rating_n) / math.log1p(10000.0) * 0.5 + (rating_avg / 5.0) * 0.5
 
-        # 5) 画像弱先验（Pillar III 长期画像，仅微小加成）
+        # 5) Weak user-profile prior (Pillar III long-term profile; small bonus only)
         profile = self._profile_match(state, text)
 
         score = (
@@ -276,29 +321,37 @@ class Reranker:
             + self._weights.get("profile", 0.05) * profile
         )
 
-        # EXPLOIT 模式：只有"全部活跃约束全覆盖"的商品才给强加成（提升 MRR：把唯一必中项推前）。
-        # 不再只看 hard 组——那会让成百上千个仅匹配高频词（如 water resistant）的商品同分。
+        # EXPLOIT mode: only products covering ALL active constraints get a strong bonus (MRR: push
+        # the unique must-hit item up).
+        # Not just the hard group -- that would tie hundreds of products matching only
+        # high-frequency words (e.g. water resistant).
         if mode == "exploit" and hard and coverage >= 0.999:
             score += 1.0
         return score
 
     # ------------------------------------------------------------------
     def _constraint_hit(self, c, product: dict, text: str) -> float:
-        """约束命中度（Pillar I field_mapping 字段感知）。
+        """Constraint hit score (Pillar I field-aware matching via field_mapping).
 
-        - budget：数值价格检查（price 缺失放行，79% 缺失不做硬过滤）；
-        - 其它属性：先按旧全文本逻辑（短语满分/token 覆盖，保召回），
-          再叠加字段感知分（authoritative details.<Key> 高置信、缺失策略 pass/soft），
-          取两者较大值——字段感知只加分不掉分，避免覆盖已对齐的规则信号。
+        - budget: numeric price check (missing price passes through; 79% missing -> no hard filter);
+        - other attributes: keep the legacy full-text logic first (phrase full credit / token
+        coverage to preserve recall),
+          then layer a field-aware score (authoritative details.<Key> high confidence, missing
+          policy pass/soft),
+          taking the max -- field awareness only adds, never subtracts, so aligned rule signals are
+          preserved.
         """
         if getattr(c, "attribute", "") == "budget":
-            # budget→price 数值检查（field_mapping；price 缺失放行，不做硬过滤）
+            # budget -> numeric price check (field_mapping; missing price passes through, no hard
+            # filter)
             return fm_utils.constraint_hit("budget", c.value, c.tokens, product=product)
-        # 其余属性保持全文本短语/token 逻辑：field_mapping A/B 显示纯字段/叠加打分
-        # 都会扰动已对齐的规则排序（MRR 0.619→0.597/0.610），故不替换。
+        # Other attributes keep full-text phrase/token logic: field_mapping A/B shows pure-field or
+        # layered scoring
+        # disturbs the aligned rule order (MRR 0.619->0.597/0.610), so they are not used.
         if su.phrase_exists(text, c.value):
             return 1.0
-        # 标点不敏感匹配：details 渲染 "key value" vs 约束 "key: item" 等机械失配
+        # Punctuation-insensitive matching: handles mechanical mismatches like rendered "key value"
+        # vs constraint "key: item"
         loose_text = re.sub(r"[^a-z0-9]+", " ", text)
         loose_key = re.sub(r"[^a-z0-9]+", " ", su.constraint_key(c.value))
         if len(loose_key) >= 3 and loose_key in loose_text:
@@ -336,14 +389,16 @@ class Reranker:
         return min(1.0, hits * 0.25)
 
     # ------------------------------------------------------------------
-    # 可选 bge-reranker-v2-m3 交叉编码重排（本地模型；失败自动回退规则排序）
+    # Optional bge-reranker-v2-m3 cross-encoder rerank (local model; auto-fallback to rule ordering
+    # on failure)
     # ------------------------------------------------------------------
     def _ensure_reranker_model(self):
-        """惰性加载重排模型（按模型名分发，device 自动 cuda/cpu）。
+        """Lazily load the reranker model (dispatched by model name; device auto cuda/cpu).
 
-        - RexReranker-0.6B / Qwen3-Reranker（电商生成式重排）：transformers yes/no 打分；
-        - BAAI/bge-reranker-v2-m3 等：FlagEmbedding 交叉编码。
-        任一加载失败 → None，由调用方回退规则排序（环境自感知）。
+        - RexReranker-0.6B / Qwen3-Reranker (e-commerce generative rerank): transformers yes/no
+        scoring;
+        - BAAI/bge-reranker-v2-m3 etc.: FlagEmbedding cross-encoder.
+        Any load failure -> None, caller falls back to rule ordering (environment-aware).
         """
         if self._bge is not None:
             return self._bge
@@ -360,7 +415,7 @@ class Reranker:
                 self._bge = FlagReranker(model_name, use_fp16=(device == "cuda"), device=device)
                 logger.info("[reranker] cross-encoder loaded: %s on %s", model_name, device)
         except Exception as exc:
-            logger.warning("[reranker] 重排模型不可用（%s）→ 不使用模型重排", exc)
+            logger.warning("[reranker] reranker model unavailable (%s) -> skip model rerank", exc)
             self._bge = None
         return self._bge
 
@@ -371,7 +426,8 @@ class Reranker:
         state: RecommendationContext,
         route: IntentRoute,
     ) -> list[str]:
-        """用重排模型（RexReranker-0.6B / bge-reranker-v2-m3）对 Top-BGE_RERANK_CANDIDATES 精排。"""
+        """Rerank the top BGE_RERANK_CANDIDATES with the reranker model (RexReranker-0.6B /
+            bge-reranker-v2-m3)."""
         model = self._ensure_reranker_model()
         if model is None:
             return []
@@ -384,9 +440,9 @@ class Reranker:
         if not any(p[1] for p in pairs):
             return []
         try:
-            if hasattr(model, "score_pairs"):  # RexReranker/Qwen3 生成式
+            if hasattr(model, "score_pairs"):  # RexReranker/Qwen3 generative
                 scores = model.score_pairs(pairs)
-            else:  # FlagEmbedding 交叉编码
+            else:  # FlagEmbedding cross-encoder
                 scores = model.compute_score(pairs, normalize=True)
                 if isinstance(scores, float):
                     scores = [scores]
@@ -397,7 +453,7 @@ class Reranker:
                 )
             ]
             return ranked + [a for a in order if a not in ranked]
-        except Exception as exc:  # OOM / 其它异常 → 降级
+        except Exception as exc:  # OOM / other exceptions -> degrade to rule ordering
             logger.warning("[reranker] bge rerank failed, fallback to rule order: %s", exc)
             return []
 
@@ -419,10 +475,12 @@ class Reranker:
         return " | ".join(p for p in parts if p)
 
     # ------------------------------------------------------------------
-    # 可选 qwen3-rerank 文本重排（阿里云 MaaS /reranks；环境自感知，失败回退规则）
+    # Optional qwen3-rerank text rerank (Alibaba Cloud MaaS /reranks; environment-aware, fallback to
+    # rule ordering on failure)
     # ------------------------------------------------------------------
     def _ensure_text_rerank(self):
-        """惰性创建 qwen3-rerank MaaS 客户端（key/base_url 缺失→disable，不发网络）。"""
+        """Lazily create the qwen3-rerank MaaS client (missing key/base_url -> disabled, no network
+            calls)."""
         if self._rerank_client is not None:
             return self._rerank_client
         try:
@@ -434,12 +492,13 @@ class Reranker:
             client.initialize()
             self._rerank_client = client
         except Exception as exc:
-            logger.warning("[reranker] qwen3-rerank 客户端初始化失败（%s）→ 回退规则排序", exc)
+            logger.warning("[reranker] qwen3-rerank client init failed (%s) -> fall back to rule ordering", exc)  # noqa: E501
             self._rerank_client = None
         return self._rerank_client
 
     def _text_rerank(self, order: list[str], retriever: HybridRetriever, state, route) -> list[str]:
-        """用 qwen3-rerank 对 Top-rerank_candidates 按 query 相关性重排；异常回退原顺序。"""
+        """Rerank the top rerank_candidates by query relevance with qwen3-rerank; on failure keep
+            the original order."""
         client = self._ensure_text_rerank()
         if client is None or not client.available:
             return []
@@ -458,7 +517,7 @@ class Reranker:
         return ranked + [a for a in order if a not in ranked]
 
     # ------------------------------------------------------------------
-    # 可选 LLM 语义重排（Pillar I：共享客户端；无网络/无 key 时自动回退）
+    # Optional LLM semantic rerank (Pillar I: shared client; auto-fallback without network/key)
     # ------------------------------------------------------------------
     def _llm_rerank(
         self, order: list[str], retriever: HybridRetriever, state: RecommendationContext

@@ -1,21 +1,16 @@
-﻿"""检索管线包：赛题第4-6步（查询构建 / 三通道检索 / 重排序）。
-
-本包只做检索管线，不实现 Agent respond/reset、不实现状态机、不修改评测器。
-上层（意图识别+对话状态机）传入 session_state，本包返回 PipelineOutput。
-"""
-from retrieval_pipeline.models import (
-    PipelineOutput,
-    QueryBundle,
-    SessionState,
-    StrategyConfig,
-)
-from retrieval_pipeline.pipeline import RetrievalPipeline, run_pipeline
-
-__all__ = [
-    "SessionState",
-    "StrategyConfig",
-    "QueryBundle",
-    "PipelineOutput",
-    "RetrievalPipeline",
-    "run_pipeline",
-]
+"""Retrieval-pipeline package: task steps 4-6 (query building / three-channel retrieval /
+    reranking).
+
+This package only implements the retrieval pipeline; it never implements Agent respond/reset, never
+implements a state machine, and never modifies the evaluator.
+The upper layer (intent recognition + dialogue state machine) passes session_state; this package
+returns PipelineOutput.
+"""
+from retrieval_pipeline.models import (    PipelineOutput,    QueryBundle,    SessionState,    StrategyConfig,)from retrieval_pipeline.pipeline import RetrievalPipeline, run_pipeline__all__ = [
+    "SessionState",
+    "StrategyConfig",
+    "QueryBundle",
+    "PipelineOutput",
+    "RetrievalPipeline",
+    "run_pipeline",
+]

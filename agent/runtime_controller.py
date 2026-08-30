@@ -1,10 +1,12 @@
-"""自主决策控制器（Agent 的"决策层"）：依据能力探测结果 + 配置，决定各环节执行方式。
+"""Autonomous decision controller (the agent's "decision layer"): decides how each stage runs from
+    the capability probe + config.
 
-原则：
-- 全部能力开关默认关（LLM 意图/澄清默认不启用）；
-- 配置开启 + 探测可用 → 真正启用（环境自适应）；
-- 配置开启但环境不可用 → 自动降级（回退规则 / 回退 BM25），并记录原因；
-- retrieval_backend 支持 auto：稠密可用→hybrid，否则 bm25。
+Principles:
+- All capability switches are off by default (LLM intent/clarify not enabled by default);
+- config on + probe available -> truly enabled (environment-adaptive);
+- config on but environment unavailable -> automatic degradation (fallback to rules / BM25) with the
+reason recorded;
+- retrieval_backend supports auto: dense available -> hybrid, otherwise bm25.
 """
 
 from __future__ import annotations
@@ -14,6 +16,7 @@ from dataclasses import dataclass, field
 
 from agent.capability_probe import CapabilityProfile
 from config.env_config import EnvConfig
+from config.profiles import profile_ids, requires_met
 from utils import lut as lut_utils
 
 logger = logging.getLogger(__name__)
@@ -21,17 +24,17 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class RuntimeDecisions:
-    """每轮/全局生效的执行方式决策。"""
+    """Decisions about how each stage executes (global per run)."""
 
-    retrieval_backend: str = "bm25"  # 生效的检索后端（auto 已解析）
-    use_dense: bool = False  # 是否启用稠密通道
-    use_llm_intent: bool = False  # 意图识别是否用 LLM
-    use_llm_clarify: bool = False  # 澄清决策是否用 LLM
-    use_llm_rerank: bool = False  # 重排是否启用（qwen3-rerank text / chat LLM）
-    text_rerank_active: bool = False  # 是否走 qwen3-rerank 文本重排
-    use_reranker_model: bool = False  # 是否可用 bge 交叉编码重排（FlagEmbedding）
-    strategy: str = "bm25_rule"  # 选中的策略标签（环境自适应，见 decide()）
-    strategy_lut: str | None = None  # LUT 推荐的最优配置（数据驱动；缺失→None 回退默认）
+    retrieval_backend: str = "bm25"  # effective retrieval backend (auto already resolved)
+    use_dense: bool = False  # whether the dense channel is enabled
+    use_llm_intent: bool = False  # whether intent recognition uses the LLM
+    use_llm_clarify: bool = False  # whether clarify decisions use the LLM
+    use_llm_rerank: bool = False  # whether reranking is enabled (qwen3-rerank text / chat LLM)
+    text_rerank_active: bool = False  # whether qwen3-rerank text rerank is active
+    use_reranker_model: bool = False  # whether the bge cross-encoder rerank is usable (FlagEmbedding)  # noqa: E501
+    strategy: str = "bm25_rule"  # chosen strategy label (environment-adaptive, see decide())
+    strategy_lut: str | None = None  # LUT-recommended optimal config (data-driven; missing -> None falls back to default)  # noqa: E501
     reasons: list[str] = field(default_factory=list)
 
     def summary(self) -> str:
@@ -50,7 +53,7 @@ class RuntimeDecisions:
 
 
 class RuntimeController:
-    """把 CapabilityProfile 编译成 RuntimeDecisions（每次会话/启动调用一次）。"""
+    """Compile a CapabilityProfile into RuntimeDecisions (called once per session/startup)."""
 
     def __init__(self, env: EnvConfig, profile: CapabilityProfile) -> None:
         self.env = env
@@ -59,7 +62,7 @@ class RuntimeController:
     def decide(self) -> RuntimeDecisions:
         d = RuntimeDecisions()
 
-        # ---- 检索后端：auto / 显式配置 + 环境回退 ----
+        # ---- Retrieval backend: auto / explicit config + environment fallback ----
         backend = self.env.retrieval_backend
         if backend == "auto":
             d.retrieval_backend = "hybrid" if self.profile.dense_available else "bm25"
@@ -72,17 +75,19 @@ class RuntimeController:
             d.retrieval_backend = backend if self.profile.dense_available else "bm25"
             d.use_dense = self.profile.dense_available
             if not self.profile.dense_available:
-                d.reasons.append(f"retrieval_backend={backend} 但稠密不可用 -> 回退 bm25")
+                d.reasons.append(f"retrieval_backend={backend} but dense unavailable -> fallback to bm25")  # noqa: E501
         else:
             d.retrieval_backend = backend
             d.use_dense = False
 
-        # ---- LLM 决策：配置开启 && 探测可用才启用（默认关、环境自适应）----
+        # ---- LLM decisions: enabled only when config on && probe available (off by default,
+        # environment-adaptive) ----
         llm_ok = self.profile.llm_available
         d.use_llm_intent = self.env.llm_intent_enabled and llm_ok
         d.use_llm_clarify = self.env.llm_clarify_enabled and llm_ok
-        # 重排后端决策：text=qwen3-rerank MaaS（替换原 chat JSON 打分）/ chat=旧 LLM /
-        # auto=text 可用优先，否则回退 chat；全部失败回退规则排序。
+        # Rerank-backend decision: text=qwen3-rerank MaaS (replaces the old chat JSON scoring) /
+        # chat=legacy LLM /
+        # auto=prefer text, otherwise fall back to chat; if all fail, fall back to rule ordering.
         rr_backend = self.env.llm.rerank_backend
         if self.env.llm.rerank_enabled:
             if rr_backend == "text":
@@ -90,8 +95,8 @@ class RuntimeController:
                 d.text_rerank_active = self.profile.text_rerank_available
                 if not self.profile.text_rerank_available:
                     d.reasons.append(
-                        "LLM_RERANK=1 但 qwen3-rerank 不可用"
-                        f"（{self.profile.text_rerank_error or '未配置'}）→ 回退规则排序"
+                        "LLM_RERANK=1 but qwen3-rerank unavailable"
+                        f" ({self.profile.text_rerank_error or 'not configured'}) -> fallback to rule ordering"  # noqa: E501
                     )
             elif rr_backend == "chat":
                 d.use_llm_rerank = llm_ok
@@ -103,31 +108,38 @@ class RuntimeController:
             self.env.llm_intent_enabled
             or self.env.llm_clarify_enabled
         ) and not llm_ok:
-            d.reasons.append(f"LLM 已配置但不可用（state={self.profile.llm_state}）→ 回退规则")
+            d.reasons.append(f"LLM configured but unavailable (state={self.profile.llm_state}) -> fallback to rules")  # noqa: E501
 
-        # ---- 交叉编码重排模型（bge-reranker-v2-m3 / RexReranker）：配置开启 && 探测可用才启用 ----
+        # ---- Cross-encoder reranker model (bge-reranker-v2-m3 / RexReranker): enabled only when
+        # config on && probe available ----
         d.use_reranker_model = self.env.reranker_model_enabled and self.profile.reranker_available
         if self.env.reranker_model_enabled and not self.profile.reranker_available:
             d.reasons.append(
-                f"RERANKER_MODEL_ENABLE=1 但 {self.env.reranker_model} 不可用 → 回退规则排序"
+                f"RERANKER_MODEL_ENABLE=1 but {self.env.reranker_model} unavailable -> fallback to rule ordering"  # noqa: E501
             )
 
-        # ---- 策略标签：环境自适应选出"当前环境最优"配置（默认非永远纯规则）----
-        # 公开集 A/B：BLaIR 可用时 hybrid+dense(recover) 0.879 > 纯规则 0.876；
-        # 无 BLaIR 时 bm25 规则 0.8757 为环境最优。LLM 可用且开启时级联兜底（安全）。
+        # ---- Strategy label: environment-adaptive selection of the "current-best" config (never
+        # permanently pure rules) ----
+        # Public-set A/B: with BLaIR, hybrid+dense(recover) 0.879 > pure rules 0.876;
+        # without BLaIR, bm25 rules (0.8757) are environment-optimal. When the LLM is available and
+        # enabled, cascaded intent is a safe net.
         parts = [d.retrieval_backend]
         if d.use_llm_intent:
             parts.append("llm_intent")
         if d.use_reranker_model:
             parts.append("rerank_model")
+        if len(parts) == 1:
+            parts.append("rule")  # pure rules (no enhancements): bm25_rule / hybrid_rule
         d.strategy = "_".join(parts) if parts else "rule"
         d.reasons.append(
             f"strategy={d.strategy}（dense={'yes' if d.use_dense else 'no'} "
             f"llm={'yes' if d.use_llm_intent else 'no'}）"
         )
 
-        # Step 3：配置-环境-性能 LUT——按环境指纹推荐最优 config_id（数据驱动启动默认；
-        # LUT 缺失 / 环境不在表内 → None，回退上面计算出的默认策略，保底安全）
+        # Step 3: config-environment-performance LUT -- recommend the best config_id by environment
+        # fingerprint (data-driven startup default;
+        # LUT missing / environment not in table -> None, fall back to the default strategy computed
+        # above; safe baseline)
         try:
             fp = lut_utils.env_fingerprint(
                 device=self.profile.device,
@@ -136,13 +148,27 @@ class RuntimeController:
                 network=self.profile.network_available,
             )
             rec = lut_utils.recommend(fp)
-            d.strategy_lut = rec["config_id"] if rec else None
-            if rec:
+            # P3: the LUT recommendation must be a CONFIG_PROFILES profile whose capability
+            # requirements the current environment meets
+            # (otherwise fall back to default -- avoid profiles that need an LLM but can only fall
+            # back in an LLM-less env)
+            cid = rec["config_id"] if rec else None
+            ok = cid in profile_ids() and requires_met(
+                cid,
+                dense=self.profile.dense_available,
+                llm=self.profile.llm_available,
+                network=self.profile.network_available,
+                model=self.profile.reranker_available,
+            )
+            d.strategy_lut = cid if ok else None
+            if rec and ok:
                 d.reasons.append(
-                    f"LUT[{fp}] -> {rec['config_id']} (ts={rec['technical_score']:.4f})"
+                    f"LUT[{fp}] -> {cid} (ts={rec['technical_score']:.4f})"
                 )
-        except Exception as exc:  # 任何异常不阻塞启动
-            logger.warning("[runtime] LUT 推荐失败（%s）→ 回退默认策略", exc)
+            elif rec and not ok:
+                d.reasons.append(f"LUT[{fp}] -> {cid} capability not met, fallback to default strategy")  # noqa: E501
+        except Exception as exc:  # any exception never blocks startup
+            logger.warning("[runtime] LUT recommendation failed (%s) -> fallback to default strategy", exc)  # noqa: E501
             d.strategy_lut = None
 
         logger.info("[runtime] %s", d.summary())

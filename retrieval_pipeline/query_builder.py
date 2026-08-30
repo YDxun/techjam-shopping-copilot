@@ -1,10 +1,11 @@
-"""模块1｜查询构建（赛题第4步）：约束解析、同义词扩展、可选LLM改写、查询变体。
+"""Module 1: query building (task step 4): constraint parsing, synonym expansion, optional LLM
+    rewrite, query variants.
 
-输出 QueryBundle：
-    main_query         主查询文本
-    variant_queries    变体查询（RECOVER/开启时 2-3 条）
-    structured_filters 解析完成的结构化过滤条件（价格文本→数值约束）
-    synonym_expanded   是否做同义词扩展
+Output QueryBundle:
+    main_query         the main query text
+    variant_queries    variant queries (2-3 when RECOVER/enabled)
+    structured_filters parsed structured filter conditions (price text -> numeric constraints)
+    synonym_expanded   whether synonym expansion was applied
 """
 from __future__ import annotations
 
@@ -19,7 +20,7 @@ from retrieval_pipeline.models import QueryBundle, SessionState
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# 内置服饰电商同义词词典（jumper↔sweater 等）
+# built-in apparel/e-commerce synonym dictionary (jumper<->sweater etc.)
 # ---------------------------------------------------------------------------
 SYNONYM_MAP: dict[str, list[str]] = {
     "jumper": ["sweater", "pullover"],
@@ -47,15 +48,16 @@ SYNONYM_MAP: dict[str, list[str]] = {
 }
 
 # ---------------------------------------------------------------------------
-# 数据分析产物同义词库：data/analysis/vocab.json（72 材质 / 45 颜色 / 34 尺码 / 44 风格 …）
-# 内置 SYNONYM_MAP 作为兜底；vocab.json 缺失/损坏时静默回退内置表。
+# data-analysis synonym resource: data/analysis/vocab.json (72 materials / 45 colors / 34 sizes / 44
+# styles ...)
+# built-in SYNONYM_MAP is the fallback; silently falls back when vocab.json is missing/corrupt.
 # ---------------------------------------------------------------------------
 _VOCAB_PATH = Path(__file__).resolve().parent.parent / "data" / "analysis" / "vocab.json"
 _vocab_cache: dict[str, list[str]] | None = None
 
 
 def _load_vocab_synonyms() -> dict[str, list[str]]:
-    """canonical → [canonical, *synonyms]，来自 data/analysis/vocab.json。"""
+    """canonical -> [canonical, *synonyms], sourced from data/analysis/vocab.json."""
     global _vocab_cache
     if _vocab_cache is not None:
         return _vocab_cache
@@ -74,12 +76,12 @@ def _load_vocab_synonyms() -> dict[str, list[str]]:
                         str(s).lower() for s in syns if isinstance(s, str)
                     ]
     except Exception as exc:
-        logger.warning("[query_builder] vocab.json 加载失败（回退内置同义词表）: %s", exc)
+        logger.warning("[query_builder] vocab.json load failed (fallback to the built-in synonym table): %s", exc)  # noqa: E501
     _vocab_cache = out
     return out
 
 
-# 价格文本 → 数值约束
+# price text -> numeric constraints
 _PRICE_RE = [
     # under $50
     re.compile(r"(?:under|below|less than|max|<=|≤|at most)\s*\$?\s*(\d+(?:\.\d+)?)", re.I),
@@ -90,7 +92,7 @@ _PRICE_RE = [
 ]
 _BUDGET_KEYS = {"budget_max", "budget_min", "price_max", "price_min", "budget"}
 
-# 约束键 → 结构化过滤字段名（通道1使用）
+# constraint key -> structured-filter field name (used by channel 1)
 FILTER_KEY_ALIAS = {
     "material": "material",
     "color": "color",
@@ -109,7 +111,7 @@ FILTER_KEY_ALIAS = {
 
 
 class QueryBuilder:
-    """第4步：把 session_state 编译成 QueryBundle。"""
+    """Step 4: compile session_state into a QueryBundle."""
 
     def __init__(self, enable_llm_rewrite: bool | None = None) -> None:
         self.enable_llm_rewrite = (config.QUERY_REWRITE_ENABLE
@@ -120,9 +122,10 @@ class QueryBuilder:
         bundle = QueryBundle()
         raw = (state.user_raw_query or "").strip()
 
-        # 1) 约束解析（价格文本 → 数值）
+        # 1) constraint parsing (price text -> numeric)
         bundle.structured_filters = self._parse_constraints(state.constraints)
-        # 1b) 从原始 query 文本挖掘价格约束（under $50 → budget_max=50），未显式给定时补全
+        # 1b) mine price constraints from the raw query text (under $50 -> budget_max=50) when not
+        # explicitly given
         if (
             "budget_max" not in bundle.structured_filters
             and "budget_min" not in bundle.structured_filters
@@ -131,16 +134,16 @@ class QueryBuilder:
             if price is not None:
                 bundle.structured_filters["budget_max"] = price
 
-        # 2) 同义词扩展：recovery_mode 强制开启
+        # 2) synonym expansion: forced on in recovery_mode
         enable_syn = state.strategy_config.enable_synonym or state.recovery_mode
         expanded_query = self._expand_synonyms(raw) if enable_syn else raw
         bundle.synonym_expanded = enable_syn and (expanded_query != raw)
 
-        # 3) 主查询：LLM 可选改写 / 模板拼接
+        # 3) main query: optional LLM rewrite / template concatenation
         if state.constraints:
             constraint_text = self._constraints_to_text(bundle.structured_filters)
         else:
-            constraint_text = ""   # override 已清空约束 → 直接用原始 query
+            constraint_text = ""   # override cleared the constraints -> use the raw query directly
         if self.enable_llm_rewrite:
             bundle.main_query = self._llm_rewrite(constraint_text, raw) or self._template_join(
                 constraint_text, expanded_query
@@ -148,7 +151,7 @@ class QueryBuilder:
         else:
             bundle.main_query = self._template_join(constraint_text, expanded_query)
 
-        # 4) 查询变体（RECOVER 或 enable_query_variant）
+        # 4) query variants (RECOVER or enable_query_variant)
         if state.strategy_config.enable_query_variant or state.recovery_mode:
             bundle.variant_queries = self._build_variants(bundle, state)
 
@@ -159,7 +162,8 @@ class QueryBuilder:
     # ------------------------------------------------------------------
     @staticmethod
     def _parse_constraints(constraints: dict) -> dict:
-        """约束 → 结构化过滤字段；把自然语言价格转为数值（under $50 → budget_max=50）。"""
+        """Constraint -> structured filter field; converts natural-language prices to numeric
+            (under $50 -> budget_max=50)."""
         filters: dict = {}
         for key, value in (constraints or {}).items():
             k = FILTER_KEY_ALIAS.get(str(key).lower(), str(key).lower())
@@ -185,7 +189,7 @@ class QueryBuilder:
             m = pattern.search(text)
             if not m:
                 continue
-            if i == 2:  # range → 取上限作为 budget_max
+            if i == 2:  # range -> take the upper bound as budget_max
                 return float(m.group(2))
             return float(m.group(1))
         return None
@@ -193,13 +197,14 @@ class QueryBuilder:
     # ------------------------------------------------------------------
     def _expand_synonyms(self, query: str) -> str:
         out = query
-        # 内置电商同义词（jumper↔sweater 等）
+        # built-in e-commerce synonyms (jumper<->sweater etc.)
         for term, synonyms in SYNONYM_MAP.items():
             if re.search(rf"\b{re.escape(term)}\b", query, re.I):
                 extra = " ".join(s for s in synonyms if s.lower() not in query.lower())
                 if extra:
                     out = f"{out} {extra}"
-        # 数据分析产物 vocab.json：canonical 命中 → 追加全部同义词（"100% cotton"↔"纯棉"…）
+        # data-analysis vocab.json: on a canonical hit, append all synonyms ("100% cotton" <-> "pure
+        # cotton" ...)
         for canonical, synonyms in _load_vocab_synonyms().items():
             if re.search(rf"\b{re.escape(canonical)}\b", query, re.I):
                 extra = " ".join(s for s in synonyms
@@ -211,7 +216,7 @@ class QueryBuilder:
     # ------------------------------------------------------------------
     @staticmethod
     def _constraints_to_text(filters: dict) -> str:
-        """结构化过滤条件 → 查询文本（拼进 BM25/稠密查询）。"""
+        """Structured filter conditions -> query text (folded into the BM25/dense query)."""
         parts: list[str] = []
         for k, v in filters.items():
             if k in ("budget_max",):
@@ -226,14 +231,15 @@ class QueryBuilder:
 
     @staticmethod
     def _template_join(constraint_text: str, query: str) -> str:
-        """无 LLM 时的模板拼接：约束 + 原始 query。"""
+        """Template concatenation without an LLM: constraints + raw query."""
         if constraint_text:
             return f"{constraint_text} {query}".strip()
         return query.strip()
 
     # ------------------------------------------------------------------
     def _llm_rewrite(self, constraint_text: str, raw_query: str) -> str | None:
-        """可选 LLM 查询改写（第4步）；失败/无 key 返回 None → 走模板拼接。"""
+        """Optional LLM query rewrite (step 4); returns None on failure/no-key -> template
+            concatenation."""
         try:
             import os
 
@@ -264,16 +270,16 @@ class QueryBuilder:
 
     # ------------------------------------------------------------------
     def _build_variants(self, bundle: QueryBundle, state: SessionState) -> list[str]:
-        """生成 2-3 条查询变体：删减次要约束、替换同义词、调整语序。"""
+        """Generate 2-3 query variants: drop secondary constraints, swap synonyms, reorder words."""
         variants: list[str] = []
         base = bundle.main_query
         filters = bundle.structured_filters
 
-        # 变体1：删掉 color
+        # variant 1: drop color
         if "color" in filters:
             variants.append(self._drop_term(base, str(filters["color"])))
 
-        # 变体2：删掉 size / budget（次要约束）
+        # variant 2: drop size / budget (secondary constraints)
         for k in ("size", "budget_max"):
             if k in filters:
                 drop = str(filters[k])
@@ -282,11 +288,11 @@ class QueryBuilder:
                 variants.append(self._drop_term(base, drop))
                 break
 
-        # 变体3：同义词替换后的主查询（若尚未包含）
+        # variant 3: the synonym-substituted main query (if not already included)
         if bundle.synonym_expanded and variants:
             variants.append(base)
 
-        # 变体4（补足）：若上面都为空，用不含约束文本的原始 query
+        # variant 4 (backfill): if all above are empty, use the raw query without constraint text
         if not variants and state.user_raw_query:
             variants.append(state.user_raw_query.strip())
 

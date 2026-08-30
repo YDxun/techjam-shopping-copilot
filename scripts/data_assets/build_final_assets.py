@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 
 # ============================================================
-# 路径
+# paths
 # ============================================================
 
 VOCAB_PATH = Path("vocab_metadata_v2.json")
@@ -21,7 +21,7 @@ OUTPUT_REPORT = Path("final_assets_report.json")
 
 
 # ============================================================
-# 基础工具
+# helpers
 # ============================================================
 
 
@@ -48,20 +48,20 @@ def save_json(path, data):
 
 
 # ============================================================
-# 读取资产
+# load the assets
 # ============================================================
 
-print("读取 vocab...")
+print("loading the vocab...")
 
 vocab_source = load_json(VOCAB_PATH)
 
 
-print("读取 full review stats...")
+print("loading full review stats...")
 
 review_stats = load_json(REVIEW_STATS_PATH)
 
 
-print("读取 field mapping...")
+print("loading field mapping...")
 
 field_mapping = load_json(FIELD_MAPPING_PATH)
 
@@ -69,24 +69,24 @@ field_mapping = load_json(FIELD_MAPPING_PATH)
 # ============================================================
 # vocab_v2
 #
-# 原则：
+# principles:
 #
-# 1. vocab_metadata_v2 是基础
-# 2. reviews 不自动创造大量 canonical
-# 3. reviews 只加入“严格安全”的 literal synonym
-# 4. fit intent 不写进 size synonym
+# 1. vocab_metadata_v2 is the base
+# 2. reviews never auto-create many canonicals
+# 3. reviews only add "strictly safe" literal synonyms
+# 4. fit intent is never written into size synonyms
 # ============================================================
 
 vocab_v2 = copy.deepcopy(vocab_source)
 
 
 # ============================================================
-# 安全 review synonym
+# safe review synonyms
 #
-# 这些属于真正的 literal lexical equivalence。
+# these are true literal lexical equivalences.
 #
-# 注意：
-# runs small / size up 等绝对不放这里。
+# note:
+# runs small / size up etc. never go here.
 # ============================================================
 
 SAFE_REVIEW_SYNONYMS = {
@@ -142,7 +142,7 @@ SAFE_REVIEW_SYNONYMS = {
 
 
 # ============================================================
-# 建立 dictionary term index
+# build the dictionary term index
 # ============================================================
 
 
@@ -176,15 +176,15 @@ synonym_missing_canonical = []
 
 
 # ============================================================
-# 安全加入 synonym
+# safely add a synonym
 # ============================================================
 
 for attr, mappings in SAFE_REVIEW_SYNONYMS.items():
     dictionary = vocab_v2.get("dictionaries", {}).get(attr, {})
 
     for requested_canonical, synonyms in mappings.items():
-        # 每轮重建，避免刚添加的 synonym
-        # 后续又被其他 canonical 抢走
+        # rebuild each round so a just-added synonym
+        # is not claimed by another canonical later
         term_index = build_term_index(dictionary)
 
         canonical_norm = normalize(requested_canonical)
@@ -219,7 +219,7 @@ for attr, mappings in SAFE_REVIEW_SYNONYMS.items():
             existing_owner = term_index.get(synonym_norm)
 
             # --------------------------------
-            # 已经存在
+            # already exists
             # --------------------------------
 
             if existing_owner == target:
@@ -234,9 +234,9 @@ for attr, mappings in SAFE_REVIEW_SYNONYMS.items():
                 continue
 
             # --------------------------------
-            # 被其他 canonical 占用
+            # occupied by another canonical
             #
-            # 不自动重写！
+            # never auto-rewrite!
             # --------------------------------
 
             if existing_owner is not None and existing_owner != target:
@@ -252,7 +252,7 @@ for attr, mappings in SAFE_REVIEW_SYNONYMS.items():
                 continue
 
             # --------------------------------
-            # 添加
+            # add
             # --------------------------------
 
             info["synonyms"].append(synonym)
@@ -317,7 +317,7 @@ review_paraphrases = {
 # ============================================================
 # SIZE FIT
 #
-# 这是 reviews 最重要的产物。
+# this is the most important review-derived output.
 # ============================================================
 
 SIZE_FIT_QUERY_EXPANSIONS = {
@@ -414,7 +414,7 @@ for intent, phrases in SIZE_FIT_QUERY_EXPANSIONS.items():
 # ============================================================
 # MATERIAL LANGUAGE
 #
-# 这里只保留 review 里真正有解释价值的表达。
+# only expressions with real explanatory value in the reviews are kept.
 # ============================================================
 
 review_paraphrases["material_language"] = {
@@ -484,7 +484,7 @@ review_paraphrases["material_language"] = {
 # ============================================================
 # COLOR LANGUAGE
 #
-# fuzzy 修饰词只用于 soft expansion。
+# fuzzy modifiers are used only for soft expansion.
 # ============================================================
 
 COLOR_MODIFIERS = [
@@ -618,7 +618,7 @@ report = {
 
 
 # ============================================================
-# 保存
+# save
 # ============================================================
 
 save_json(OUTPUT_VOCAB, vocab_v2)
@@ -637,11 +637,11 @@ print("=" * 75)
 print("FINAL ASSETS COMPLETE")
 print("=" * 75)
 
-print(f"生成：{OUTPUT_VOCAB}")
+print(f"generated: {OUTPUT_VOCAB}")
 
-print(f"生成：{OUTPUT_PARAPHRASES}")
+print(f"generated: {OUTPUT_PARAPHRASES}")
 
-print(f"生成：{OUTPUT_REPORT}")
+print(f"generated: {OUTPUT_REPORT}")
 
 
 print("\nReview corpus：")
@@ -672,5 +672,5 @@ for intent, data in report["size_fit"].items():
     print(f"{intent:<20}{data['review_count']:>12,}")
 
 
-print("\n完成。")
-print("原 vocab_metadata_v2.json、field_mapping.json、review stats 均未修改。")
+print("\ndone.")
+print("the original vocab_metadata_v2.json, field_mapping.json and review stats were not modified.")

@@ -39,8 +39,10 @@ RE_COMPLEX = re.compile(
     re.I,
 )
 
-# Part A（P0）：必要性线索词表——命中任一词 → 泛化 ADD 路径提取的约束升级为 HARD。
-# 官方模板（"A key requirement is"/"what matters is"/override）由更早的分支处理，不经过泛化路径。
+# Part A (P0): necessity cue-word list -- hitting any word upgrades constraints extracted on the
+# generalized ADD path to HARD.
+# Official templates ("A key requirement is" / "what matters is" / override) are handled by earlier
+# branches and never go through the generalized path.
 _HARD_CUES = (
     "must", "need", "needs", "has to", "have to", "require", "requires",
     "important", "crucial", "essential", "key", "the most important thing",
@@ -50,7 +52,8 @@ _HARD_CUE_WORDS = (
     "must", "need", "needs", "require", "requires", "important", "crucial", "essential", "key"
 )
 
-# 线索词后的取值捕获："I need waterproof" -> waterproof（覆盖 MATERIALS 之外的属性值）
+# Value capture after a cue word: "I need waterproof" -> waterproof (covers attribute values beyond
+# MATERIALS)
 RE_CUE_VALUE = re.compile(
     r"(?:must|need|needs|has to|have to|require|requires|important|crucial|essential|"
     r"key|the most important thing)\s*(?:is|be|to be|that is)?\s*[:：]?\s*"
@@ -146,21 +149,24 @@ class RuleBasedRecognizer:
             DialogueAct.NO_MORE_PREFERENCES,
             DialogueAct.NO_PREFERENCE,
         }:
-            # Part A：必要性线索词 → 泛化 ADD 路径提取升级为 HARD（仅此路径，官方模板分支优先）
+            # Part A: necessity cue -> upgrade constraints extracted on the generalized ADD path to
+            # HARD (this path only; official template branches take priority)
             hard_cue = self.hard_cue_enabled and self._hard_cue_present(text)
             operations.extend(self._generic_operations(text, hard=hard_cue))
             if operations and dialogue_act == DialogueAct.AMBIGUOUS:
                 dialogue_act = DialogueAct.ADD_CONSTRAINT
                 confidence = 0.85 if hard_cue else 0.75
 
-        # 评论改写抽取（ASSET_PARAPHRASE）：私有集 paraphrase 鲁棒性
+        # Review-paraphrase extraction (ASSET_PARAPHRASE): private-set paraphrase robustness
         if self.paraphrase_enabled:
             operations.extend(self._paraphrase_operations(text, operations))
 
-        # turn-1 尾部旧偏好捕获（与 0.995 HR 基线行为一致）：
-        # intent_override 首条消息为 "I'm looking for {cat}. {old_value}"，
-        # 把 {old_value} 作为 soft 约束立刻获得排序信号；buying/browsing 尾部含
-        # "key requirement"/"still exploring" 等标记时自动跳过（避免重复/噪声）。
+        # Turn-1 tail old-preference capture (matches the 0.995 HR baseline behavior):
+        # the intent_override first message is "I'm looking for {cat}. {old_value}",
+        # so {old_value} becomes a soft constraint to gain an immediate ranking signal;
+        # buying/browsing tails containing
+        # markers like "key requirement"/"still exploring" are auto-skipped (avoiding
+        # duplication/noise).
         operations.extend(self._turn1_tail_operations(text, request.turn))
 
         if RE_COMPLEX.search(text):
@@ -213,7 +219,7 @@ class RuleBasedRecognizer:
         )
 
     def _hard_cue_present(self, text: str) -> bool:
-        """是否命中必要性线索词（Part A；开关关闭时恒 False）。"""
+        """Whether a necessity cue word is hit (Part A; always False when the switch is off)."""
         if not self.hard_cue_enabled:
             return False
         lowered = text.lower()
@@ -235,7 +241,8 @@ class RuleBasedRecognizer:
         if color_match:
             values.append(f"color: {color_match.group(1)}")
         if hard:
-            # 线索词后的取值捕获（"I need waterproof" -> waterproof；覆盖 MATERIALS 之外的属性值）
+            # value capture after a cue word ("I need waterproof" -> waterproof; covers attribute
+            # values beyond MATERIALS)
             cue_match = RE_CUE_VALUE.search(text)
             if cue_match:
                 value = re.sub(r"^(?:a|an|the)\s+", "", cue_match.group(1).strip(), flags=re.I)
@@ -249,7 +256,8 @@ class RuleBasedRecognizer:
     def _paraphrase_operations(
         self, text: str, existing: list[ConstraintOperation]
     ) -> list[ConstraintOperation]:
-        """用 review_paraphrases 的模式做软约束抽取（去重：已有同属性约束则跳过）。"""
+        """Extract soft constraints using review_paraphrases patterns (dedup: skip when an existing
+            constraint has the same attribute)."""
         lowered = text.lower()
         existing_attrs = {op.attribute for op in existing}
         result: list[ConstraintOperation] = []
@@ -260,7 +268,8 @@ class RuleBasedRecognizer:
             match = pattern.search(lowered)
             if not match:
                 continue
-            # 否定保护：匹配前 12 字符内出现否定词则跳过（如 "not made of leather"）
+            # Negation guard: skip when a negation word appears within the previous 12 characters
+            # (e.g. "not made of leather")
             start = max(0, match.start() - 12)
             window = lowered[start : match.start()]
             if re.search(r"(?:not|no|don't|doesn't|dont|never|without|instead of)\b", window):
@@ -280,7 +289,8 @@ class RuleBasedRecognizer:
         return result
 
     def _turn1_tail_operations(self, text: str, turn: int) -> list[ConstraintOperation]:
-        """turn 1：'looking for X. <tail>' 的 <tail> 若不含标记，捕获为 soft 约束。"""
+        """Turn 1: if the <tail> of 'looking for X. <tail>' contains no markers, capture it as a
+            soft constraint."""
         if turn != 1:
             return []
         match = RE_LOOKING_FOR.search(text)

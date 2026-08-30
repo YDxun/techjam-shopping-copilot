@@ -1,11 +1,15 @@
-"""模块2｜三通道检索 + RRF 融合（赛题第5步）。
+"""Module 2: three-channel retrieval + RRF fusion (task step 5).
 
-通道1：结构化约束匹配（material/color/size/budget…）
-   - 普通模式：硬过滤，不满足约束直接筛除；
-   - RECOVER 模式：不筛除，对不满足约束的候选施加分数惩罚（放宽优先级 budget>size>material）。
-通道2：加权 BM25 词法检索（rank-bm25，title/features 高权重，支持查询变体）。
-通道3：BLaIR 稠密语义检索（商品向量来自离线 npy，推理只编码用户查询文本，点积召回）。
-多路融合：标准 RRF（k=60），稠密通道带 α 权重；去重 → retrieval_pool_size 截断。
+Channel 1: structured-constraint matching (material/color/size/budget...)
+   - normal mode: hard filter, dropping candidates that violate a constraint;
+   - RECOVER mode: no dropping; candidates violating a constraint get a score penalty (relaxation
+   priority budget>size>material).
+Channel 2: weighted BM25 lexical retrieval (rank-bm25; title/features high weight; supports query
+variants).
+Channel 3: BLaIR dense semantic retrieval (product vectors from the offline npy; at inference only
+the user query is encoded; dot-product recall).
+Fusion: standard RRF (k=60) with a dense-channel alpha weight; dedup -> truncate to
+retrieval_pool_size.
 """
 from __future__ import annotations
 
@@ -29,7 +33,7 @@ _STOPWORDS = frozenset({
     "with", "you", "want", "looking", "im", "i'm", "still", "exploring",
 })
 
-# 结构化约束字段 → 通道1文本匹配
+# structured-constraint fields -> channel-1 text matching
 _TEXT_FILTER_FIELDS = (
     "material", "color", "size", "style", "brand", "feature", "use_case", "category"
 )
@@ -55,7 +59,8 @@ def _field_text(value) -> str:
 
 
 class _BM25OkapiFallback:
-    """rank-bm25 缺失时的等价 BM25Okapi 实现（零依赖兜底）。"""
+    """Equivalent BM25Okapi implementation used when rank-bm25 is missing (zero-dependency
+        fallback)."""
 
     def __init__(self, corpus: list[list[str]]) -> None:
         self.corpus = corpus
@@ -91,7 +96,8 @@ class _BM25OkapiFallback:
 
 
 class _WeightedBM25Index:
-    """多字段加权 BM25（第5步-通道2）：每字段一个 BM25 模型，查询时按权重合并。"""
+    """Multi-field weighted BM25 (step 5 channel 2): one BM25 model per field, merged by weight at
+        query time."""
 
     def __init__(self, catalog: CatalogStore, weights: dict[str, float]) -> None:
         self.catalog = catalog
@@ -99,10 +105,10 @@ class _WeightedBM25Index:
         self.fields = list(weights.keys())
         self.models: dict[str, object] = {}
         try:
-            from rank_bm25 import BM25Okapi  # 首选库
+            from rank_bm25 import BM25Okapi  # preferred library
             self._cls = BM25Okapi
         except ImportError:
-            logger.warning("[retriever] rank_bm25 未安装，使用内置 BM25Okapi 等价实现")
+            logger.warning("[retriever] rank_bm25 not installed; using the built-in BM25Okapi equivalent")  # noqa: E501
             self._cls = None
         for field in self.fields:
             corpus = [
@@ -114,7 +120,7 @@ class _WeightedBM25Index:
         logger.info("[retriever] weighted BM25 index built (fields=%s)", self.fields)
 
     def score(self, query: str) -> dict[str, float]:
-        """返回 {parent_asin: 加权 BM25 分}。"""
+        """Return {parent_asin: weighted BM25 score}."""
         q_tokens = _tokens(query)
         if not q_tokens:
             return {}
@@ -130,24 +136,26 @@ class _WeightedBM25Index:
 
 
 class _QueryEncoder:
-    """BLaIR 查询编码器：只编码用户查询文本，不处理商品（商品向量来自离线 npy）。
+    """BLaIR query encoder: encodes only the user query text, never products (product vectors come
+        from the offline npy).
 
-    编码规范与离线脚本 scripts/encode_catalog_blair.py 完全一致（官方 generate_emb.py）：
+    Encoding convention matches scripts/encode_catalog_blair.py exactly (official generate_emb.py):
       - CLS pooling：last_hidden_state[:, 0]；
-      - L2 归一化，检索用点积。
-    加载顺序：transformers AutoModel（BLaIR 规范用法）→ sentence-transformers 兜底。
-    两者都不可用/加载失败 → 返回 None，稠密通道自动禁用（不阻塞主流程，环境自感知）。
+      - L2 normalization; retrieval uses dot product.
+    Load order: transformers AutoModel (canonical BLaIR usage) -> sentence-transformers fallback.
+    If neither loads / both fail -> returns None and the dense channel auto-disables (never blocks
+    the main flow; environment-aware).
     """
 
     def __init__(self, model_name: str) -> None:
         self.model_name = model_name
-        self._model = None          # None=未加载, False=加载失败, 其它=编码器实例
-        self._max_length = 512      # 官方示例 max_length=512（查询文本通常很短）
+        self._model = None          # None=not loaded, False=load failed, otherwise=encoder instance
+        self._max_length = 512      # official example max_length=512 (query texts are usually short)  # noqa: E501
 
     def _ensure(self):
         if self._model is not None:
             return self._model
-        # 首选：transformers AutoModel（BLaIR CLS 规范用法）
+        # preferred: transformers AutoModel (canonical BLaIR CLS usage)
         try:
             import os
 
@@ -164,10 +172,10 @@ class _QueryEncoder:
             return self._model
         except Exception as exc:
             logger.warning(
-                "[retriever] transformers BLaIR 加载失败（%s）→ 尝试 sentence-transformers",
+                "[retriever] transformers BLaIR load failed (%s) -> trying sentence-transformers",
                 exc,
             )
-        # 兜底：sentence-transformers（部分环境只装了它）
+        # fallback: sentence-transformers (some environments only have it)
         try:
             from sentence_transformers import SentenceTransformer
             self._model = SentenceTransformer(self.model_name)
@@ -177,7 +185,7 @@ class _QueryEncoder:
             )
             return self._model
         except Exception as exc:
-            logger.warning("[retriever] BLaIR 查询编码器不可用（%s）→ 稠密通道禁用", exc)
+            logger.warning("[retriever] BLaIR query encoder unavailable (%s) -> dense channel disabled", exc)  # noqa: E501
             self._model = False
         return self._model
 
@@ -195,17 +203,17 @@ class _QueryEncoder:
                 with torch.no_grad():
                     last_hidden = model["model"](**inputs, return_dict=True).last_hidden_state
                 vec = last_hidden[:, 0]                                  # CLS pooling
-                vec = torch.nn.functional.normalize(vec, p=2, dim=1)[0]  # L2 归一化
+                vec = torch.nn.functional.normalize(vec, p=2, dim=1)[0]  # L2 normalization
                 return vec.detach().cpu().numpy().astype(np.float32)
             vec = model.encode([text], normalize_embeddings=True)[0]
             return np.asarray(vec, dtype=np.float32)
         except Exception as exc:
-            logger.warning("[retriever] 查询编码失败: %s", exc)
+            logger.warning("[retriever] query encoding failed: %s", exc)
             return None
 
 
 class RetrieverPipeline:
-    """第5步：三通道检索 + RRF 融合。"""
+    """Step 5: three-channel retrieval + RRF fusion."""
 
     def __init__(self, catalog: CatalogStore, blair_store: BlairEmbeddingStore | None = None,
                  query_encoder: _QueryEncoder | None = None) -> None:
@@ -216,18 +224,19 @@ class RetrieverPipeline:
 
     # ------------------------------------------------------------------
     def retrieve(self, bundle: QueryBundle, state: SessionState) -> list[tuple[str, float]]:
-        """三通道召回 + RRF 融合 → 去重候选池（按 strategy_config 截断）。"""
+        """Three-channel recall + RRF fusion -> deduplicated candidate pool (truncated per
+            strategy_config)."""
         recovery = state.recovery_mode
         alpha = state.strategy_config.rrf_alpha
 
-        # 通道1：结构化约束匹配
+        # channel 1: structured-constraint matching
         struct_ranked = self._channel_structured(bundle.structured_filters, recovery)
-        # 通道2：加权 BM25（主查询 + 变体，取每个 asin 的最高分）
+        # channel 2: weighted BM25 (main query + variants; keep each asin's best score)
         bm25_scores = self._channel_bm25(bundle)
-        # 通道3：BLaIR 稠密（只编码主查询）
+        # channel 3: BLaIR dense (encodes only the main query)
         dense_ranked = self._channel_dense(bundle.main_query)
 
-        # RRF 融合（标准公式：score = Σ_channel 1/(k + rank)）
+        # RRF fusion (standard formula: score = sum over channels of 1/(k + rank))
         fused: dict[str, float] = defaultdict(float)
         for asin, rank in struct_ranked:
             fused[asin] += 1.0 / (config.RRF_K + rank)
@@ -240,22 +249,25 @@ class RetrieverPipeline:
 
         pool_size = state.strategy_config.retrieval_pool_size
         candidates = sorted(fused.items(), key=lambda x: x[1], reverse=True)[:pool_size]
-        # 硬性约束 8：过滤不在目录中的 ID（双保险）
+        # hard constraint 8: filter IDs not in the catalog (double safety)
         candidates = [(a, s) for a, s in candidates if self.catalog.valid_asin(a)]
         logger.info("[retriever] fused candidates: %d (recovery=%s alpha=%.2f)",
                     len(candidates), recovery, alpha)
         return candidates
 
     # ------------------------------------------------------------------
-    # 通道1：结构化约束匹配（第5步-通道1）
+    # channel 1: structured-constraint matching (step 5 channel 1)
     # ------------------------------------------------------------------
     def _channel_structured(self, filters: dict, recovery: bool) -> list[tuple[str, int]]:
-        """返回 [(parent_asin, rank)]，按结构分排序。普通模式硬过滤；RECOVER 改为惩罚。
+        """Return [(parent_asin, rank)] sorted by structure score. Hard filter in normal mode;
+            penalties in RECOVER.
 
-        字段感知（field_mapping.json，Pillar I 结构化过滤精度）：
-          - 文本约束只查映射的 lookup_fields（material→details.Material/features/title/…），
-            不再全文乱找；budget→price 数值检查（price 缺失放行，79% 无价不做硬过滤）；
-          - brand→store 缺失放行（missing_policy=pass）。
+        Field-aware (field_mapping.json; Pillar I structured-filter precision):
+          - text constraints only search the mapped lookup_fields (material ->
+          details.Material/features/title/...),
+            never scanning all text blindly; budget -> numeric price check (missing price passes
+            through; 79% have no price, so no hard filter);
+          - brand -> store with missing pass-through (missing_policy=pass).
         """
         if not filters:
             return []
@@ -281,7 +293,7 @@ class RetrieverPipeline:
                     continue
                 price = product.get("price")
                 if not isinstance(price, (int, float)):
-                    continue  # price 缺失 → 放行（field_mapping budget missing_policy=pass）
+                    continue  # missing price -> pass through (field_mapping budget missing_policy=pass)  # noqa: E501
                 limit = float(filters[key])
                 if key == "budget_max" and price > limit:
                     unmet.append("budget")
@@ -289,7 +301,8 @@ class RetrieverPipeline:
                     unmet.append("budget")
 
             if recovery:
-                # 惩罚打分：budget 最先放宽（惩罚最小）→ material 最后放宽（惩罚最大）
+                # penalty scoring: budget relaxes first (smallest penalty) -> material last (largest
+                # penalty)
                 penalty = sum(
                     config.STRUCT_UNMET_PENALTY.get(u, config.STRUCT_UNMET_PENALTY["other"])
                     for u in unmet
@@ -302,7 +315,7 @@ class RetrieverPipeline:
         return [(a, i) for i, (a, _) in enumerate(scored)]
 
     # ------------------------------------------------------------------
-    # 通道2：加权 BM25（第5步-通道2）
+    # channel 2: weighted BM25 (step 5 channel 2)
     # ------------------------------------------------------------------
     def _channel_bm25(self, bundle: QueryBundle) -> dict[str, float]:
         queries = [bundle.main_query, *bundle.variant_queries]
@@ -314,7 +327,7 @@ class RetrieverPipeline:
         return dict(sorted(best.items(), key=lambda x: x[1], reverse=True)[: config.BM25_TOP_N])
 
     # ------------------------------------------------------------------
-    # 通道3：BLaIR 稠密（第5步-通道3）
+    # channel 3: BLaIR dense (step 5 channel 3)
     # ------------------------------------------------------------------
     def _channel_dense(self, query: str) -> list[tuple[str, int]]:
         if self.blair is None or not self.blair.available:
@@ -323,13 +336,13 @@ class RetrieverPipeline:
         if qv is None:
             return []
         try:
-            sims = self.blair.matrix @ qv          # 点积相似度（向量已归一化）
+            sims = self.blair.matrix @ qv          # dot-product similarity (vectors already normalized)  # noqa: E501
             top_n = min(len(self.blair.asins), config.BM25_TOP_N)
             order = np.argsort(-sims)[:top_n]
             return [(self.blair.asins[int(i)], rank)
                     for rank, i in enumerate(order)]
         except Exception as exc:
-            logger.warning("[retriever] 稠密通道失败: %s", exc)
+            logger.warning("[retriever] dense channel failed: %s", exc)
             return []
 
     # ------------------------------------------------------------------

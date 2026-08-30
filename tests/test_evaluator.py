@@ -1,11 +1,16 @@
 from __future__ import annotations
 
-import unittest
-from pathlib import Path
 import json
 import tempfile
+import unittest
+from pathlib import Path
 
-from evaluator.local_evaluator import catalog_index, evaluate, metric_summary, normalize_recommendations
+from evaluator.local_evaluator import (
+    catalog_index,
+    evaluate,
+    metric_summary,
+    normalize_recommendations,
+)
 
 
 class EchoTargetAgent:

@@ -1,14 +1,14 @@
-"""Part A（P0）hard 约束提取鲁棒性 + Part B（P1）模式阈值配置 验收测试。
+"""Acceptance tests for Part A (P0) hard-constraint extraction robustness + Part B (P1) mode-threshold config.
 
-验收（赛题要求）：
-- "The most important thing is cotton" → cotton 为 HARD；
-- "I need waterproof" → waterproof 为 HARD（feature）；
-- override 消息仍走 REPLACE（优先级不变）；
-- browsing "still exploring" 不变（无约束）；
-- 官方模板 "A key requirement is: X" 行为与现在一致（HARD）；
-- hard_cue_enabled=False 时泛化提取不升级；
-- 级联：命中线索词 / turn>=2 出现新约束 → 咨询 LLM（失败回退规则）；
-- Part B：retrieval_mode.exploit_min_hard/exploit_min_constraints 默认 2/4 且可环境覆盖。
+Acceptance (task requirement):
+- "The most important thing is cotton" -> cotton is HARD;
+- "I need waterproof" -> waterproof is HARD (feature);
+- override messages still go through REPLACE (priority unchanged);
+- browsing "still exploring" is unchanged (no constraints);
+- official template "A key requirement is: X" behaves as before (HARD);
+- with hard_cue_enabled=False, generalized extraction does not upgrade;
+- cascade: cue-word hit / new constraint at turn>=2 -> consult the LLM (fallback to rules on failure);
+- Part B: retrieval_mode.exploit_min_hard/exploit_min_constraints default to 2/4 and are env-overridable.
 """
 from __future__ import annotations
 
@@ -18,7 +18,6 @@ from agent.dialogue.models import (
     ConstraintStrength,
     DialogueAct,
     RecognitionRequest,
-    RecognitionSource,
 )
 from agent.dialogue.recognizers.cascade import CascadedIntentRecognizer
 from agent.dialogue.recognizers.llm import LLMIntentRecognizer
@@ -109,7 +108,7 @@ class HardCueTest(unittest.TestCase):
             rule_confidence_threshold=0.75,
         )
         cascade.recognize(self.request("I need waterproof"))
-        self.assertTrue(client.calls)  # 命中线索词 → 咨询 LLM
+        self.assertTrue(client.calls)  # cue word hit -> consults the LLM
 
     def test_cascade_consults_llm_on_turn2_new_constraint(self) -> None:
         client = FakeLLMClient(successful_result("{}"))
@@ -119,7 +118,7 @@ class HardCueTest(unittest.TestCase):
             mode="cascaded",
             rule_confidence_threshold=0.75,
         )
-        # turn>=2 且规则提取到新约束 → 咨询 LLM
+        # turn>=2 with a new rule-extracted constraint -> consults the LLM
         cascade.recognize(self.request("For that, what matters is: cotton.", turn=2))
         self.assertTrue(client.calls)
 
@@ -131,12 +130,12 @@ class HardCueTest(unittest.TestCase):
             mode="cascaded",
             rule_confidence_threshold=0.75,
         )
-        # 无线索词 + 规则高置信 + turn=1 → 不咨询
+        # no cue word + high rule confidence + turn=1 -> no consultation
         cascade.recognize(self.request("For that, what matters is: cotton.", turn=1))
         self.assertEqual(client.calls, [])
 
     def test_cascade_consults_llm_on_official_key_requirement(self) -> None:
-        # 官方 buying 含 "key" 线索词 → 级联也会咨询（LLM 失败回退规则；默认无 key 环境不触发）
+        # official buying contains the "key" cue -> cascade also consults (LLM failure falls back to rules; not triggered in default no-key env)
         client = FakeLLMClient(successful_result("{}"))
         cascade = CascadedIntentRecognizer(
             rule_recognizer=self.rules,

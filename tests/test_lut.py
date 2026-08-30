@@ -1,8 +1,9 @@
-"""Step 3：配置-环境-性能 LUT 单元测试（RuntimeController 按 env 选配置）。
+"""Step 3: config-environment-performance LUT unit tests (RuntimeController picks a config by env).
 
-- recommend()：同环境下按 technical_score 选最优（延迟/内存预算过滤）；
-- 环境不在表内 / LUT 缺失 → None（回退默认策略）；
-- RuntimeController.decide() 设置 strategy_lut（数据驱动启动默认）。
+- recommend(): picks the best by technical_score for an environment (latency/memory budget
+filtering);
+- environment not in the table / LUT missing -> None (fallback to the default strategy);
+- RuntimeController.decide() sets strategy_lut (data-driven startup default).
 """
 from __future__ import annotations
 
@@ -20,7 +21,11 @@ FAKE_LUT = {
             "configs": [
                 {"config_id": "rule_bm25", "technical_score": 0.880, "latency_ms_per_turn": 80},
                 {"config_id": "hybrid_dense", "technical_score": 0.879, "latency_ms_per_turn": 90},
-                {"config_id": "fingerprint_combo", "technical_score": 0.881, "latency_ms_per_turn": 95},
+                {
+                    "config_id": "fingerprint_combo",
+                    "technical_score": 0.881,
+                    "latency_ms_per_turn": 95,
+                },
             ]
         }
     }
@@ -48,7 +53,10 @@ class RuntimeControllerLutTest(unittest.TestCase):
     def test_decide_sets_strategy_lut(self) -> None:
         env = EnvConfig.from_env()
         prof = CapabilityProfile(device="cuda", dense_available=True, llm_state="disabled")
-        with patch("agent.runtime_controller.lut_utils.recommend", return_value=FAKE_LUT["environments"]["device=cuda;dense=yes;llm=no;network=no"]["configs"][2]):
+        with patch(
+            "agent.runtime_controller.lut_utils.recommend",
+            return_value=FAKE_LUT["environments"]["device=cuda;dense=yes;llm=no;network=no"]["configs"][2],
+        ):
             d = RuntimeController(env, prof).decide()
         self.assertEqual(d.strategy_lut, "fingerprint_combo")
 

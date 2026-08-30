@@ -47,7 +47,7 @@ class StaticReranker:
     def __init__(self, order: tuple[str, ...]) -> None:
         self.order = order
         self.last_usage = {"prompt_tokens": 5, "completion_tokens": 2}
-        self.last_margin: float = 0.0  # 置信信号（测试桩：不触发高置信提前满仓）
+        self.last_margin: float = 0.0  # confidence signal (test stub: never triggers early full release)  # noqa: E501
         self.last_fp_count: int | None = None
 
     def rerank(
@@ -171,13 +171,13 @@ class DialogueFlowTest(unittest.TestCase):
             reranker=StaticReranker(("B", "A", "C")),
         )
         agent.reset("s1", {})
-        # 0 约束 -> 只给 1 个（低置信捂盘）；达到 late turn 前都受门控
+        # 0 constraints -> emit 1 (low-confidence hold-back); gated until the late turn
         r1 = agent.respond("s1", "I'm looking for shoes, but I'm still exploring.", 1, 3)
         self.assertEqual(len(r1["recommendations"]), 1)
-        # 1 约束 -> 给 K1=2 个
+        # 1 constraint -> emit K1=2
         r2 = agent.respond("s1", "What matters is: cotton.", 2, 3)
         self.assertEqual(len(r2["recommendations"]), 2)
-        # late turn -> 满仓
+        # late turn -> full capacity
         r3 = agent.respond("s1", "What matters is: leather.", 4, 3)
         self.assertEqual(len(r3["recommendations"]), 3)
 

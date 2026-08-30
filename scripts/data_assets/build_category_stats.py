@@ -4,22 +4,22 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 # ============================================================
-# 配置
+# config
 # ============================================================
 
 META_PATH = Path("meta_Clothing_Shoes_and_Jewelry.jsonl")
 
 OUTPUT_PATH = Path("category_stats.json")
 
-# 保存多少个高频 category / path
+# how many high-frequency category / path entries to keep
 TOP_K = 5000
 
-# 每种结构最多保留多少样本
+# max samples kept per structure
 MAX_EXAMPLES = 20
 
 
 # ============================================================
-# 工具
+# helpers
 # ============================================================
 
 
@@ -50,7 +50,7 @@ def add_example(examples, key, value):
 
 
 # ============================================================
-# 统计器
+# counters
 # ============================================================
 
 total = 0
@@ -67,9 +67,9 @@ main_category_missing = 0
 
 
 # ------------------------------------------------------------
-# categories 原始类型
+# raw categories type
 #
-# 我们先不假设它一定是 list[str]
+# we do not assume it is always list[str]
 # ------------------------------------------------------------
 
 categories_type_counts = Counter()
@@ -97,7 +97,7 @@ main_to_category = defaultdict(Counter)
 
 
 # ------------------------------------------------------------
-# 脏值
+# dirty values
 # ------------------------------------------------------------
 
 SUSPICIOUS_VALUES = {
@@ -117,38 +117,38 @@ suspicious_counts = Counter()
 
 
 # ------------------------------------------------------------
-# 示例
+# examples
 # ------------------------------------------------------------
 
 examples = defaultdict(list)
 
 
 # ============================================================
-# category 解析
+# category parsing
 # ============================================================
 
 
 def extract_category_paths(categories):
     """
-    输出统一格式：
+    output a unified format:
 
     [
         ["Women", "Clothing", "Dresses"],
         ...
     ]
 
-    兼容：
+    compatible with:
     - list[str]
     - list[list[str]]
     - str
-    - 其他脏结构
+    - other dirty structures
     """
 
     if categories is None:
         return []
 
     # --------------------------------------------------------
-    # 单字符串
+    # single string
     # --------------------------------------------------------
 
     if isinstance(categories, str):
@@ -195,14 +195,14 @@ def extract_category_paths(categories):
 
 
 # ============================================================
-# 开始扫描
+# start the scan
 # ============================================================
 
 print("=" * 75)
 print("FULL CATEGORY STATISTICS")
 print("=" * 75)
 
-print(f"输入：{META_PATH}")
+print(f"input: {META_PATH}")
 
 start = time.time()
 
@@ -252,7 +252,7 @@ with META_PATH.open("r", encoding="utf-8") as f:
             continue
 
         # ====================================================
-        # 每条 path
+        # each path
         # ====================================================
 
         for path in paths:
@@ -268,7 +268,7 @@ with META_PATH.open("r", encoding="utf-8") as f:
             category_path_counts[path_string] += 1
 
             # -----------------------------------------------
-            # 每个节点
+            # each node
             # -----------------------------------------------
 
             for value in path_norm:
@@ -299,7 +299,7 @@ with META_PATH.open("r", encoding="utf-8") as f:
                 main_to_category[main_category][leaf] += 1
 
         # ====================================================
-        # 进度
+        # progress
         # ====================================================
 
         if total % 100000 == 0:
@@ -308,14 +308,14 @@ with META_PATH.open("r", encoding="utf-8") as f:
             speed = total / elapsed if elapsed > 0 else 0
 
             print(
-                f"\r已扫描 {total:,} products | {speed:,.0f}/s | errors {bad_lines:,}",
+                f"\rscanned {total:,} products | {speed:,.0f}/s | errors {bad_lines:,}",
                 end="",
                 flush=True,
             )
 
 
 # ============================================================
-# 完成
+# done
 # ============================================================
 
 elapsed = time.time() - start
@@ -339,7 +339,7 @@ for main, counter in sorted(main_to_category.items(), key=lambda x: -sum(x[1].va
 
 
 # ============================================================
-# 输出
+# output
 # ============================================================
 
 output = {
@@ -401,7 +401,7 @@ output = {
 
 
 # ============================================================
-# 保存
+# save
 # ============================================================
 
 with OUTPUT_PATH.open("w", encoding="utf-8") as f:
@@ -419,14 +419,14 @@ print("=" * 75)
 print("CATEGORY STATISTICS COMPLETE")
 print("=" * 75)
 
-print(f"商品：{total:,}")
+print(f"products: {total:,}")
 
-print(f"错误：{bad_lines:,}")
+print(f"errors: {bad_lines:,}")
 
-print(f"耗时：{elapsed / 60:.2f} 分钟")
+print(f"elapsed: {elapsed / 60:.2f} minutes")
 
 
-print("\n字段覆盖：")
+print("\nfield coverage:")
 
 print(f"main_category missing: {main_category_missing:,} ({main_category_missing / total:.2%})")
 
@@ -435,7 +435,7 @@ print(f"categories missing:    {categories_missing:,} ({categories_missing / tot
 print(f"categories empty:      {categories_empty:,} ({categories_empty / total:.2%})")
 
 
-print("\ncategories 类型：")
+print("\ncategories type:")
 
 for key, count in categories_type_counts.most_common():
     print(f"{key:<15}{count:>12,}")
@@ -459,4 +459,4 @@ for value, count in suspicious_counts.most_common(30):
     print(f"{value:<40}{count:>10,}")
 
 
-print(f"\n输出：{OUTPUT_PATH}")
+print(f"\noutput: {OUTPUT_PATH}")

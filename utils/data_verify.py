@@ -1,8 +1,8 @@
-"""数据集 SHA256 完整性校验（Pillar IV / 硬性约束 3）。
+"""Dataset SHA256 integrity verification (Pillar IV / hard constraint 3).
 
-- 只校验竞赛冻结工具包内的 catalog.jsonl / public_set.jsonl。
-- 不下载任何上游完整原始 Amazon Reviews 数据。
-- 校验失败时默认抛出异常；SKIP_DATA_VERIFY=1 或 env 明确跳过时仅告警。
+- Only verifies the frozen toolkit's catalog.jsonl / public_set.jsonl.
+- Never downloads any upstream full raw Amazon Reviews data.
+- A failed check raises by default; with SKIP_DATA_VERIFY=1 or an explicit env skip, it only warns.
 """
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from config import constants
 
 
 def sha256_of(path: str | Path) -> str:
-    """分块计算文件 SHA256（大文件友好）。"""
+    """Compute a file's SHA256 in chunks (large-file friendly)."""
     digest = hashlib.sha256()
     with Path(path).open("rb") as handle:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
@@ -23,10 +23,10 @@ def sha256_of(path: str | Path) -> str:
 
 
 def verify_file(path: str | Path, expected: str, label: str, skip: bool = False) -> bool:
-    """校验单个文件。返回 True 表示通过；失败时按 skip 决定告警或抛错。"""
+    """Verify one file: True on pass; on failure warns or raises per skip."""
     path = Path(path)
     if not path.exists():
-        msg = f"[data_verify] 缺少数据文件 {label}: {path}"
+        msg = f"[data_verify] missing data file {label}: {path}"
         if skip:
             print(f"[WARN] {msg}", file=sys.stderr)
             return False
@@ -37,9 +37,9 @@ def verify_file(path: str | Path, expected: str, label: str, skip: bool = False)
         print(f"[data_verify] {label}: SHA256 OK ({path.name})")
     else:
         msg = (
-            f"[data_verify] {label} SHA256 不匹配!\n"
+            f"[data_verify] {label} SHA256 mismatch!\n"
             f"  expected: {expected.upper()}\n  actual  : {actual}\n"
-            f"  路径: {path}（若使用官方其它发布包，请通过 SKIP_DATA_VERIFY=1 或环境变量覆盖）"
+            f"  path: {path} (if you use a different official release, override via SKIP_DATA_VERIFY=1 or env vars)"  # noqa: E501
         )
         if skip:
             print(f"[WARN] {msg}", file=sys.stderr)
@@ -49,7 +49,7 @@ def verify_file(path: str | Path, expected: str, label: str, skip: bool = False)
 
 
 def verify_dataset(skip: bool = False) -> bool:
-    """校验冻结工具包两个核心文件 + 行数合理性。"""
+    """Verify the two core frozen-toolkit files plus a sanity check on row counts."""
     ok_cat = verify_file(
         constants.CATALOG_PATH,
         constants.EXPECTED_SHA256_CATALOG,
@@ -62,12 +62,12 @@ def verify_dataset(skip: bool = False) -> bool:
         "public_set.jsonl",
         skip=skip,
     )
-    # 行数抽查（不作为硬性校验，仅提示）
+    # row-count spot check (informational only, not a hard gate)
     if ok_cat:
         rows = sum(1 for _ in open(constants.CATALOG_PATH, encoding="utf-8"))
         if rows != constants.CATALOG_EXPECTED_ROWS:
             print(
-                f"[WARN] catalog 行数 {rows} != 期望 {constants.CATALOG_EXPECTED_ROWS}",
+                f"[WARN] catalog row count {rows} != expected {constants.CATALOG_EXPECTED_ROWS}",
                 file=sys.stderr,
             )
     return ok_cat and ok_pub

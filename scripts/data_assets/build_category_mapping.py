@@ -44,7 +44,7 @@ def slug(value):
 # Load statistics
 # ============================================================
 
-print("读取 category_stats.json...")
+print("loading category_stats.json...")
 
 with STATS_PATH.open("r", encoding="utf-8") as f:
     stats = json.load(f)
@@ -1178,12 +1178,12 @@ print("=" * 75)
 print("CATEGORY MAPPING V2 COMPLETE")
 print("=" * 75)
 
-print(f"生成：{OUTPUT_PATH}")
+print(f"generated: {OUTPUT_PATH}")
 
-print(f"报告：{REPORT_PATH}")
+print(f"report: {REPORT_PATH}")
 
 
-print(f"\nCanonical 数：{len(canonical_output):,}")
+print(f"\ncanonical count: {len(canonical_output):,}")
 
 print(f"Known path mappings：{len(path_mappings):,}")
 
@@ -1234,5 +1234,5 @@ for row in report["noise_only_paths"][:20]:
 
 print()
 print("=" * 75)
-print("完成。")
+print("done.")
 print("=" * 75)

@@ -1,8 +1,8 @@
-"""RexReranker-0.6B 接入测试（生成式重排 vs bge 交叉编码分发）。
+"""RexReranker-0.6B integration tests (generative rerank vs bge cross-encoder dispatch).
 
-覆盖：
-- is_generation_reranker 识别（Rex/Qwen3-Reranker 为生成式，bge 为交叉编码）
-- Reranker._ensure_reranker_model 按模型名分发（mock，不加载真实模型）
+Covers:
+- is_generation_reranker recognition (Rex/Qwen3-Reranker are generative; bge is a cross-encoder)
+- Reranker._ensure_reranker_model dispatches by model name (mocked; no real model loaded)
 """
 from __future__ import annotations
 

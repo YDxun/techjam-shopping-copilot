@@ -1,11 +1,13 @@
-"""qwen3-rerank 文本重排客户端（阿里云 MaaS /reranks 兼容端点）。
+"""qwen3-rerank text-rerank client (Alibaba Cloud MaaS /reranks compatible endpoint).
 
-替换原"LLM 语义重排"（chat JSON 打分）分支为真正的文本重排序模型：
-- 端点：POST {base_url}/reranks，body {model, query, documents, top_n}
-- 密钥只从环境变量读取（DASHSCOPE_API_KEY），代码不落任何 key
-- base_url 解析：QWEN_RERANK_BASE_URL（完整）> DASHSCOPE_WORKSPACE_ID 拼子域
-- 三态可用性：available / disabled（缺 key 或缺 base_url）/ unavailable（探测失败）
-- 失败/超时一律返回 None，由上层回退规则排序（环境自感知）
+Replaces the legacy "LLM semantic rerank" (chat JSON scoring) branch with a true text-reranking
+model:
+- Endpoint: POST {base_url}/reranks with body {model, query, documents, top_n}
+- The key is read only from the environment (DASHSCOPE_API_KEY); no key is ever written in code
+- base_url resolution: QWEN_RERANK_BASE_URL (full) > DASHSCOPE_WORKSPACE_ID subdomain concatenation
+- Three-state availability: available / disabled (missing key or base_url) / unavailable (probe
+failure)
+- Failures/timeouts always return None; the caller falls back to rule ordering (environment-aware)
 """
 from __future__ import annotations
 
@@ -19,7 +21,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 _DEFAULT_REGION = "cn-beijing"
-# 国际版 DashScope 通用端点（无需 workspace ID，用户实测可用）
+# International DashScope generic endpoint (no workspace ID needed; user-verified)
 _DEFAULT_BASE_URL = "https://dashscope-intl.aliyuncs.com/compatible-api/v1"
 _DEFAULT_MODEL = "qwen3-rerank"
 
@@ -42,7 +44,7 @@ class RerankStatus:
 
 @dataclass
 class RerankResult:
-    """单条文档的相关性得分。"""
+    """Relevance score of a single document."""
 
     index: int
     score: float
@@ -50,7 +52,7 @@ class RerankResult:
 
 
 class RerankClient:
-    """阿里云 MaaS qwen3-rerank 文本重排客户端（可失败降级）。"""
+    """Alibaba Cloud MaaS qwen3-rerank text-rerank client (degrades gracefully on failure)."""
 
     def __init__(
         self,
@@ -79,7 +81,7 @@ class RerankClient:
         ws = (self._workspace_id or "").strip()
         if ws:
             return f"https://{ws}.{_DEFAULT_REGION}.maas.aliyuncs.com/compatible-api/v1"
-        # 兜底：环境变量完整 base_url > 默认国际版端点
+        # fallback: env full base_url > default international endpoint
         env_url = (
             os.environ.get("QWEN_RERANK_BASE_URL", "").strip()
             or os.environ.get("DASHSCOPE_BASE_URL", "").strip()
@@ -100,16 +102,17 @@ class RerankClient:
 
     # ------------------------------------------------------------------
     def initialize(self) -> RerankStatus:
-        """探测：key/base_url 是否配置 + 一次最小 rerank 验证（真实网络+鉴权）。"""
+        """Probe: whether key/base_url are set + one minimal rerank validation (real network +
+            auth)."""
         if not self._api_key:
             self._status = RerankStatus(state=RerankState.DISABLED, model=self._model,
-                                        error_message="DASHSCOPE_API_KEY 未配置")
+                                        error_message="DASHSCOPE_API_KEY is not configured")
             return self._status
         if not self._base_url:
             self._status = RerankStatus(
                 state=RerankState.DISABLED, model=self._model,
                 error_message=(
-                    "缺少 QWEN_RERANK_BASE_URL 或 DASHSCOPE_WORKSPACE_ID（无法拼出 base_url）"
+                    "QWEN_RERANK_BASE_URL or DASHSCOPE_WORKSPACE_ID is missing (cannot build base_url)"  # noqa: E501
                 ),
             )
             return self._status
@@ -122,7 +125,7 @@ class RerankClient:
             )
             latency = (time.time() - t0) * 1000
             if res is None:
-                raise RuntimeError("rerank 返回空")
+                raise RuntimeError("rerank returned empty")
             self._status = RerankStatus(
                 state=RerankState.AVAILABLE, model=self._model,
                 base_url=self._base_url, latency_ms=round(latency, 1), attempts=1,
@@ -133,7 +136,7 @@ class RerankClient:
                 state=RerankState.UNAVAILABLE, model=self._model,
                 base_url=self._base_url, error_message=str(exc)[:200], attempts=1,
             )
-            logger.warning("[rerank] qwen3-rerank 不可用（%s）→ 重排回退规则排序", exc)
+            logger.warning("[rerank] qwen3-rerank unavailable (%s) -> rerank falls back to rule ordering", exc)  # noqa: E501
         return self._status
 
     # ------------------------------------------------------------------
@@ -143,7 +146,8 @@ class RerankClient:
         documents: list[str],
         top_n: int | None = None,
     ) -> list[RerankResult] | None:
-        """对 documents 按与 query 的相关性打分，返回按分数降序的 RerankResult 列表。"""
+        """Score documents by relevance to the query; returns RerankResult list sorted by
+            descending score."""
         if not self.available:
             return None
         try:
@@ -152,14 +156,15 @@ class RerankClient:
                 return None
             return res
         except Exception as exc:
-            logger.warning("[rerank] qwen3-rerank 调用失败（%s）→ 回退规则排序", exc)
+            logger.warning("[rerank] qwen3-rerank call failed (%s) -> fallback to rule ordering", exc)  # noqa: E501
             return None
 
     # ------------------------------------------------------------------
     def _call_rerank(
         self, query: str, documents: list[str], top_n: int | None
     ) -> list[RerankResult] | None:
-        """POST {base_url}/reranks（requests，用户确认的国际版端点），解析 results。"""
+        """POST {base_url}/reranks (requests; user-verified international endpoint), then parse
+            results."""
         import requests
 
         body: dict[str, Any] = {

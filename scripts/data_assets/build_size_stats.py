@@ -5,7 +5,7 @@ from collections import Counter
 from pathlib import Path
 
 # ============================================================
-# 配置
+# config
 # ============================================================
 
 META_PATH = Path("meta_Clothing_Shoes_and_Jewelry.jsonl")
@@ -20,7 +20,7 @@ FIELDS = [
 
 
 # ============================================================
-# 统计器
+# counter
 # ============================================================
 
 field_nonempty = Counter()
@@ -32,7 +32,7 @@ bad_lines = 0
 
 
 # ============================================================
-# 文本标准化
+# text normalization
 # ============================================================
 
 
@@ -52,9 +52,9 @@ def normalize(value):
 
 
 # ============================================================
-# 1. 字母尺码
+# 1. letter sizes
 #
-# 例如：
+# e.g.:
 # XS
 # S
 # M
@@ -75,7 +75,7 @@ LETTER_SIZE = (
 
 
 # ------------------------------------------------------------
-# 带 Size 上下文
+# with Size context
 #
 # Size: M
 # Size XL
@@ -90,7 +90,7 @@ LETTER_WITH_CONTEXT = re.compile(
 
 
 # ------------------------------------------------------------
-# 字母尺码范围
+# letter-size ranges
 #
 # S/M
 # S/M/L
@@ -107,7 +107,7 @@ LETTER_RANGE = re.compile(
 
 
 # ============================================================
-# 2. US 尺码
+# 2. US sizes
 #
 # US 8
 # US 8.5
@@ -123,7 +123,7 @@ US_SIZE = re.compile(
 
 
 # ============================================================
-# 3. 数字尺码
+# 3. numeric sizes
 #
 # size 6
 # size: 9
@@ -131,8 +131,8 @@ US_SIZE = re.compile(
 # waist 32
 # inseam 30
 #
-# 注意：
-# 后面还会过滤物理尺寸。
+# note:
+# physical dimensions are filtered out later.
 # ============================================================
 
 NUMERIC_WITH_CONTEXT = re.compile(
@@ -146,16 +146,16 @@ NUMERIC_WITH_CONTEXT = re.compile(
 
 
 # ============================================================
-# 4. 物理尺寸排除
+# 4. physical-dimension exclusion
 #
-# 用于排除：
+# used to exclude:
 #
 # Size: 12.5"
 # Size: 17 inches
 # Size: 9 x 6
 # Size: 20 cm
 #
-# 这些不是 wearable size。
+# these are not wearable sizes.
 # ============================================================
 
 DIMENSION_AFTER = re.compile(
@@ -202,16 +202,16 @@ DIMENSION_TEXT = re.compile(
 
 def looks_like_dimension_after(text, match):
 
-    # 只观察匹配词后面一小段文本
+    # only inspect a short window after the matched word
     after = text[match.end() : match.end() + 25]
 
     return bool(DIMENSION_AFTER.search(after))
 
 
 # ============================================================
-# 5. 普通文本 Size Matcher
+# 5. general text Size matcher
 #
-# 用于：
+# used for:
 # title
 # features
 # description
@@ -221,7 +221,7 @@ def looks_like_dimension_after(text, match):
 def match_text_size(text):
 
     # --------------------------------
-    # 字母尺码 + size 上下文
+    # letter size + size context
     # --------------------------------
 
     match = LETTER_WITH_CONTEXT.search(text)
@@ -230,7 +230,7 @@ def match_text_size(text):
         return "letter_with_context"
 
     # --------------------------------
-    # S/M/L 或 S-3XL
+    # S/M/L or S-3XL
     # --------------------------------
 
     match = LETTER_RANGE.search(text)
@@ -248,13 +248,13 @@ def match_text_size(text):
         return "us_size"
 
     # --------------------------------
-    # size 6 / waist 32 等
+    # size 6 / waist 32 etc.
     # --------------------------------
 
     match = NUMERIC_WITH_CONTEXT.search(text)
 
     if match:
-        # 排除：
+        # exclude:
         #
         # Size: 12.5"
         # Size: 17 inch
@@ -269,23 +269,23 @@ def match_text_size(text):
 
 
 # ============================================================
-# 6. details.Size 专用 Matcher
+# 6. details.Size-specific matcher
 #
-# details.Size 虽然是结构化字段，
-# 但之前人工检查已经发现：
+# although details.Size is a structured field,
+# manual inspection already found:
 #
 # 10 Watch Box
 # 8.0 inches
 # 9 x 6 Inches
 #
-# 等脏值。
+# dirty values.
 #
-# 所以不能无条件相信。
+# so it cannot be trusted unconditionally.
 # ============================================================
 
 
 # ------------------------------------------------------------
-# 字母型 Size
+# letter-type Size
 # ------------------------------------------------------------
 
 STRUCTURED_LETTER = re.compile(
@@ -301,7 +301,7 @@ STRUCTURED_LETTER = re.compile(
 
 
 # ------------------------------------------------------------
-# 纯数字
+# plain numeric
 #
 # 7
 # 8
@@ -312,7 +312,7 @@ STRUCTURED_NUMERIC_ONLY = re.compile(r"^\s*\d{1,2}(?:\.5)?\s*$", re.IGNORECASE)
 
 
 # ------------------------------------------------------------
-# 数字 + 单字母宽度
+# numeric + single-letter width
 #
 # 8 M
 # 9 W
@@ -324,7 +324,7 @@ STRUCTURED_NUMERIC_WIDTH = re.compile(r"^\s*\d{1,2}(?:\.5)?\s*[a-z]?\s*$", re.IG
 def match_structured_size(text):
 
     # --------------------------------
-    # 先排除明显 dimensions
+    # first exclude obvious dimensions
     # --------------------------------
 
     if DIMENSION_TEXT.search(text):
@@ -333,7 +333,7 @@ def match_structured_size(text):
     lower = text.lower()
 
     # --------------------------------
-    # 排除明显非 wearable size
+    # exclude clearly non-wearable sizes
     # --------------------------------
 
     bad_words = [
@@ -353,21 +353,21 @@ def match_structured_size(text):
         return None
 
     # --------------------------------
-    # 字母尺码
+    # letter sizes
     # --------------------------------
 
     if STRUCTURED_LETTER.search(text):
         return "structured_letter_size"
 
     # --------------------------------
-    # 纯数字尺码
+    # plain numeric sizes
     # --------------------------------
 
     if STRUCTURED_NUMERIC_ONLY.fullmatch(text):
         return "structured_numeric_size"
 
     # --------------------------------
-    # 数字 + width
+    # numeric + width
     # --------------------------------
 
     if STRUCTURED_NUMERIC_WIDTH.fullmatch(text):
@@ -377,16 +377,16 @@ def match_structured_size(text):
 
 
 # ============================================================
-# 7. 开始全量扫描
+# 7. start the full scan
 # ============================================================
 
 print("=" * 75)
 print("SIZE FULL CATALOG SCAN V2")
 print("=" * 75)
 
-print(f"输入：{META_PATH}")
+print(f"input: {META_PATH}")
 
-print(f"输出：{OUTPUT_PATH}")
+print(f"output: {OUTPUT_PATH}")
 
 print()
 
@@ -397,7 +397,7 @@ start_time = time.time()
 with META_PATH.open("r", encoding="utf-8") as f:
     for line in f:
         # --------------------------------
-        # JSON 解析
+        # JSON parsing
         # --------------------------------
 
         try:
@@ -419,7 +419,7 @@ with META_PATH.open("r", encoding="utf-8") as f:
             details = {}
 
         # --------------------------------
-        # 当前商品需要检查的字段
+        # fields to inspect for the current product
         # --------------------------------
 
         values = {
@@ -430,7 +430,7 @@ with META_PATH.open("r", encoding="utf-8") as f:
         }
 
         # --------------------------------
-        # 每个字段检查一次
+        # check each field once
         # --------------------------------
 
         for field_name in FIELDS:
@@ -439,11 +439,11 @@ with META_PATH.open("r", encoding="utf-8") as f:
             if not text:
                 continue
 
-            # 字段非空
+            # field non-empty
             field_nonempty[field_name] += 1
 
             # --------------------------------
-            # details.Size 使用专用规则
+            # details.Size uses dedicated rules
             # --------------------------------
 
             if field_name == "details.Size":
@@ -457,7 +457,7 @@ with META_PATH.open("r", encoding="utf-8") as f:
                 match_type = match_text_size(text)
 
             # --------------------------------
-            # 命中
+            # matched
             # --------------------------------
 
             if match_type:
@@ -466,7 +466,7 @@ with META_PATH.open("r", encoding="utf-8") as f:
                 pattern_hits[match_type] += 1
 
         # ====================================================
-        # 进度
+        # progress
         # ====================================================
 
         if total % 100000 == 0:
@@ -475,21 +475,21 @@ with META_PATH.open("r", encoding="utf-8") as f:
             speed = total / elapsed if elapsed > 0 else 0
 
             print(
-                f"\r已扫描 {total:,} 个商品 | {speed:,.0f} items/s | 错误 {bad_lines:,}",
+                f"\rscanned {total:,} products | {speed:,.0f} items/s | errors {bad_lines:,}",
                 end="",
                 flush=True,
             )
 
 
 # ============================================================
-# 8. 扫描完成
+# 8. scan complete
 # ============================================================
 
 elapsed = time.time() - start_time
 
 
 # ============================================================
-# 9. 构造 JSON 输出
+# 9. build the JSON output
 # ============================================================
 
 output = {
@@ -516,7 +516,7 @@ output = {
 
 
 # ============================================================
-# 10. 字段统计
+# 10. field statistics
 # ============================================================
 
 for field_name in FIELDS:
@@ -540,7 +540,7 @@ for field_name in FIELDS:
 
 
 # ============================================================
-# 11. 保存 JSON
+# 11. save the JSON
 # ============================================================
 
 with OUTPUT_PATH.open("w", encoding="utf-8") as f:
@@ -548,7 +548,7 @@ with OUTPUT_PATH.open("w", encoding="utf-8") as f:
 
 
 # ============================================================
-# 12. Terminal 最终结果
+# 12. terminal final results
 # ============================================================
 
 print("\n\n")
@@ -556,16 +556,16 @@ print("=" * 75)
 print("SIZE FULL STATS COMPLETE")
 print("=" * 75)
 
-print(f"商品总数：{total:,}")
+print(f"total products: {total:,}")
 
-print(f"错误行数：{bad_lines:,}")
+print(f"bad lines: {bad_lines:,}")
 
-print(f"耗时：{elapsed / 60:.2f} 分钟")
+print(f"elapsed: {elapsed / 60:.2f} minutes")
 
-print(f"输出：{OUTPUT_PATH}")
+print(f"output: {OUTPUT_PATH}")
 
 
-print("\n字段结果：")
+print("\nfield results:")
 
 
 for field_name in FIELDS:
@@ -584,11 +584,11 @@ for field_name in FIELDS:
     )
 
 
-print("\n匹配类型：")
+print("\nmatch types:")
 
 
 for name, count in pattern_hits.most_common():
     print(f"{name:<32}{count:>12,}")
 
 
-print("\n完成。")
+print("\ndone.")

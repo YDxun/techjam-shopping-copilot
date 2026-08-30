@@ -13,10 +13,11 @@ from agent.dialogue.models import (
     DialogueState,
     OperationKind,
     Polarity,
+    QuestionDecision,
     RecognitionResult,
     RecognitionSource,
 )
-from agent.dialogue.question_policy import QuestionPolicy
+from agent.dialogue.question_policy import QUESTION_MESSAGES, QuestionPolicy
 from config.models import (
     AskUtilityConfig,
     AskUtilityWeights,
@@ -186,7 +187,7 @@ class QuestionPolicyTest(unittest.TestCase):
         self.assertEqual(decision.reason_code, "no_preference_other")
 
     def test_no_preference_other_boundary_keeps_asking(self) -> None:
-        policy = QuestionPolicy(DecisionConfig())  # ask_other_first=True 默认
+        policy = QuestionPolicy(DecisionConfig())  # ask_other_first=True by default
         state = DialogueState(
             session_id="s1",
             user_profile={},
@@ -198,6 +199,70 @@ class QuestionPolicyTest(unittest.TestCase):
             state, self._no_pref_other_recognition(True), CatalogQuestionSignals.empty()
         )
         self.assertTrue(decision.should_ask)
+
+
+    def test_message_for_random_mode_returns_a_valid_template(self) -> None:
+        policy = QuestionPolicy(DecisionConfig())  # question_template_mode="random" default
+        for attribute, templates in QUESTION_MESSAGES.items():
+            state = DialogueState(session_id="s1", user_profile={}, turn=2)
+            decision = QuestionDecision(True, attribute, "ask_other_first", 1.0, {})
+            self.assertIn(policy.message_for(decision, state), templates)
+
+    def test_message_for_random_mode_is_reproducible_and_valid(self) -> None:
+        decision = QuestionDecision(True, "other", "ask_other_first", 1.0, {})
+
+        def run() -> list[str]:
+            policy = QuestionPolicy(DecisionConfig())
+            return [
+                policy.message_for(
+                    decision, DialogueState(session_id="s1", user_profile={}, turn=turn)
+                )
+                for turn in range(1, 9)
+            ]
+
+        first_run, second_run = run(), run()
+        # same session, same inputs -> two full runs produce identical phrasing sequences (demo log
+        # reproducible)
+        self.assertEqual(first_run, second_run)
+        for message in first_run:
+            self.assertIn(message, QUESTION_MESSAGES["other"])
+
+    def test_message_for_random_mode_avoids_immediate_repeat(self) -> None:
+        policy = QuestionPolicy(DecisionConfig())
+        decision = QuestionDecision(True, "other", "ask_other_first", 1.0, {})
+        previous = ""
+        for turn in range(1, 12):
+            message = policy.message_for(
+                decision, DialogueState(session_id="s1", user_profile={}, turn=turn)
+            )
+            if previous:
+                self.assertNotEqual(message, previous)
+            previous = message
+
+    def test_message_for_rotation_mode_rotates_deterministically(self) -> None:
+        policy = QuestionPolicy(DecisionConfig(question_template_mode="rotation"))
+        decision = QuestionDecision(True, "material", "highest_ask_utility", 1.0, {})
+        templates = QUESTION_MESSAGES["material"]
+        for turn in range(1, len(templates) * 2 + 1):
+            message = policy.message_for(
+                decision, DialogueState(session_id="s1", user_profile={}, turn=turn)
+            )
+            self.assertEqual(message, templates[(turn - 1) % len(templates)])
+
+    def test_message_for_no_ask_uses_fallback(self) -> None:
+        policy = QuestionPolicy(DecisionConfig())
+        decision = QuestionDecision(False, None, "stop_utility_reached", 0.9, {})
+        with_category = policy.message_for(
+            decision, DialogueState(session_id="s1", user_profile={}, category="shoes")
+        )
+        without_category = policy.message_for(
+            decision, DialogueState(session_id="s1", user_profile={})
+        )
+        self.assertIn("shoes", with_category)
+        self.assertEqual(
+            without_category, "Here are my best matches for you — please take a look."
+        )
+
 
 
 if __name__ == "__main__":

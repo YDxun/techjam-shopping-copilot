@@ -1,14 +1,12 @@
-"""qwen3-rerank 文本重排链路测试（替换 LLM 语义重排分支）。
+"""qwen3-rerank text-rerank chain tests (replaces the LLM semantic-rerank branch).
 
-覆盖：
-- RerankClient 无配置 → DISABLED（不发网络）
-- RerankClient 解析 /reranks 响应（mock OpenAI.post）
-- runtime_controller：text 后端可用→启用 / 不可用→回退规则
-- capability_probe：text_rerank 字段存在且未配置时为 False
+Covers:
+- RerankClient without config -> DISABLED (no network)
+- RerankClient parses /reranks responses (mock OpenAI.post)
+- runtime_controller: text backend available -> enabled / unavailable -> rule fallback
+- capability_probe: text_rerank field exists and is False when unconfigured
 """
 from __future__ import annotations
-
-from unittest.mock import patch
 
 from agent.capability_probe import CapabilityProfile
 from agent.runtime_controller import RuntimeController
@@ -17,11 +15,11 @@ from llm.rerank import RerankClient, RerankState
 
 
 def test_rerank_client_disabled_without_config():
-    rc = RerankClient()  # 无 DASHSCOPE_API_KEY / base_url
+    rc = RerankClient()  # no DASHSCOPE_API_KEY / base_url
     st = rc.initialize()
     assert st.state == RerankState.DISABLED
     assert rc.available is False
-    assert rc.rerank("q", ["a"]) is None  # 不可用直接返回 None
+    assert rc.rerank("q", ["a"]) is None  # unavailable -> returns None directly
 
 
 def test_rerank_client_parses_results(monkeypatch):
@@ -47,39 +45,38 @@ def test_rerank_client_parses_results(monkeypatch):
     assert rc.available is True
     results = rc.rerank("black cotton t-shirt", ["docA", "docB"], top_n=2)
     assert results is not None
-    # 按分数降序：index 1 优先
+    # descending by score: index 1 first
     assert [r.index for r in results] == [1, 0]
     assert abs(results[0].score - 0.91) < 1e-6
 
 
 def test_rerank_client_base_url_resolution(monkeypatch):
-    # workspace_id 拼子域
+    # workspace_id builds the subdomain
     rc = RerankClient(api_key="k", workspace_id="ws-abc")
     assert "ws-abc.cn-beijing.maas.aliyuncs.com" in rc._base_url
-    # 完整 base_url 优先
+    # full base_url takes priority
     rc2 = RerankClient(api_key="k", workspace_id="ws-abc", base_url="https://custom.example/v1")
     assert rc2._base_url == "https://custom.example/v1"
 
 
 def test_runtime_controller_text_rerank_decision():
-    env = EnvConfig.from_env()
-    # text 后端 + 探测可用 → use_llm_rerank=True, text_rerank_active=True
+    # text backend + probe available -> use_llm_rerank=True, text_rerank_active=True
     prof_ok = CapabilityProfile(text_rerank_available=True, rerank_backend="text")
     env2 = EnvConfig.from_env(overrides={"llm": {"rerank_enabled": True, "rerank_backend": "text"}})
     d = RuntimeController(env2, prof_ok).decide()
     assert d.use_llm_rerank is True
     assert d.text_rerank_active is True
-    # 探测不可用 → 回退规则
+    # probe unavailable -> rule fallback
     prof_no = CapabilityProfile(text_rerank_available=False, rerank_backend="text")
     d2 = RuntimeController(env2, prof_no).decide()
     assert d2.use_llm_rerank is False
     assert d2.text_rerank_active is False
-    # chat 后端 → 走 LLM 可用性
+    # chat backend -> driven by LLM availability
     env3 = EnvConfig.from_env(overrides={"llm": {"rerank_enabled": True, "rerank_backend": "chat"}})
     prof_llm_no = CapabilityProfile(llm_state="disabled")
     d3 = RuntimeController(env3, prof_llm_no).decide()
     assert d3.use_llm_rerank is False
-    # 未启用 rerank → False
+    # rerank not enabled -> False
     env4 = EnvConfig.from_env(overrides={"llm": {"rerank_enabled": False}})
     d4 = RuntimeController(env4, prof_ok).decide()
     assert d4.use_llm_rerank is False

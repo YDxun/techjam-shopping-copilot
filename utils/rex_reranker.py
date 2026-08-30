@@ -1,9 +1,9 @@
-"""RexReranker-0.6B / Qwen3-Reranker 生成式重排打分器（本地 transformers，GPU/CPU）。
+"""RexReranker-0.6B / Qwen3-Reranker generative rerank scorer (local transformers; GPU/CPU).
 
-打分逻辑（对齐模型卡 README）：
-- chat 模板：system 裁判指令 + user "<Instruct>/<Query>/<Document>"；
-- 追加 assistant 后缀 "<|im_end|>\\n<|im_start|>assistant\\n<think>\\n\\n</think>\\n\\n"；
-- 取最后非 padding token 的 "yes"/"no" logit，score = exp(yes)/(exp(yes)+exp(no))。
+Scoring logic (aligned with the model-card README):
+- chat template: system judge instruction + user "<Instruct>/<Query>/<Document>";
+- append the assistant suffix "<|im_end|>\\n<|im_start|>assistant\\n<think>\\n\\n</think>\\n\\n";
+- take the "yes"/"no" logit of the last non-padding token; score = exp(yes)/(exp(yes)+exp(no)).
 """
 from __future__ import annotations
 
@@ -22,13 +22,14 @@ _SUFFIX = "<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
 
 
 def is_generation_reranker(model_name: str) -> bool:
-    """判断是否为 Qwen3 生成式重排（RexReranker / Qwen3-Reranker）。"""
+    """Whether the model is a Qwen3 generative reranker (RexReranker / Qwen3-Reranker)."""
     n = (model_name or "").lower()
     return "rex" in n or "qwen3-reranker" in n
 
 
 class RexRerankerScorer:
-    """生成式重排打分器：score_pairs(pairs) -> list[float]（与 FlagReranker 同接口）。"""
+    """Generative rerank scorer: score_pairs(pairs) -> list[float] (same interface as
+        FlagReranker)."""
 
     def __init__(
         self,
@@ -72,7 +73,8 @@ class RexRerankerScorer:
     def score_pairs(
         self, pairs: list[tuple[str, str]], batch_size: int | None = None
     ) -> list[float]:
-        """批处理打分：返回与 pairs 等长的 score 列表（0~1，越高越相关）。"""
+        """Batch scoring: returns a score list of the same length as pairs (0~1, higher = more
+            relevant)."""
         bs = batch_size or self.batch_size
         out: list[float] = []
         for start in range(0, len(pairs), bs):

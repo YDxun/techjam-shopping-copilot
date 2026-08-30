@@ -1,11 +1,15 @@
-"""货架（品类）工具：赛题机制 —— turn-1 消息里的品类必然包含目标商品。
+"""Shelf (category) utilities: task mechanic -- the category in the turn-1 message always contains
+    the target product.
 
-- coarse_category(values)：与官方评估器一致的粗品类函数（自包含重实现，不 import 评估器）。
-- build_shelf_index / match_shelf：按粗品类建货架索引，并用"最长子串"把对话中的品类短语
-  映射到货架 key；匹配失败返回 None（上层必须回退"不过滤"）。
+- coarse_category(values): coarse-category function matching the official evaluator (self-contained
+reimplementation; does not import the evaluator).
+- build_shelf_index / match_shelf: build a shelf index by coarse category and map in-dialog category
+phrases
+   to shelf keys via "longest substring"; a failed match returns None (the caller must fall back to
+   "no filter").
 
-保证性：initial_message 的品类 = coarse_category(目标商品 categories)，因此按货架过滤
-候选池零召回损失（货架外商品必然不是目标）。
+Guarantee: initial_message's category = coarse_category(target's categories), so filtering by shelf
+costs zero recall on the candidate pool (anything outside the shelf cannot be the target).
 """
 
 from __future__ import annotations
@@ -21,7 +25,7 @@ def normalize(text: str) -> str:
 
 
 def coarse_category(values: Iterable[str]) -> str:
-    """与官方评估器 local_evaluator.coarse_category 一致。"""
+    """Matches the official evaluator's local_evaluator.coarse_category."""
     excluded = {"clothing", "clothing shoes & jewelry", "clothing, shoes & jewelry"}
     cleaned: list[str] = []
     for value in values or []:
@@ -35,7 +39,7 @@ def coarse_category(values: Iterable[str]) -> str:
 def build_shelf_index(
     products: Iterable[Mapping],
 ) -> tuple[dict[str, str], dict[str, list[str]]]:
-    """返回 (asin -> shelf, shelf -> [asins])。"""
+    """Return (asin -> shelf, shelf -> [asins])."""
     shelf_of: dict[str, str] = {}
     by_shelf: dict[str, list[str]] = {}
     for product in products:
@@ -51,7 +55,8 @@ def build_shelf_index(
 
 
 def match_shelf(category_phrase: str, by_shelf: Mapping[str, object]) -> str | None:
-    """把品类短语映射到货架 key：精确 -> 最长子串（长优先）；无命中返回 None。"""
+    """Map a category phrase to a shelf key: exact -> longest substring (longest wins); None when
+        nothing matches."""
     phrase = normalize(category_phrase or "")
     if not phrase or not by_shelf:
         return None

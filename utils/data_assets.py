@@ -1,12 +1,13 @@
-"""静态数据资产加载器（队友打包：数据优化资产）。
+"""Static data-asset loader (bundled offline optimization assets).
 
-离线优先、缺失/损坏自动降级为"无扩展"：
-- vocab_v2_clean.json     词汇表：canonical + synonyms（material/color/size/style/...）
-- category_mapping.json   品类路由：audience/family 别名 -> canonical 商品类型
-- review_paraphrases.json 评论改写：size_fit / material_language / color_language
-- field_mapping.json      字段映射：属性 -> 检索字段/权重/匹配策略（预留）
+Offline-first; missing/corrupt assets auto-degrade to "no expansion":
+- vocab_v2_clean.json     vocabulary: canonical + synonyms (material/color/size/style/...)
+- category_mapping.json   category routing: audience/family aliases -> canonical product types
+- review_paraphrases.json review paraphrases: size_fit / material_language / color_language
+- field_mapping.json      field mapping: attribute -> lookup fields / weights / match policy
+(reserved)
 
-用法：
+Usage:
     assets = load_assets()
     assets.vocab_expand("material", "grey")      -> ["grey", "gray", "heather grey", ...]
     assets.category_expand("Tops & Tees Tanks & Camis") -> ["tank", "tops", "tshirts", ...]
@@ -44,10 +45,11 @@ class DataAssets:
         return bool(self.loaded)
 
     # ------------------------------------------------------------------
-    # vocab: 约束值 -> 同义词短语（用于 BM25 查询扩展）
+    # vocab: constraint value -> synonym phrases (for BM25 query expansion)
     # ------------------------------------------------------------------
     def vocab_expand(self, value: str, max_extra: int = 6) -> list[str]:
-        """把约束取值映射到 canonical + 同义词短语；无命中返回空。"""
+        """Map a constraint value to canonical + synonym phrases; returns empty when nothing
+            matches."""
         if not self.vocab:
             return []
         lowered = (value or "").strip().lower()
@@ -75,7 +77,7 @@ class DataAssets:
         return []
 
     # ------------------------------------------------------------------
-    # category: 品类短语 -> 商品类型 token（family alias 匹配）
+    # category: category phrase -> product-type tokens (family-alias matching)
     # ------------------------------------------------------------------
     def category_expand(self, category_phrase: str, max_extra: int = 6) -> list[str]:
         if not self.category_map:
@@ -89,7 +91,7 @@ class DataAssets:
         for alias, canonical in family_aliases.items():
             alias_l = str(alias).lower()
             if alias_l and alias_l in phrase and canonical not in result:
-                # canonical 如 tank_tops -> token：tank, tops
+                # canonical e.g. tank_tops -> tokens: tank, tops
                 for part in str(canonical).split("_"):
                     if part and part not in result and part not in phrase:
                         result.append(part)
@@ -98,7 +100,7 @@ class DataAssets:
         return result[:max_extra]
 
     # ------------------------------------------------------------------
-    # paraphrase: 评论改写模式 -> (正则, 属性) 列表
+    # paraphrase: review-paraphrase patterns -> (regex, attribute) list
     # ------------------------------------------------------------------
     def paraphrase_patterns(self) -> list[tuple[re.Pattern, str]]:
         if not self.paraphrases:
@@ -106,17 +108,17 @@ class DataAssets:
         patterns: list[tuple[re.Pattern, str]] = []
         ml = self.paraphrases.get("material_language") or {}
         for pattern in ml.get("context_patterns") or []:
-            # "made of {material}" -> 捕获取值
+            # "made of {material}" -> capture the value
             p = str(pattern).replace("{material}", r"([a-z][a-z0-9 %\-]{2,40})")
             patterns.append((re.compile(p, re.I), "material"))
-        # 尺寸贴合语言（intent signal -> size 软约束）
+        # size/fit language (intent signal -> soft size constraint)
         sf = self.paraphrases.get("size_fit") or {}
         for _key, entry in sf.items():
             for phrase in (entry or {}).get("phrases") or []:
                 if len(phrase) < 3:
                     continue
                 patterns.append((re.compile(re.escape(str(phrase)), re.I), "size"))
-        # 颜色别名（grey -> gray 等）
+        # color aliases (grey -> gray etc.)
         cl = self.paraphrases.get("color_language") or {}
         for _base, aliases in (cl.get("literal_aliases") or {}).items():
             for alias in aliases:
@@ -128,7 +130,7 @@ _instances: dict[str, DataAssets] = {}
 
 
 def load_assets(path: str | Path | None = None) -> DataAssets:
-    """加载数据资产；同目录只加载一次（进程内缓存）。"""
+    """Load data assets; each directory is loaded once (in-process cache)."""
     directory = Path(path) if path is not None else ASSETS_DIR
     key = str(directory)
     if key in _instances:
@@ -160,7 +162,7 @@ def load_assets(path: str | Path | None = None) -> DataAssets:
                 field_map = data
             loaded.append(name)
         except (OSError, json.JSONDecodeError):
-            logger.warning("[assets] 缺失或损坏 %s（跳过）", name)
+            logger.warning("[assets] missing or corrupt %s (skipped)", name)
     assets = DataAssets(
         vocab=vocab,
         category_map=category_map,

@@ -45,7 +45,7 @@ class DialogueUnderstandingPipeline:
     ) -> None:
         dialogue_config = env.dialogue_understanding
         self._recognition_mode = mode or dialogue_config.mode
-        self._retrieval_mode_cfg = env.retrieval_mode  # Part B：exploit 阈值进配置
+        self._retrieval_mode_cfg = env.retrieval_mode  # Part B: exploit thresholds moved into config  # noqa: E501
         self.reducer = StateReducer(
             dialogue_config.max_evidence_length,
             override_erase=env.override_erase,
@@ -67,6 +67,14 @@ class DialogueUnderstandingPipeline:
         self.question_policy = QuestionPolicy(env.decision)
         self.catalog_signals = CatalogQuestionSignals.from_products(products)
         self._sessions: dict[str, SessionState] = {}
+
+    def set_recognition_mode(self, mode: str) -> None:
+        """P1 runtime switch of the recognition mode (rule_only / cascaded); lets the rewrite guard
+            upgrade to LLM intent dynamically."""
+        if mode not in {"rule_only", "cascaded"}:
+            raise ValueError("mode must be rule_only or cascaded")
+        self._recognition_mode = mode
+        self.recognizer.mode = mode
 
     def reset(self, session_id: str, user_profile: dict) -> None:
         self._sessions[session_id] = SessionState(
@@ -172,8 +180,10 @@ class DialogueUnderstandingPipeline:
         if recognition.dialogue_act == DialogueAct.REJECT_PRODUCTS:
             retrieval_mode = "recover"
         elif state.intent_version >= 2 and state.hard:
-            # override 后：用户已明确"ignore my earlier preference"，真实需求=新 hard 约束，
-            # 目标商品同时含新旧值文本（30 会话中 28 例）→ exploit 让"全覆盖"目标拿加成推前。
+            # After an override: the user explicitly said "ignore my earlier preference", so the
+            # real need = the new hard constraints,
+            # and targets contain both old and new value text (28 of 30 sessions) -> exploit gives
+            # the "full-coverage" target a bonus to push it up.
             retrieval_mode = "exploit"
         elif (
             state.no_more_preferences

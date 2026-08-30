@@ -1,29 +1,35 @@
-"""离线 BLaIR 商品向量化（预先编码，供稠密检索通道使用）。
+"""Offline BLaIR product vectorization (pre-encoding for the dense retrieval channel).
 
-背景（对齐赛题）：
-- 本脚本只做"离线预处理"：把竞赛冻结目录 50k 商品文本编码成稠密向量，保存为 npy；
-- 推理阶段（agent/retriever.py 或 retrieval_pipeline）只加载本脚本产物 + 编码用户查询，
-  不再对商品做全量 embedding（硬性约束 3 / 性能约束）。
-- 编码规范完全对齐官方 BLaIR 用法（hyp1231/AmazonReviews2023 generate_emb.py）：
+Background (aligned with the task):
+- This script only does "offline preprocessing": encodes the frozen catalog's 50k product texts into
+dense vectors saved as npy;
+- at inference (agent/retriever.py or retrieval_pipeline) only this output is loaded plus the user
+query is encoded,
+   with no full-catalog embedding at inference (hard constraint 3 / performance constraint).
+- The encoding convention fully matches the official BLaIR usage (hyp1231/AmazonReviews2023
+generate_emb.py):
     * AutoModel + AutoTokenizer，max_length<=512；
     * pooling = CLS token（last_hidden_state[:, 0]）；
-    * L2 归一化，检索用点积（dot product）。
+    * L2 normalization; retrieval uses dot product.
 
-数据分析结论（data/analysis/stats.json / report.md）如何影响文本构造：
-- title / features / categories 覆盖率 100%/89.6%/100%，信息量最大 → 保留；
-- description 空 47.8% 且多为营销文案 → 剔除（降噪 + 加速编码）；
-- details 96.7% 覆盖但多为制造商标识噪声（Item model number / Date First Available /
-  Department 等），对语义匹配价值低且显著增加 token 数（CPU 编码耗时翻倍）→ 剔除；
-- store（品牌）99% 覆盖 → 保留在 title 文本中时大多已隐含，此处不再单独拼接。
+How the data-analysis findings (data/analysis/stats.json / report.md) shape text construction:
+- title / features / categories coverage 100%/89.6%/100% carry the most signal -> kept;
+- description is empty 47.8% and mostly marketing copy -> dropped (denoise + faster encoding);
+- details has 96.7% coverage but is mostly manufacturer-identifier noise (Item model number / Date
+First Available /
+  Department etc.), low semantic value and a big token cost (doubling CPU encoding time) -> dropped;
+- store (brand) has 99% coverage but is mostly already implied in the title text, so it is not
+concatenated separately here.
 
-用法：
-    python scripts/encode_catalog_blair.py                          # 全量 50k
-    python scripts/encode_catalog_blair.py --limit 100              # 冒烟：先验证维度/格式
+Usage:
+    python scripts/encode_catalog_blair.py                          # full 50k
+    python scripts/encode_catalog_blair.py --limit 100              # smoke: validate dims/format
+    first
     python scripts/encode_catalog_blair.py --output data/offline_blair_embeds.npy
-环境变量：
-    DEVICE=auto/cpu/cuda             # 默认 auto
-    BLAIR_QUERY_ENCODER_MODEL        # 默认 hyp1231/blair-roberta-large
-    BLAIR_OFFLINE_EMBEDDING_PATH     # 默认 data/offline_blair_embeds.npy
+Environment variables:
+    DEVICE=auto/cpu/cuda             # default auto
+    BLAIR_QUERY_ENCODER_MODEL        # default hyp1231/blair-roberta-large
+    BLAIR_OFFLINE_EMBEDDING_PATH     # default data/offline_blair_embeds.npy
 """
 from __future__ import annotations
 
@@ -41,12 +47,12 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from utils import data_verify  # noqa: E402 复用 SHA256 校验（warn-only）
+from utils import data_verify  # noqa: E402 reuse the SHA256 check (warn-only)
 
 logger = logging.getLogger("encode_catalog_blair")
 
 _T0 = time.time()
-CHECKPOINT_EVERY = 2000   # 每 N 条写一次断点（进程被杀可恢复方向：断点文件可续跑）
+CHECKPOINT_EVERY = 2000   # write a checkpoint every N rows (process-kill resumable: checkpoint file allows continuation)  # noqa: E501
 
 
 def log(msg: str) -> None:
@@ -54,7 +60,7 @@ def log(msg: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# 文本构造（数据分析结论驱动的字段选择：title + features(≤4) + categories）
+# Text construction (data-analysis-driven field selection: title + features(<=4) + categories)
 # ---------------------------------------------------------------------------
 def _join(value, max_items: int | None = None) -> str:
     if value is None:
@@ -71,7 +77,8 @@ def _join(value, max_items: int | None = None) -> str:
 
 
 def build_product_text(p: dict) -> str:
-    """构造商品检索文本（数据分析结论：剔除 description/details，features 截断到 4 条）。"""
+    """Build a product's retrieval text (data analysis: drop description/details, truncate features
+        to 4)."""
     parts: list[str] = []
     title = str(p.get("title") or "").strip()
     if title:
@@ -86,14 +93,14 @@ def build_product_text(p: dict) -> str:
 
 
 # ---------------------------------------------------------------------------
-# 编码器（CLS pooling + L2 归一化，与官方 generate_emb.py 一致）
+# Encoder (CLS pooling + L2 normalization, matching the official generate_emb.py)
 # ---------------------------------------------------------------------------
 class BlairEncoder:
     def __init__(self, model_name: str, device: str = "auto", max_length: int = 128) -> None:
         import torch
         from transformers import AutoModel, AutoTokenizer
 
-        torch.set_num_threads(os.cpu_count() or 8)   # CPU 全核跑（编码提速）
+        torch.set_num_threads(os.cpu_count() or 8)   # use all CPU cores (faster encoding)
         self.max_length = max_length
         self.device = self._resolve_device(device)
         log(f"loading BLaIR model {model_name} on {self.device} ...")
@@ -115,7 +122,7 @@ class BlairEncoder:
             return "cpu"
 
     def encode(self, texts: list[str], batch_size: int) -> np.ndarray:
-        """分批编码 → [N, dim] float32（CLS pooling + L2 归一化）。"""
+        """Encode in batches -> [N, dim] float32 (CLS pooling + L2 normalization)."""
         import torch
 
         out: list[np.ndarray] = []
@@ -128,35 +135,35 @@ class BlairEncoder:
             inputs = {k: v.to(self.device) for k, v in inputs.items()}
             with torch.no_grad():
                 last_hidden = self.model(**inputs, return_dict=True).last_hidden_state
-                cls_vec = last_hidden[:, 0]                      # CLS pooling（官方用法）
-            cls_vec = torch.nn.functional.normalize(cls_vec, p=2, dim=1)  # L2 归一化
+                cls_vec = last_hidden[:, 0]                      # CLS pooling (official usage)
+            cls_vec = torch.nn.functional.normalize(cls_vec, p=2, dim=1)  # L2 normalization
             out.append(cls_vec.detach().cpu().numpy().astype(np.float32))
         return np.concatenate(out, axis=0)
 
 
 # ---------------------------------------------------------------------------
 def parse_args() -> argparse.Namespace:
-    ap = argparse.ArgumentParser(description="BLaIR 离线商品向量化（预先编码）")
+    ap = argparse.ArgumentParser(description="BLaIR offline product vectorization (pre-encoding)")
     ap.add_argument("--catalog", default=str(ROOT / "data" / "catalog.jsonl"))
     ap.add_argument(
         "--output",
         default="",
         help=(
-            "输出 npy 路径（默认 BLAIR_OFFLINE_EMBEDDING_PATH "
-            "或 data/offline_blair_embeds.npy）"
+            "output npy path (default BLAIR_OFFLINE_EMBEDDING_PATH "
+            "or data/offline_blair_embeds.npy)"
         ),
     )
-    ap.add_argument("--limit", type=int, default=0, help=">0 时只编码前 N 条（冒烟测试）")
+    ap.add_argument("--limit", type=int, default=0, help="when >0, encode only the first N rows (smoke test)")  # noqa: E501
     ap.add_argument("--batch-size", type=int, default=32)
     ap.add_argument(
-        "--max-length", type=int, default=128, help="商品文本截断长度（CLS 只依赖首位 token）"
+        "--max-length", type=int, default=128, help="product-text truncation length (CLS relies on the first tokens)"  # noqa: E501
     )
     ap.add_argument("--device", default="auto", help="auto/cpu/cuda")
-    ap.add_argument("--skip-verify", action="store_true", help="跳过 SHA256 校验（默认 warn-only）")
+    ap.add_argument("--skip-verify", action="store_true", help="skip the SHA256 check (default is warn-only)")  # noqa: E501
     ap.add_argument(
         "--resume",
         action="store_true",
-        help="从 data/offline_blair_embeds_checkpoint.npy 断点续跑（跳过已编码行）",
+        help="resume from the data/offline_blair_embeds_checkpoint.npy checkpoint (skip already-encoded rows)",  # noqa: E501
     )
     return ap.parse_args()
 
@@ -165,19 +172,19 @@ def main() -> int:
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
     args = parse_args()
 
-    # 数据完整性（warn-only，不阻断编码）
+    # data integrity (warn-only; does not block encoding)
     if not args.skip_verify:
         try:
             data_verify.verify_dataset(skip=True)
-        except Exception as exc:  # 路径自定义等场景不阻断
-            log(f"[WARN] 数据集校验异常（继续）: {exc}")
+        except Exception as exc:  # custom paths etc. never block
+            log(f"[WARN] dataset verification exception (continuing): {exc}")
 
     catalog_path = Path(args.catalog)
     if not catalog_path.exists():
-        log(f"[ERROR] catalog 不存在: {catalog_path}")
+        log(f"[ERROR] catalog does not exist: {catalog_path}")
         return 1
 
-    # 1) 加载商品文本
+    # 1) load product texts
     products: list[dict] = []
     with catalog_path.open(encoding="utf-8") as handle:
         for line in handle:
@@ -193,12 +200,12 @@ def main() -> int:
     texts = [build_product_text(p) for p in products]
     empty = sum(1 for t in texts if not t)
     if empty:
-        log(f"[WARN] 空文本商品 {empty} 个（用 title 兜底）")
+        log(f"[WARN] {empty} products have empty text (fallback to title)")
         for i, t in enumerate(texts):
             if not t:
                 texts[i] = str(products[i].get("title") or "clothing item")
 
-    # 2) BLaIR 编码
+    # 2) BLaIR encoding
     model_name = os.environ.get("BLAIR_QUERY_ENCODER_MODEL", "hyp1231/blair-roberta-large")
     encoder = BlairEncoder(model_name, device=args.device, max_length=args.max_length)
     total = len(texts)
@@ -217,16 +224,16 @@ def main() -> int:
                     done = len(prev_asins)
                     log(f"resume from checkpoint: {done} rows already encoded")
                 else:
-                    log("[WARN] 断点与当前模型维度/行数不一致，忽略断点")
+                    log("[WARN] checkpoint dims/rows do not match the current model; ignoring the checkpoint")  # noqa: E501
             except Exception as exc:
-                log(f"[WARN] 断点加载失败，从头开始: {exc}")
+                log(f"[WARN] checkpoint load failed, starting over: {exc}")
     for start in range(done, total, batch_size):
         batch = texts[start:start + batch_size]
         emb_list.append(encoder.encode(batch, batch_size=len(batch)))
         done += len(batch)
         if done % 500 < batch_size:
             log(f"encoded {done}/{total} ({done / total:.1%})")
-        # 周期断点：崩溃后可复用部分进度（保留，供恢复分析）
+        # periodic checkpoint: reuse partial progress after a crash (kept for resume analysis)
         if (done % CHECKPOINT_EVERY) < batch_size and done < total:
             ckpt = np.concatenate(emb_list, axis=0)
             np.save(ROOT / "data" / "offline_blair_embeds_checkpoint.npy", ckpt)
@@ -236,7 +243,7 @@ def main() -> int:
     emb = np.concatenate(emb_list, axis=0)
     log(f"embeddings shape: {emb.shape} (dtype={emb.dtype})")
 
-    # 3) 保存 npy + asins 映射 + 元信息（最终产物原子写）
+    # 3) save npy + asins mapping + metadata (atomic write of the final artifacts)
     out_path = Path(args.output) if args.output else Path(
         os.environ.get(
             "BLAIR_OFFLINE_EMBEDDING_PATH", str(ROOT / "data" / "offline_blair_embeds.npy")
@@ -267,7 +274,7 @@ def main() -> int:
     log(f"saved: {asin_path}")
     log(f"saved: {info_path}")
 
-    # 清理断点文件
+    # clean up checkpoint files
     for ck in (ROOT / "data" / "offline_blair_embeds_checkpoint.npy",
                ROOT / "data" / "offline_blair_embeds_checkpoint_asins.npy"):
         if ck.exists():

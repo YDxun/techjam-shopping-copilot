@@ -1,11 +1,21 @@
 [tool.ruff]
 target-version = "py310"
 line-length = 100
-extend-exclude = ["config/constants.py"]
+extend-exclude = ["config/constants.py", "evaluator/"]  # evaluator/ is the frozen official evaluator; never modified
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B"]
 
 [tool.ruff.lint.per-file-ignores]
-# few-shot prompt 内长 JSON 示例行（物理行超长但属合理例外；改行会改 prompt 内容）
+# few-shot prompt contains long JSON example lines (physical lines exceed the limit but are a justified exception; rewrapping would change the prompt)
 "agent/dialogue/recognizers/llm.py" = ["E501"]
+# legacy test files contain long assertion/prompt strings (historical; physically long lines that are risky to rewrap; new code keeps 100 cols)
+"tests/test_openai_compatible_client.py" = ["E501"]
+"tests/test_edge_cases.py" = ["E501"]
+"tests/test_deepseek_client.py" = ["E501"]
+"tests/test_config_loader.py" = ["E501"]
+"tests/test_combo_bonus.py" = ["E501"]
+"tests/test_text_rerank.py" = ["E501"]
+"tests/test_llm_startup.py" = ["E501"]
+"tests/test_evaluator.py" = ["E501"]
+"tests/test_hard_cue.py" = ["E501"]

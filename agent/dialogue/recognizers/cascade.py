@@ -37,7 +37,8 @@ class CascadedIntentRecognizer:
     def _should_consult_llm(self, result: RecognitionResult, request: RecognitionRequest) -> bool:
         if not self.llm_recognizer.available:
             return False
-        # Part A：命中必要性线索词（must/need/require/key...）或 turn>=2 出现新约束也咨询 LLM
+        # Part A: also consult the LLM when a necessity cue (must/need/require/key...) is hit or a
+        # new constraint appears at turn>=2
         hard_cue = self.rule_recognizer._hard_cue_present(request.user_message or "")
         new_constraints_late = request.turn >= 2 and bool(result.constraint_operations)
         return (

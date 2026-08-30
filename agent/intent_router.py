@@ -1,9 +1,11 @@
-"""Pillar I：双轨意图路由（购买高意图轨道 / 浏览开放式轨道）。
+"""Pillar I: dual-track intent routing (high-intent buying track / open browsing track).
 
-- 购买轨道：存在 hard 约束（"key requirement"/"what matters"）→ 高精度硬约束过滤。
-- 浏览轨道：无 hard 约束、仍在探索 → 多样化稠密/泛化召回。
-- 输出 IntentRoute：检索关键词、品类域、hard 约束 token 组、soft 词，
-  下游检索与重排据此动态选择路由权重（Pillar III 自适应编排会改写权重）。
+- Buying track: hard constraints present ("key requirement"/"what matters") -> high-precision
+hard-constraint filtering.
+- Browsing track: no hard constraints, still exploring -> diverse dense/generalized recall.
+- Output IntentRoute: query terms, category domain, hard-constraint token groups, soft terms;
+   downstream retrieval/reranking pick route weights from it (Pillar III adaptive orchestration may
+   rewrite weights).
 """
 
 from __future__ import annotations
@@ -21,7 +23,7 @@ class IntentRoute:
     track: str = "browsing"  # buying / browsing
     confidence: float = 0.5
     category_tokens: list[str] = field(default_factory=list)
-    hard_groups: list[tuple[str, ...]] = field(default_factory=list)  # 组内 AND
+    hard_groups: list[tuple[str, ...]] = field(default_factory=list)  # AND within each group
     soft_terms: list[str] = field(default_factory=list)
     query_terms: list[str] = field(default_factory=list)
 
@@ -31,7 +33,8 @@ class IntentRoute:
 
 
 class IntentRouter:
-    """基于状态信号的轻量意图检测（无 LLM 也可运行，符合离线约束）。"""
+    """Lightweight intent detection from state signals (runs without an LLM, satisfying offline
+        constraints)."""
 
     def __init__(self, env: EnvConfig | None = None) -> None:
         self.env = env or EnvConfig.from_env()
@@ -44,21 +47,23 @@ class IntentRouter:
         route = IntentRoute()
 
         route.category_tokens = list(state.category_tokens)
-        # 品类映射扩展（ASSET_CATEGORY_EXPAND）：family alias -> 商品类型 token，首轮路由 recall
+        # Category-mapping expansion (ASSET_CATEGORY_EXPAND): family alias -> product-type tokens,
+        # first-turn routing recall
         if self.env.asset_category_expand:
             for token in self._assets.category_expand(state.category_phrase or ""):
                 if token not in route.category_tokens:
                     route.category_tokens.append(token)
 
-        # 硬约束 token 组：每个 hard 约束是一组 AND（覆盖度强信号）
+        # Hard-constraint token groups: each hard constraint is an AND group (strong coverage
+        # signal)
         for c in hard:
             if c.tokens:
                 route.hard_groups.append(c.tokens)
-        # soft 约束词进入宽松检索
+        # soft constraint terms feed loose retrieval
         for c in soft:
             route.soft_terms.extend(c.tokens)
 
-        # 双轨判定（Pillar I）
+        # Dual-track decision (Pillar I)
         if len(hard) >= 1:
             route.track = "buying"
             route.confidence = min(0.95, 0.55 + 0.2 * len(hard))
@@ -69,20 +74,25 @@ class IntentRouter:
             route.track = "browsing"
             route.confidence = 0.6
 
-        # 查询词 = 品类词 + 约束词 + vocab 同义词（Pillar I 多路由检索 query 构建；
-        # "换种说法"召回：jumper→sweater、100% cotton→cotton，用 vocab.json 扩展查询词）
+        # Query terms = category terms + constraint terms + vocab synonyms (Pillar I multi-route
+        # query construction;
+        # "say it differently" recall: jumper->sweater, 100% cotton->cotton, expanded via
+        # vocab.json)
         route.query_terms = list(dict.fromkeys([*route.category_tokens, *route.soft_terms]))
         for group in route.hard_groups:
             route.query_terms.extend(group)
-        # vocab 同义词扩展（"换种说法"召回）：仅 intent_version==1（未 override）时扩展，
-        # hard+soft 都扩（browsing/buying 收益最大）；override 之后版本>=2，旧偏好已降 soft，
-        # 不再做同义词扩展，避免旧偏好词污染新查询（A/B：override MRR 0.769→0.744，版本门控最优）。
+        # vocab synonym expansion ("say it differently" recall): only when intent_version==1 (no
+        # override),
+        # both hard and soft are expanded (biggest gains in browsing/buying); after an override
+        # version>=2, old prefs are soft,
+        # so synonyms are no longer expanded, avoiding old-preference terms polluting the new query
+        # (A/B: override MRR 0.769->0.744; version gating optimal).
         if getattr(state, "intent_version", 1) == 1:
             for c in [*hard, *soft]:
                 route.query_terms.extend(fm.expand_with_vocab(c.attribute, c.value))
         route.query_terms = list(dict.fromkeys(route.query_terms))[:40]
 
-        # Pillar III 自适应：RECOVER 模式下把 hard 组降级为 soft（放宽过滤）
+        # Pillar III adaptation: in RECOVER mode, downgrade hard groups to soft (relax filtering)
         if mode == "recover" and route.hard_groups:
             route.soft_terms.extend(t for g in route.hard_groups for t in g)
             route.hard_groups = []

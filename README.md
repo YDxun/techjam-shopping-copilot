@@ -399,6 +399,35 @@ python run_local_eval.py
 `SHOPPING_DECISION__...__WEIGHTS__<NAME>` 覆写。`config/default.json` 中的所有数值都是可复现的搜索中心，
 不是已经推广的比赛参数；只有经过公开集交叉验证及目录规模稳定性检查后才应考虑改变默认值。
 
+### Legacy 与 Hybrid 的有界筛选
+
+以下命令只用于快速、可复现的 20 会话筛选：从公开集按固定种子抽取 Buying 8、Browsing 8、
+Intent Override 3、Boundary 1，并以完全相同的顺序依次评估 Legacy、保守、均衡和宽松的
+Hybrid 门控。它共享一个 SQLite retriever、商品快照、目录信号和属性缓存，但四个 Agent 的会话、
+重排器和诊断状态完全独立；官方 `evaluate()` 本身没有修改。
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 \
+/Users/zhengce/projects/techjam_shopping_copilot/techjam-shopping-copilot/.conda/bin/python \
+  -m experiments.hybrid_question_comparison \
+  --catalog /Users/zhengce/projects/participate_kit/catalog.jsonl \
+  --dataset /Users/zhengce/projects/participate_kit/data/public_set.jsonl \
+  --output /private/tmp/legacy-hybrid-comparison.json \
+  --seed 20260830 \
+  --time-budget-seconds 1200
+```
+
+运行器强制 `llm.provider=none`、规则意图模式、关闭 finish strategy、`lookahead_depth=1` 和关闭
+decision trace；不会调用 LLM，也不会导出用户原文或逐会话 trace。报告只保存 sample ID 的 SHA-256
+哈希、分层计数、固定 overlays、官方总体/场景指标及 token 总数、初始化/单配置/总耗时，以及 Hybrid
+的聚合原因码、替换次数/比例、属性计数和 p50/p95 决策延迟。每个 Hybrid 只报告相对 Legacy 的指标
+差异及预声明筛选条件（HR@10 不下降，且 TechnicalScore、MRR 或 MTTC 至少一项改善）。
+
+这是 20 条会话的筛选，**不会推广任何配置，也不会改变默认 Legacy 行为**。Unix 平台使用进程级
+`SIGALRM`/`setitimer` 强制 1,200 秒截止；若截止发生，当前配置会被丢弃，输出以原子替换方式写入仅含
+已完成配置的 `time_budget_exceeded` 报告，并且 CLI 返回非零。没有 `SIGALRM` 的平台会把报告标为
+`external_watchdog_required`，调用方必须提供同等的外部 1,200 秒 watchdog。
+
 ### Catalog question-value diagnostic
 
 The following offline diagnostic reads a JSONL catalog once, builds one immutable

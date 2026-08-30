@@ -30,7 +30,9 @@ const backdrop = document.getElementById("drawer-backdrop");
 const drawerTitle = document.getElementById("drawer-title");
 const drawerBody = document.getElementById("drawer-body");
 const drawerClose = document.getElementById("drawer-close");
+const drawerBackground = document.querySelectorAll(".sidebar, .app-main");
 let focusBeforeDrawer = null;
+let drawerRequestGeneration = 0;
 
 class ApiError extends Error {
   constructor(status, code) {
@@ -115,6 +117,24 @@ function element(tag, className, text) {
   return node;
 }
 
+function productPriceText(product) {
+  const numericPrice = Number(product?.price);
+  return product?.price !== null
+    && product?.price !== undefined
+    && Number.isFinite(numericPrice)
+    ? `$${numericPrice.toFixed(2)}`
+    : "Price unavailable";
+}
+
+function productRatingText(product) {
+  if (product?.average_rating === null || product?.average_rating === undefined) {
+    return null;
+  }
+  const hasCount = product.rating_number !== null && product.rating_number !== undefined;
+  const count = hasCount ? ` (${product.rating_number})` : "";
+  return `${product.average_rating} stars${count}`;
+}
+
 function renderProducts(payload) {
   const grid = element("div", "product-grid");
   payload.agent_response.recommendations.forEach((recommendation, index) => {
@@ -133,23 +153,10 @@ function renderProducts(payload) {
       product?.title || "Product details unavailable",
     ));
     card.append(element("p", "product-asin", asin));
-    const numericPrice = Number(product?.price);
-    card.append(element(
-      "p",
-      "product-price",
-      product?.price !== null
-        && product?.price !== undefined
-        && Number.isFinite(numericPrice)
-        ? `$${numericPrice.toFixed(2)}`
-        : "Price unavailable",
-    ));
-    if (product?.average_rating !== null && product?.average_rating !== undefined) {
-      const count = product.rating_number ? ` (${product.rating_number})` : "";
-      card.append(element(
-        "p",
-        "product-rating",
-        `${product.average_rating} stars${count}`,
-      ));
+    card.append(element("p", "product-price", productPriceText(product)));
+    const rating = productRatingText(product);
+    if (rating !== null) {
+      card.append(element("p", "product-rating", rating));
     }
     if (product?.store) {
       card.append(element("p", "product-store", product.store));
@@ -184,10 +191,22 @@ function appendDetailList(label, values) {
   drawerBody.append(list);
 }
 
+function appendProductCommerceDetails(product) {
+  drawerBody.append(element("p", "product-price", productPriceText(product)));
+  const rating = productRatingText(product);
+  if (rating !== null) {
+    drawerBody.append(element("p", "product-rating", rating));
+  }
+  if (product.store) {
+    drawerBody.append(element("p", "product-store", product.store));
+  }
+}
+
 function renderProductDetail(product) {
   drawerBody.replaceChildren();
   drawerTitle.textContent = product.title || "Product details";
   drawerBody.append(element("p", "product-asin", product.parent_asin));
+  appendProductCommerceDetails(product);
   appendDetailList("Categories", product.categories);
   appendDetailList("Features", product.features);
   appendDetailList("Description", product.description);
@@ -206,30 +225,77 @@ function renderProductDetail(product) {
   }
 }
 
+function disableDrawerBackground() {
+  drawerBackground.forEach((background) => {
+    background.inert = true;
+  });
+}
+
+function enableDrawerBackground() {
+  drawerBackground.forEach((background) => {
+    background.inert = false;
+  });
+}
+
+function containDrawerFocus(event) {
+  const focusable = Array.from(drawer.querySelectorAll(
+    "button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), "
+      + "textarea:not([disabled]), [tabindex]:not([tabindex=\"-1\"])",
+  ));
+  if (focusable.length === 0) {
+    event.preventDefault();
+    drawerClose.focus();
+    return;
+  }
+  const first = focusable[0];
+  const last = focusable.at(-1);
+  const focusIsInside = drawer.contains(document.activeElement);
+  if (event.shiftKey && (!focusIsInside || document.activeElement === first)) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && (!focusIsInside || document.activeElement === last)) {
+    event.preventDefault();
+    first.focus();
+  }
+}
+
 async function openProductDrawer(asin) {
-  focusBeforeDrawer = document.activeElement;
+  const requestGeneration = ++drawerRequestGeneration;
+  if (drawer.hidden) {
+    focusBeforeDrawer = document.activeElement;
+  }
   drawer.hidden = false;
   backdrop.hidden = false;
   drawer.setAttribute("aria-hidden", "false");
+  disableDrawerBackground();
   drawerTitle.textContent = "Loading product details…";
   drawerBody.replaceChildren();
   drawerClose.focus();
   try {
     const product = await apiRequest(`/api/products/${encodeURIComponent(asin)}`);
+    if (requestGeneration !== drawerRequestGeneration || drawer.hidden) {
+      return;
+    }
     renderProductDetail(product);
   } catch (error) {
+    if (requestGeneration !== drawerRequestGeneration || drawer.hidden) {
+      return;
+    }
     drawerTitle.textContent = "Product details unavailable";
     drawerBody.textContent = "Product details are unavailable for this recommendation.";
   }
 }
 
 function closeProductDrawer() {
+  drawerRequestGeneration += 1;
   drawer.hidden = true;
   backdrop.hidden = true;
   drawer.setAttribute("aria-hidden", "true");
+  enableDrawerBackground();
   if (focusBeforeDrawer instanceof HTMLElement) {
     focusBeforeDrawer.focus();
   }
+  focusBeforeDrawer = null;
 }
 
 function renderUserMessage(message) {
@@ -510,6 +576,8 @@ backdrop.addEventListener("click", closeProductDrawer);
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !drawer.hidden) {
     closeProductDrawer();
+  } else if (event.key === "Tab" && !drawer.hidden) {
+    containDrawerFocus(event);
   }
 });
 

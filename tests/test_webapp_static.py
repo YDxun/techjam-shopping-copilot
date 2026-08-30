@@ -69,3 +69,25 @@ def test_product_cards_and_drawer_have_responsive_static_styles() -> None:
     assert "grid-template-columns: 1fr;" in styles
     assert "@media (prefers-reduced-motion: reduce)" in styles
     assert "transition: none !important;" in styles
+
+
+def test_product_detail_renders_complete_commerce_fields() -> None:
+    script = (STATIC / "app.js").read_text(encoding="utf-8")
+    assert "function appendProductCommerceDetails" in script
+    assert "appendProductCommerceDetails(product)" in script
+    assert '"product-price"' in script
+    assert '"product-rating"' in script
+    assert '"product-store"' in script
+    assert "product.rating_number !== null" in script
+    assert "product.rating_number !== undefined" in script
+
+
+def test_drawer_contains_keyboard_focus_and_invalidates_stale_requests() -> None:
+    script = (STATIC / "app.js").read_text(encoding="utf-8")
+    assert "background.inert = true" in script
+    assert "background.inert = false" in script
+    assert 'event.key === "Tab"' in script
+    assert "drawer.contains(document.activeElement)" in script
+    assert "let drawerRequestGeneration = 0;" in script
+    assert "const requestGeneration = ++drawerRequestGeneration;" in script
+    assert "requestGeneration !== drawerRequestGeneration || drawer.hidden" in script

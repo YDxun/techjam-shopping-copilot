@@ -14,6 +14,7 @@ const initialState = {
 };
 const emptyState = () => ({...initialState, messages: []});
 let state = emptyState();
+let serviceReady = false;
 
 const newChatButton = document.querySelector("#new-chat");
 const conversation = document.querySelector("#conversation");
@@ -79,7 +80,7 @@ function showNotice(message) {
 function setComposerEnabled(enabled) {
   messageInput.disabled = !enabled;
   sendButton.disabled = !enabled;
-  newChatButton.disabled = !enabled;
+  newChatButton.disabled = !serviceReady || state.pending;
 }
 
 function renderPromptExamples() {
@@ -113,7 +114,9 @@ function renderUserMessage(message) {
     retry.type = "button";
     retry.textContent = "Retry";
     retry.disabled = state.pending;
-    retry.addEventListener("click", () => retryMessage(message.messageId));
+    retry.addEventListener("click", () => {
+      retryMessage(message.messageId).catch(handleUnexpectedInteractionError);
+    });
     actions.append(retry);
     row.append(actions);
   }
@@ -140,8 +143,8 @@ function renderConversation() {
 }
 
 async function replaceExpiredSession() {
-  state = emptyState();
   const created = await apiRequest("/api/sessions", {method: "POST", body: "{}"});
+  state = emptyState();
   state.sessionId = created.session_id;
   showNotice("The local service restarted. Starting a new chat.");
 }
@@ -168,8 +171,13 @@ async function submitExistingMessage(text, messageId) {
     state.messages.push({role: "assistant", payload});
   } catch (error) {
     if (error instanceof ApiError && error.code === "session_not_found") {
-      await replaceExpiredSession();
-      finalNotice = "The local service restarted. Starting a new chat.";
+      try {
+        await replaceExpiredSession();
+        finalNotice = "The local service restarted. Starting a new chat.";
+      } catch (replacementError) {
+        userMessage.status = "failed";
+        finalNotice = "The chat could not be restarted. Select New chat to try again.";
+      }
     } else {
       userMessage.status = "failed";
       finalNotice = "The message could not be sent. You can retry it.";
@@ -201,7 +209,7 @@ async function retryMessage(messageId) {
 }
 
 async function newChat() {
-  if (state.pending) {
+  if (state.pending || !serviceReady) {
     return;
   }
   state.pending = true;
@@ -229,7 +237,13 @@ const wait = (milliseconds) => new Promise((resolve) => {
 
 async function waitForService() {
   while (true) {
-    const health = await apiRequest("/api/health");
+    let health;
+    try {
+      health = await apiRequest("/api/health");
+    } catch (error) {
+      await wait(500);
+      continue;
+    }
     if (health.status === "ready") {
       return;
     }
@@ -241,6 +255,7 @@ async function waitForService() {
 }
 
 function renderInitializationFailure() {
+  serviceReady = false;
   serviceStatus.textContent = "Local · Unavailable";
   welcome.hidden = true;
   const title = document.createElement("h2");
@@ -259,28 +274,57 @@ async function bootstrap() {
 
   try {
     await waitForService();
-    state = restoreState();
-    if (state.sessionId) {
-      try {
-        await apiRequest(`/api/sessions/${state.sessionId}`);
-      } catch (error) {
-        if (error instanceof ApiError && error.code === "session_not_found") {
-          await replaceExpiredSession();
-        } else {
-          throw error;
-        }
-      }
-    } else {
-      const created = await apiRequest("/api/sessions", {method: "POST", body: "{}"});
-      state.sessionId = created.session_id;
-    }
-    persistState();
-    serviceStatus.textContent = "Local · Ready";
-    composer.hidden = false;
-    renderConversation();
   } catch (error) {
     renderInitializationFailure();
+    return;
   }
+
+  serviceReady = true;
+  serviceStatus.textContent = "Local · Ready";
+  composer.hidden = false;
+  state = restoreState();
+  let startupNotice = "";
+  if (state.sessionId) {
+    try {
+      await apiRequest(`/api/sessions/${state.sessionId}`);
+    } catch (error) {
+      if (error instanceof ApiError && error.code === "session_not_found") {
+        try {
+          await replaceExpiredSession();
+          startupNotice = "The local service restarted. Starting a new chat.";
+        } catch (replacementError) {
+          state = emptyState();
+          startupNotice = "A chat could not be started. Select New chat to try again.";
+        }
+      } else {
+        startupNotice = "The chat could not be restored. Select New chat to start over.";
+      }
+    }
+  } else {
+    try {
+      const created = await apiRequest("/api/sessions", {method: "POST", body: "{}"});
+      state.sessionId = created.session_id;
+    } catch (error) {
+      state = emptyState();
+      startupNotice = "A chat could not be started. Select New chat to try again.";
+    }
+  }
+  persistState();
+  renderConversation();
+  showNotice(startupNotice);
+}
+
+function handleUnexpectedInteractionError() {
+  state.pending = false;
+  const pendingMessage = state.messages.find(
+    (message) => message.role === "user" && message.status === "pending",
+  );
+  if (pendingMessage) {
+    pendingMessage.status = "failed";
+  }
+  persistState();
+  renderConversation();
+  showNotice("The request could not be completed. Try again.");
 }
 
 composer.addEventListener("submit", (event) => {
@@ -290,7 +334,7 @@ composer.addEventListener("submit", (event) => {
     return;
   }
   messageInput.value = "";
-  void sendMessage(text);
+  sendMessage(text).catch(handleUnexpectedInteractionError);
 });
 
 messageInput.addEventListener("keydown", (event) => {
@@ -301,7 +345,7 @@ messageInput.addEventListener("keydown", (event) => {
 });
 
 newChatButton.addEventListener("click", () => {
-  void newChat();
+  newChat().catch(handleUnexpectedInteractionError);
 });
 
-void bootstrap();
+bootstrap().catch(renderInitializationFailure);

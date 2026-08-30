@@ -23,3 +23,12 @@ def test_dynamic_javascript_never_uses_html_injection() -> None:
     assert "eval(" not in script
     assert "localStorage" in script
     assert "crypto.randomUUID()" in script
+
+
+def test_async_recovery_has_static_safety_guards() -> None:
+    script = (STATIC / "app.js").read_text(encoding="utf-8")
+    assert "let serviceReady = false;" in script
+    assert "newChatButton.disabled = !serviceReady || state.pending;" in script
+    assert "handleUnexpectedInteractionError" in script
+    assert "void sendMessage(text);" not in script
+    assert "void newChat();" not in script

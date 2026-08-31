@@ -3,12 +3,15 @@ from __future__ import annotations
 import asyncio
 import copy
 import logging
+import time
 from collections import OrderedDict
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Protocol
 from uuid import UUID, uuid4
+
+from webapp.metrics import UsageRecorder, estimate_cost_usd
 
 logger = logging.getLogger(__name__)
 
@@ -51,12 +54,22 @@ class _SessionRecord:
 
 
 class SessionManager:
-    def __init__(self, agent: AgentProtocol, catalog: CatalogProtocol, *, top_k: int) -> None:
+    def __init__(
+        self,
+        agent: AgentProtocol,
+        catalog: CatalogProtocol,
+        *,
+        top_k: int,
+        usage_recorder: UsageRecorder | None = None,
+        usage_context: dict[str, object] | None = None,
+    ) -> None:
         self._agent = agent
         self._catalog = catalog
         self._top_k = top_k
         self._agent_lock = asyncio.Lock()
         self._sessions: dict[UUID, _SessionRecord] = {}
+        self._usage_recorder = usage_recorder
+        self._usage_context = usage_context or {}
 
     async def create_session(self) -> SessionSnapshot:
         session_id = uuid4()
@@ -86,6 +99,7 @@ class SessionManager:
             if cached is not None:
                 return copy.deepcopy(cached)
             turn = record.next_turn
+            started_at = time.monotonic()
             async with self._agent_lock:
                 raw, cancelled = await self._wait_for_worker(
                     asyncio.create_task(
@@ -94,8 +108,10 @@ class SessionManager:
                         )
                     )
                 )
+            latency_ms = (time.monotonic() - started_at) * 1000.0
             if not isinstance(raw, dict):
                 raise TypeError("Agent.respond() must return a dictionary")
+            self._record_usage(str(session_id), turn, raw, latency_ms)
             agent_response = copy.deepcopy(raw)
             envelope = {
                 "session_id": str(session_id),
@@ -124,6 +140,41 @@ class SessionManager:
                 envelope["products"] = products
             record.responses[message_id] = copy.deepcopy(envelope)
             return envelope
+
+    def _record_usage(self, session_id: str, turn: int, raw: dict, latency_ms: float) -> None:
+        """Best-effort per-turn usage/cost recording for the dashboard (never raises)."""
+        if self._usage_recorder is None:
+            return
+        try:
+            usage = raw.get("usage") if isinstance(raw.get("usage"), dict) else {}
+            prompt_tokens = int(usage.get("prompt_tokens") or 0)
+            completion_tokens = int(usage.get("completion_tokens") or 0)
+            provider = str(self._usage_context.get("provider") or "none")
+            model = str(self._usage_context.get("model") or "")
+            self._usage_recorder.record(
+                {
+                    "session_id": session_id,
+                    "turn": turn,
+                    "provider": provider,
+                    "model": model,
+                    "retrieval_backend": str(
+                        self._usage_context.get("retrieval_backend") or "auto"
+                    ),
+                    "rerank_backend": str(self._usage_context.get("rerank_backend") or "none"),
+                    "output_strategy": str(
+                        self._usage_context.get("output_strategy") or "holdback"
+                    ),
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                    "cost_usd": estimate_cost_usd(
+                        provider, model, prompt_tokens, completion_tokens
+                    ),
+                    "online": (prompt_tokens + completion_tokens) > 0,
+                    "latency_ms": round(latency_ms, 3),
+                }
+            )
+        except Exception:
+            logger.warning("usage recording failed", exc_info=True)
 
     @staticmethod
     async def _wait_for_worker(worker: asyncio.Task[object]) -> tuple[object, bool]:

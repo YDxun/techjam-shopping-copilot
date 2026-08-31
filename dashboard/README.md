@@ -18,6 +18,13 @@ npm run build
 
 The build is written to `dist/`. GitHub Actions deploys this directory to GitHub Pages.
 
+## Live usage view (served by the local web app)
+
+`Live usage` fetches `GET /api/metrics` from the same origin. When the dashboard is
+served by the web app (`python -m webapp`), it shows real-time per-turn token usage
+and estimated cost for online LLM turns, refreshing every 5 seconds. On a static
+GitHub Pages deployment the panel shows a graceful "Live metrics unavailable" notice.
+
 ## Public data boundary
 
 The bundled `src/data/dashboardData.json` contains only reviewed evaluation metrics, 200 compact Session result records and version provenance. It does not contain:

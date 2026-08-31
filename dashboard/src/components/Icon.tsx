@@ -11,6 +11,7 @@ export function Icon({ name, size = 20 }: Props) {
     robustness: <><path d="M12 3l8 4v5c0 5-3.4 8-8 9-4.6-1-8-4-8-9V7l8-4z"/><path d="M8 12h8"/></>,
     engineering: <><path d="M8 8l-4 4 4 4M16 8l4 4-4 4"/><path d="M14 5l-4 14"/></>,
     sessions: <><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></>,
+    live: <><path d="M3 12h4l2-7 4 14 2-7h6"/></>,
     check: <><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.5 12.5l3 3 6-7" stroke="white" strokeWidth="2"/></>,
     warning: <><path d="M12 3L2.7 20h18.6L12 3z" fill="currentColor" stroke="none"/><path d="M12 8v5M12 17h.01" stroke="white" strokeWidth="2"/></>,
     info: <><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></>,

@@ -25,7 +25,7 @@ button, input, select { font: inherit; }
 button { color: inherit; }
 
 .app-shell { min-height: 100vh; display: grid; grid-template-columns: 280px minmax(0, 1fr); }
-.sidebar { position: fixed; z-index: 20; inset: 0 auto 0 0; width: 280px; padding: 32px 24px; background: var(--sidebar); border-right: 1px solid var(--border); }
+.sidebar { position: fixed; z-index: 20; inset: 0 auto 0 0; width: 280px; padding: 32px 24px; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; background: var(--sidebar); border-right: 1px solid var(--border); }
 .brand { display: flex; flex-direction: column; gap: 10px; margin: 0 8px 30px; }
 .brand strong { font-size: 21px; letter-spacing: -.025em; }
 .brand span { color: var(--muted); font-size: 16px; line-height: 1.55; }
@@ -156,3 +156,5 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 @media (max-width: 500px) {
   .kpi-grid,.three-kpis,.two-col{grid-template-columns:1fr}.version-status span:first-child{display:none}.score-strip{padding-left:8px;padding-right:8px}.score-bars{gap:1px}.stat-list,.stat-list.four{grid-template-columns:1fr 1fr}.table-wrap{padding-left:8px;padding-right:8px}.topbar{padding:0 14px}.content{padding:12px}.kpi-row strong{font-size:29px}
 }
+
+.empty-state { padding: 28px 20px; color: var(--muted); font-size: 13px; line-height: 1.5; }

@@ -20,6 +20,8 @@ from config.env_config import EnvConfig
 from llm.factory import create_llm_client
 from utils.data_verify import verify_file
 from webapp.catalog import CatalogError, CatalogPresenter
+from webapp.metrics import UsageRecorder
+from webapp.runtime import RuntimeManager
 from webapp.schemas import ChatResponse, MessageRequest, SessionResponse
 from webapp.service import InvalidMessage, SessionManager, SessionNotFound
 
@@ -33,10 +35,25 @@ class WebRuntime:
     catalog: CatalogPresenter
 
 
+DEFAULT_CFG = {
+    "llm_provider": "none",
+    "llm_model": "",
+    "api_key": "",
+    "rerank_backend": "none",
+    "retrieval_backend": "auto",
+    "output_strategy": "holdback",
+    "llm_intent_enabled": False,
+    "fingerprint": True,
+    "category_expand": True,
+    "paraphrase": True,
+}
+
+
 @dataclass
 class RuntimeContainer:
     status: Literal["loading", "ready", "failed"] = "loading"
     runtime: WebRuntime | None = None
+    manager: RuntimeManager | None = None
     error_code: str | None = None
 
 
@@ -72,6 +89,7 @@ def initialize_runtime(
     env_loader: Callable[[], EnvConfig] = EnvConfig.from_env,
     verifier: Callable[[Path, str, str, bool], bool] = verify_file,
     agent_factory: Callable[[Path, EnvConfig, object], Agent] = Agent,
+    usage_recorder: UsageRecorder | None = None,
 ) -> WebRuntime:
     """Build the production web runtime for one selected catalog file."""
     env = env_loader()
@@ -82,7 +100,26 @@ def initialize_runtime(
     llm_client = create_llm_client(web_env.llm)
     llm_client.initialize()
     agent = agent_factory(catalog_path, web_env, llm_client)
-    return WebRuntime(SessionManager(agent, catalog, top_k=web_env.top_k), catalog)
+    recorder = usage_recorder if usage_recorder is not None else UsageRecorder.from_env()
+    context = {
+        "provider": str(web_env.llm.provider or "none"),
+        "model": str(web_env.llm.model or ""),
+        "retrieval_backend": str(web_env.app_config.retrieval_backend or "auto"),
+        "rerank_backend": (
+            str(web_env.llm.rerank_backend or "auto") if web_env.llm.rerank_enabled else "none"
+        ),
+        "output_strategy": "holdback" if web_env.app_config.emit_gate else "full",
+    }
+    return WebRuntime(
+        SessionManager(
+            agent,
+            catalog,
+            top_k=web_env.top_k,
+            usage_recorder=recorder,
+            usage_context=context,
+        ),
+        catalog,
+    )
 
 
 def create_app(
@@ -103,7 +140,15 @@ def create_app(
 
         async def initialize() -> None:
             try:
-                container.runtime = await asyncio.to_thread(active_initializer, catalog_path)
+                if initializer is not None:
+                    # tests / custom bootstrap: honor the provided initializer
+                    # (failure/loading simulation)
+                    container.runtime = await asyncio.to_thread(active_initializer, catalog_path)
+                else:
+                    manager = await asyncio.to_thread(RuntimeManager.create, catalog_path)
+                    built, _key = await asyncio.to_thread(manager.switch, dict(DEFAULT_CFG))
+                    container.manager = manager
+                    container.runtime = built
             except Exception:
                 logger.exception("web runtime initialization failed")
                 container.error_code = "initialization_failed"
@@ -120,6 +165,9 @@ def create_app(
     app = FastAPI(lifespan=lifespan)
     app.state.runtime_container = container
     app.mount("/assets", StaticFiles(directory=STATIC_DIR), name="assets")
+    dashboard_dist = Path(__file__).parent.parent / "dashboard" / "dist"
+    if dashboard_dist.exists():
+        app.mount("/dashboard", StaticFiles(directory=dashboard_dist, html=True), name="dashboard")
 
     @app.middleware("http")
     async def security_headers(request: Request, call_next: Callable):
@@ -128,8 +176,12 @@ def create_app(
         except Exception:
             logger.exception("unexpected unhandled web error")
             response = error_response(500, "internal_error", "An internal error occurred.")
+        # Allow the in-app /dashboard iframe to be embedded by this same origin
+        # (frame-ancestors 'self'); everything else stays clickjack-proof.
+        frame_ancestors = "'self'" if request.url.path.startswith("/dashboard") else "'none'"
         response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; img-src 'none'; object-src 'none'; frame-ancestors 'none'"
+            f"default-src 'self'; img-src 'none'; object-src 'none'; "
+            f"frame-ancestors {frame_ancestors}"
         )
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
@@ -165,6 +217,90 @@ def create_app(
     @app.get("/", include_in_schema=False, response_class=FileResponse)
     async def index() -> FileResponse:
         return FileResponse(STATIC_DIR / "index.html")
+
+    def require_manager() -> RuntimeManager | JSONResponse:
+        if container.manager is not None:
+            return container.manager
+        return error_response(503, "service_failed", "Runtime manager unavailable.")
+
+    @app.get("/api/runtime", response_model=None)
+    async def get_runtime() -> dict[str, object] | JSONResponse:
+        manager = require_manager()
+        if isinstance(manager, JSONResponse):
+            return manager
+        try:
+            return manager.runtime_info()
+        except Exception:
+            logger.exception("runtime info failed")
+            return internal_error_response()
+
+    @app.post("/api/runtime/config", response_model=None)
+    async def set_runtime_config(payload: dict[str, object]) -> dict[str, object] | JSONResponse:
+        manager = require_manager()
+        if isinstance(manager, JSONResponse):
+            return manager
+        cfg = {
+            k: v
+            for k, v in payload.items()
+            if k
+            in {
+                "llm_provider",
+                "llm_model",
+                "api_key",
+                "rerank_backend",
+                "retrieval_backend",
+                "output_strategy",
+                "llm_intent_enabled",
+                "fingerprint",
+                "category_expand",
+                "paraphrase",
+            }
+        }
+        cfg.setdefault("llm_provider", "none")
+        cfg.setdefault("rerank_backend", "none")
+        cfg.setdefault("retrieval_backend", "auto")
+        cfg.setdefault("output_strategy", "holdback")
+        cfg.setdefault("fingerprint", True)
+        cfg.setdefault("category_expand", True)
+        cfg.setdefault("paraphrase", True)
+        cfg.setdefault("llm_intent_enabled", False)
+        try:
+            built, _key = await asyncio.to_thread(manager.switch, cfg)
+            container.runtime = built
+        except Exception:
+            logger.exception("runtime config switch failed")
+            return error_response(
+                500, "config_failed", "Could not build runtime for the selected config."
+            )
+        info = manager.runtime_info()
+        info["sessions_reset"] = True
+        return info
+
+    @app.get("/api/metrics", response_model=None)
+    async def get_metrics() -> dict[str, object] | JSONResponse:
+        manager = require_manager()
+        if isinstance(manager, JSONResponse):
+            return manager
+        try:
+            recorder = getattr(manager, "recorder", None)
+            if recorder is None:
+                return {
+                    "summary": {
+                        "total_turns": 0,
+                        "online_turns": 0,
+                        "offline_turns": 0,
+                        "total_prompt_tokens": 0,
+                        "total_completion_tokens": 0,
+                        "total_tokens": 0,
+                        "total_cost_usd": 0.0,
+                        "per_provider": [],
+                    },
+                    "recent": [],
+                }
+            return {"summary": recorder.summary(), "recent": recorder.recent(limit=50)}
+        except Exception:
+            logger.exception("metrics failed")
+            return internal_error_response()
 
     @app.get("/api/health")
     async def health() -> dict[str, object]:

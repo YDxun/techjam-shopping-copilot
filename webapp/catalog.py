@@ -50,10 +50,21 @@ class CatalogPresenter:
         row = self._read(parent_asin)
         if row is None:
             return None
-        return {key: row.get(key) for key in (
-            "parent_asin", "title", "price", "average_rating", "rating_number",
-            "store", "categories", "features", "description", "details",
-        )}
+        return {
+            key: row.get(key)
+            for key in (
+                "parent_asin",
+                "title",
+                "price",
+                "average_rating",
+                "rating_number",
+                "store",
+                "categories",
+                "features",
+                "description",
+                "details",
+            )
+        }
 
     def _read(self, asin: str) -> dict[str, object] | None:
         offset = self._offsets.get(asin)

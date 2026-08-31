@@ -19,6 +19,111 @@ from webapp.catalog import CatalogPresenter
 from webapp.service import SessionManager
 
 
+class FakeManager:
+    """Minimal stand-in for RuntimeManager used by /api/runtime endpoints."""
+
+    def __init__(self, runtime: WebRuntime) -> None:
+        self.runtime = runtime
+        self.switched: list[dict[str, object]] = []
+
+    def runtime_info(self) -> dict[str, object]:
+        return {
+            "fingerprint": "cpu|dense=no|llm=no|network=no",
+            "lut_recommendation": "bm25_rule",
+            "lut_ts": 0.9,
+            "active": {
+                "config_key": "k1",
+                "provider": "none",
+                "model": "",
+                "rerank_backend": "none",
+                "retrieval_backend": "bm25",
+                "output_strategy": "holdback",
+                "llm_intent_enabled": False,
+                "fingerprint_enabled": True,
+                "category_expand_enabled": True,
+                "paraphrase_enabled": True,
+                "api_key_set": False,
+                "offline": True,
+            },
+            "providers": {"none": {"label": "Off (rule-based)"}},
+            "rerank_backends": {"none": {"label": "Off (rule order)"}},
+            "retrieval_backends": {"bm25": {"label": "BM25 (offline)"}},
+            "output_strategies": {"holdback": {"label": "Hold-back (best MRR, default)"}},
+            "toggles": {},
+        }
+
+    def switch(self, cfg: dict[str, object]) -> tuple[WebRuntime, str]:
+        self.switched.append(dict(cfg))
+        return self.runtime, "k2"
+
+
+def test_runtime_config_switch_updates_runtime_and_never_leaks_keys(tmp_path: Path) -> None:
+    runtime, _ = make_runtime(tmp_path)
+    manager = FakeManager(runtime)
+    app = create_app(runtime=runtime)
+    app.state.runtime_container.manager = manager
+
+    with TestClient(app) as client:
+        info = client.get("/api/runtime").json()
+        assert info["active"]["offline"] is True
+        info_raw = json.dumps(info)
+        assert '"api_key"' not in info_raw  # no key-bearing field (api_key_set is a bool)
+        assert "sk-secret-123" not in info_raw
+
+        payload = {
+            "llm_provider": "deepseek",
+            "llm_model": "deepseek-chat",
+            "api_key": "sk-secret-123",
+            "rerank_backend": "none",
+            "retrieval_backend": "bm25",
+            "output_strategy": "holdback",
+            "llm_intent_enabled": True,
+            "fingerprint": True,
+            "category_expand": True,
+            "paraphrase": True,
+            "unexpected_extra": "should-be-stripped",
+        }
+        resp = client.post("/api/runtime/config", json=payload)
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["sessions_reset"] is True
+        raw = json.dumps(body)
+        assert "sk-secret-123" not in raw
+        assert '"api_key"' not in raw
+        assert manager.switched
+        last = manager.switched[-1]
+        assert last["api_key"] == "sk-secret-123"
+        assert last["llm_intent_enabled"] is True
+        assert "unexpected_extra" not in last
+        assert app.state.runtime_container.runtime is runtime
+
+
+def test_runtime_config_defaults_missing_fields(tmp_path: Path) -> None:
+    runtime, _ = make_runtime(tmp_path)
+    manager = FakeManager(runtime)
+    app = create_app(runtime=runtime)
+    app.state.runtime_container.manager = manager
+
+    with TestClient(app) as client:
+        resp = client.post("/api/runtime/config", json={"retrieval_backend": "dense"})
+        assert resp.status_code == 200
+        last = manager.switched[-1]
+        assert last["retrieval_backend"] == "dense"
+        assert last["llm_provider"] == "none"
+        assert last["rerank_backend"] == "none"
+        assert last["output_strategy"] == "holdback"
+        assert last["fingerprint"] is True
+        assert last["llm_intent_enabled"] is False
+
+
+def test_runtime_routes_503_without_manager(tmp_path: Path) -> None:
+    runtime, _ = make_runtime(tmp_path)
+    app = create_app(runtime=runtime)
+    with TestClient(app) as client:
+        assert client.get("/api/runtime").status_code == 503
+        assert client.post("/api/runtime/config", json={}).status_code == 503
+
+
 def test_initialize_runtime_validates_selected_catalog_and_disables_duplicate_agent_check(
     tmp_path: Path,
 ) -> None:

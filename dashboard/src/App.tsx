@@ -1,14 +1,14 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import data from './data/dashboardData.json'
 import { Icon } from './components/Icon'
 import { GroupedBars, HorizontalBars, ScoreStrip } from './components/Charts'
-import type { Session, ViewId } from './types'
+import type { LiveMetrics, Session, ViewId } from './types'
 
 const nav: { id: ViewId; label: string }[] = [
   { id: 'overview', label: 'Overview' }, { id: 'official', label: 'Official 200' },
   { id: 'diagnostics', label: 'Diagnostics' }, { id: 'ablations', label: 'Ablations' },
   { id: 'generalization', label: 'Generalization' }, { id: 'robustness', label: 'Robustness' },
-  { id: 'engineering', label: 'Engineering' }, { id: 'sessions', label: 'Sessions' },
+  { id: 'engineering', label: 'Engineering' }, { id: 'sessions', label: 'Sessions' }, { id: 'live', label: 'Live usage' },
 ]
 
 const colors = ['#285f4b', '#88ad91', '#c5cbd0']
@@ -135,6 +135,60 @@ function SessionsPage() {
   </div>
 }
 
+function LiveUsagePage() {
+  const [metrics, setMetrics] = useState<LiveMetrics | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    async function poll() {
+      try {
+        const res = await fetch('/api/metrics', { headers: { Accept: 'application/json' } })
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        const data = await res.json()
+        if (!cancelled) { setMetrics(data); setError(null) }
+      } catch {
+        if (!cancelled) setError('Live metrics are available when served by the local web app (python -m webapp).')
+      }
+    }
+    poll()
+    const timer = window.setInterval(poll, 5000)
+    return () => { cancelled = true; window.clearInterval(timer) }
+  }, [])
+  const summary = metrics?.summary
+  const fmt = (value: number) => `$${value.toFixed(6)}`
+  const time = (ts?: number) => (ts ? new Date(ts * 1000).toLocaleTimeString() : '\u2014')
+  return <div className="page-stack">
+    <div className="page-intro"><Pill tone="engineering">live</Pill><p>Real-time usage recorded by the local web app while you chat. Auto-refreshes every 5 seconds; costs are approximate USD estimates from token counts.</p></div>
+    {error && <div className="callout danger"><strong>Live metrics unavailable</strong><span>{error}</span></div>}
+    <div className="kpi-grid">
+      <Kpi label="Total turns" value={summary ? String(summary.total_turns) : '\u2014'} tone="engineering"/>
+      <Kpi label="Online turns" value={summary ? String(summary.online_turns) : '\u2014'} tone={summary && summary.online_turns > 0 ? 'synthetic' : 'engineering'}/>
+      <Kpi label="Total tokens" value={summary ? String(summary.total_tokens) : '\u2014'} tone="engineering"/>
+      <Kpi label="Estimated cost" value={summary ? fmt(summary.total_cost_usd) : '\u2014'} tone={summary && summary.total_cost_usd > 0 ? 'synthetic' : 'engineering'}/>
+    </div>
+    <div className="two-col">
+      <Panel title="Per-provider usage">
+        {summary && summary.per_provider.length > 0
+          ? <DataTable headers={['Provider','Turns','Prompt','Completion','Cost']} rows={summary.per_provider.map(p => [p.provider, String(p.turns), String(p.prompt_tokens), String(p.completion_tokens), fmt(p.cost_usd)])}/>
+          : <div className="empty-state">No usage recorded yet in this session.</div>}
+      </Panel>
+      <Panel title="Runtime mix">
+        {summary ? <div className="kv-list">
+          <div><span>Offline turns</span><strong>{summary.offline_turns}</strong></div>
+          <div><span>Online turns</span><strong>{summary.online_turns}</strong></div>
+          <div><span>Prompt tokens</span><strong>{summary.total_prompt_tokens}</strong></div>
+          <div><span>Completion tokens</span><strong>{summary.total_completion_tokens}</strong></div>
+        </div> : <div className="empty-state">No usage recorded yet in this session.</div>}
+      </Panel>
+    </div>
+    <Panel title="Recent turns">
+      {metrics && metrics.recent.length > 0
+        ? <DataTable headers={['Time','Session','Turn','Provider','Model','Retrieval','Rerank','Output','Prompt','Completion','Cost','Latency']} rows={metrics.recent.map(e => [time(e.ts), e.session_id.slice(0, 8), String(e.turn), e.provider, e.model || '\u2014', e.retrieval_backend, e.rerank_backend, e.output_strategy, String(e.prompt_tokens), String(e.completion_tokens), fmt(e.cost_usd), `${Math.round(e.latency_ms)} ms`])}/>
+        : <div className="empty-state">No turns recorded yet. Start chatting in the Shopping Copilot app and enable an online LLM to see tokens and cost.</div>}
+    </Panel>
+  </div>
+}
+
 function App() {
   const [view,setView] = useState<ViewId>('overview')
   const [mobileOpen,setMobileOpen] = useState(false)
@@ -142,7 +196,7 @@ function App() {
     <aside className={`sidebar ${mobileOpen?'open':''}`}><div className="brand"><strong>Evaluation Copilot</strong><span>Shopping agent quality<br/>workspace</span></div><nav>{nav.map(item=><button className={view===item.id?'active':''} key={item.id} onClick={()=>{setView(item.id);setMobileOpen(false)}}><Icon name={item.id}/><span>{item.label}</span></button>)}</nav></aside>
     {mobileOpen&&<button className="mobile-scrim" aria-label="Close navigation" onClick={()=>setMobileOpen(false)}/>}
     <main><header className="topbar"><button className="menu-button" onClick={()=>setMobileOpen(v=>!v)} aria-label="Open navigation"><Icon name="menu"/></button><h1>{view==='overview'?'Evaluation Overview':title(view)}</h1><div className="version-status"><span>Version A</span><i>·</i><span>Frozen</span><i>·</i><span>Hash verified</span><Icon name="check" size={18}/></div></header><div className="content">
-      {view==='overview'&&<Overview setView={setView}/>} {view==='official'&&<OfficialPage/>} {view==='diagnostics'&&<DiagnosticsPage/>} {view==='ablations'&&<AblationsPage/>} {view==='generalization'&&<GeneralizationPage/>} {view==='robustness'&&<RobustnessPage/>} {view==='engineering'&&<EngineeringPage/>} {view==='sessions'&&<SessionsPage/>}
+      {view==='overview'&&<Overview setView={setView}/>} {view==='official'&&<OfficialPage/>} {view==='diagnostics'&&<DiagnosticsPage/>} {view==='ablations'&&<AblationsPage/>} {view==='generalization'&&<GeneralizationPage/>} {view==='robustness'&&<RobustnessPage/>} {view==='engineering'&&<EngineeringPage/>} {view==='sessions'&&<SessionsPage/>} {view==='live'&&<LiveUsagePage/>}
     </div></main>
   </div>
 }

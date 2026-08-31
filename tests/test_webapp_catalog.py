@@ -15,21 +15,24 @@ def write_rows(path: Path, rows: list[dict]) -> None:
 
 def test_catalog_returns_order_independent_summary_mapping_and_full_detail(tmp_path: Path) -> None:
     path = tmp_path / "catalog.jsonl"
-    write_rows(path, [
-        {
-            "parent_asin": "A1",
-            "title": "Café cotton shirt",
-            "price": None,
-            "average_rating": 4.6,
-            "rating_number": 42,
-            "store": "Demo",
-            "categories": ["Clothing", "Men", "Shirts"],
-            "features": ["Cotton", "Machine washable", "Regular fit"],
-            "description": ["A lightweight shirt."],
-            "details": {"Department": "mens"},
-        },
-        {"parent_asin": "A2", "title": "Trail jacket", "features": []},
-    ])
+    write_rows(
+        path,
+        [
+            {
+                "parent_asin": "A1",
+                "title": "Café cotton shirt",
+                "price": None,
+                "average_rating": 4.6,
+                "rating_number": 42,
+                "store": "Demo",
+                "categories": ["Clothing", "Men", "Shirts"],
+                "features": ["Cotton", "Machine washable", "Regular fit"],
+                "description": ["A lightweight shirt."],
+                "details": {"Department": "mens"},
+            },
+            {"parent_asin": "A2", "title": "Trail jacket", "features": []},
+        ],
+    )
 
     catalog = CatalogPresenter.build(path)
     summaries = catalog.summaries(["A2", "missing", "A1"])

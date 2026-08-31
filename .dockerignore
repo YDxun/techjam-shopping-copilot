@@ -3,14 +3,9 @@
 **/*.pyc
 dashboard/node_modules
 dashboard/dist
-dashboard/src
 dashboard/design
 dashboard/scripts
 dashboard/public_data_*
-dashboard/tsconfig*
-dashboard/vite.config.ts
-dashboard/package-lock.json
-dashboard/package.json
 data/offline_blair_embeds*.npy
 data/offline_blair_embeds_info.json
 logs

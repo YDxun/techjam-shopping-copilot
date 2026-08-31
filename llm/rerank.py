@@ -170,6 +170,7 @@ class RerankClient:
         top_n: int | None = None,
     ) -> list[RerankResult] | None:
         """对 documents 按与 query 的相关性打分，返回按分数降序的 RerankResult 列表。"""
+        self.last_usage = {"prompt_tokens": 0, "completion_tokens": 0}
         if not self.available:
             return None
         try:
@@ -207,6 +208,16 @@ class RerankClient:
             data = json.loads(response.read().decode("utf-8"))
         if isinstance(data, dict):
             results = data.get("results") or data.get("data") or []
+            usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
+            input_tokens = _nonnegative_int(usage.get("input_tokens"))
+            output_tokens = _nonnegative_int(usage.get("output_tokens"))
+            total_tokens = _nonnegative_int(usage.get("total_tokens"))
+            if input_tokens == 0 and output_tokens == 0:
+                input_tokens = total_tokens
+            self.last_usage = {
+                "prompt_tokens": input_tokens,
+                "completion_tokens": output_tokens,
+            }
         else:
             results = []
         out: list[RerankResult] = []
@@ -221,3 +232,11 @@ class RerankClient:
                 out.append(RerankResult(index=idx, score=score, document=documents[idx]))
         out.sort(key=lambda r: r.score, reverse=True)
         return out or None
+
+
+def _nonnegative_int(value: Any) -> int:
+    try:
+        parsed = int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+    return max(0, parsed)

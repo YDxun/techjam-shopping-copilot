@@ -48,9 +48,9 @@ The sidebar exposes the engine selectors rendered from `GET /api/runtime`:
 | Control | Options |
 |---|---|
 | LLM provider | Off (rule-based) / DeepSeek / OpenAI |
-| Model | provider-specific (deepseek-chat, gpt-4o-mini, ...) |
+| Model | provider-specific (deepseek-v4-flash, deepseek-chat, gpt-4o-mini, ...) |
 | API key | optional; kept in server memory only |
-| Semantic rerank | Off / Auto (qwen3→chat→rule) / qwen3-rerank (MaaS) / Chat LLM |
+| Semantic rerank | Off / Auto (qwen3→chat→rule) / qwen3-rerank (`DASHSCOPE_API_KEY`) / Chat LLM |
 | Retrieval backend | Auto (BLaIR dense if available) / BM25 / Dense / Hybrid |
 | Output strategy | Hold-back (default) / Full Top-10 / Hold-back + confidence gate |
 | Enhancements | LLM intent, constraint fingerprint, category expand, paraphrase |
@@ -58,6 +58,9 @@ The sidebar exposes the engine selectors rendered from `GET /api/runtime`:
 Selecting any online option (LLM provider, non-off rerank, or LLM intent) shows a
 confirm dialog: “This enables online AI features … may incur cost”. Applying a config
 rebuilds the engine when needed and starts a new chat (`sessions_reset=true`).
+DeepSeek/OpenAI keys may be entered in the panel; qwen3-rerank deliberately reads
+`DASHSCOPE_API_KEY` from the server environment and is disabled in the selector when
+that variable is absent.
 
 The **Auto (LUT) banner** displays the recommendation for the current environment and
 its expected Technical Score, with a **Use recommended (Auto LUT)** button that fills
@@ -70,7 +73,8 @@ Every chat turn is recorded by the web runtime and exposed through `GET /api/met
 (no API keys, ever). When an online LLM is enabled, each turn captures:
 
 - provider / model, retrieval / rerank backend, output strategy;
-- `prompt_tokens` / `completion_tokens` (sum of intent LLM + semantic rerank usage);
+- `prompt_tokens` / `completion_tokens` plus a non-secret per-provider breakdown when
+  intent LLM and semantic rerank are both used;
 - estimated USD cost (approximate per-1M-token pricing table in `webapp/metrics.py`);
 - latency and timestamp.
 
@@ -83,6 +87,10 @@ tokens, estimated cost), a per-provider breakdown, and a recent-turns table.
   before starting the app.
 - If the dashboard is opened as a static GitHub Pages build (no local web app), the
   Live usage panel degrades gracefully with a "Live metrics unavailable" message.
+
+Cost attribution is computed by the local backend and stored with each browser message,
+so opening an older conversation after switching models does not reprice that message
+using the current runtime.
 
 ## Evaluation Dashboard
 
@@ -109,6 +117,6 @@ python -m pytest tests/test_webapp_api.py tests/test_webapp_service.py \
   tests/test_webapp_catalog.py tests/test_webapp_static.py
 ```
 
-46 tests cover the HTTP API, session service, catalog presenter, static assets, and
+The tests cover the HTTP API, session service, catalog presenter, static assets, and
 security guarantees (no key leakage in runtime responses, key stripping in config
 payloads, 503 while loading/failed).

@@ -62,14 +62,31 @@ class SessionManager:
         top_k: int,
         usage_recorder: UsageRecorder | None = None,
         usage_context: dict[str, object] | None = None,
+        agent_lock: asyncio.Lock | None = None,
     ) -> None:
         self._agent = agent
         self._catalog = catalog
         self._top_k = top_k
-        self._agent_lock = asyncio.Lock()
+        self._agent_lock = agent_lock or asyncio.Lock()
         self._sessions: dict[UUID, _SessionRecord] = {}
         self._usage_recorder = usage_recorder
         self._usage_context = usage_context or {}
+
+    def fresh(self) -> "SessionManager":
+        """Create an empty session boundary around the same configured engine."""
+        return SessionManager(
+            self._agent,
+            self._catalog,
+            top_k=self._top_k,
+            usage_recorder=self._usage_recorder,
+            usage_context=dict(self._usage_context),
+            agent_lock=self._agent_lock,
+        )
+
+    @property
+    def capability_profile(self) -> object | None:
+        """Expose the non-secret startup probe snapshot for runtime status reporting."""
+        return getattr(self._agent, "profile", None)
 
     async def create_session(self) -> SessionSnapshot:
         session_id = uuid4()
@@ -108,11 +125,19 @@ class SessionManager:
                         )
                     )
                 )
+                usage_sources = copy.deepcopy(
+                    getattr(self._agent, "last_usage_sources", None)
+                )
             latency_ms = (time.monotonic() - started_at) * 1000.0
             if not isinstance(raw, dict):
                 raise TypeError("Agent.respond() must return a dictionary")
-            self._record_usage(str(session_id), turn, raw, latency_ms)
             agent_response = copy.deepcopy(raw)
+            usage_metadata = self._record_usage(
+                str(session_id), turn, raw, latency_ms, usage_sources
+            )
+            response_usage = agent_response.get("usage")
+            if usage_metadata is not None and isinstance(response_usage, dict):
+                response_usage.update(usage_metadata)
             envelope = {
                 "session_id": str(session_id),
                 "message_id": str(message_id),
@@ -141,40 +166,88 @@ class SessionManager:
             record.responses[message_id] = copy.deepcopy(envelope)
             return envelope
 
-    def _record_usage(self, session_id: str, turn: int, raw: dict, latency_ms: float) -> None:
+    def _record_usage(
+        self,
+        session_id: str,
+        turn: int,
+        raw: dict,
+        latency_ms: float,
+        usage_sources: object = None,
+    ) -> dict[str, object] | None:
         """Best-effort per-turn usage/cost recording for the dashboard (never raises)."""
-        if self._usage_recorder is None:
-            return
         try:
             usage = raw.get("usage") if isinstance(raw.get("usage"), dict) else {}
             prompt_tokens = int(usage.get("prompt_tokens") or 0)
             completion_tokens = int(usage.get("completion_tokens") or 0)
-            provider = str(self._usage_context.get("provider") or "none")
-            model = str(self._usage_context.get("model") or "")
-            self._usage_recorder.record(
+            sources = self._normalize_usage_sources(usage_sources)
+            if sources:
+                provider = sources[0]["provider"] if len(sources) == 1 else "mixed"
+                model = sources[0]["model"] if len(sources) == 1 else "multiple"
+                cost_usd = sum(float(source["cost_usd"]) for source in sources)
+                online = any(bool(source["online"]) for source in sources)
+            else:
+                provider = str(self._usage_context.get("provider") or "none")
+                model = str(self._usage_context.get("model") or "")
+                cost_usd = estimate_cost_usd(
+                    provider, model, prompt_tokens, completion_tokens
+                )
+                online = (prompt_tokens + completion_tokens) > 0
+            event = {
+                "session_id": session_id,
+                "turn": turn,
+                "provider": provider,
+                "model": model,
+                "retrieval_backend": str(
+                    self._usage_context.get("retrieval_backend") or "auto"
+                ),
+                "rerank_backend": str(self._usage_context.get("rerank_backend") or "none"),
+                "output_strategy": str(
+                    self._usage_context.get("output_strategy") or "holdback"
+                ),
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "cost_usd": cost_usd,
+                "online": online,
+                "latency_ms": round(latency_ms, 3),
+            }
+            if sources:
+                event["usage_sources"] = sources
+            if self._usage_recorder is not None:
+                self._usage_recorder.record(event)
+            return {
+                "estimated_cost_usd": cost_usd,
+                "sources": sources,
+            } if sources else None
+        except Exception:
+            logger.warning("usage recording failed", exc_info=True)
+            return None
+
+    @staticmethod
+    def _normalize_usage_sources(value: object) -> list[dict[str, object]]:
+        if not isinstance(value, list):
+            return []
+        sources: list[dict[str, object]] = []
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+            provider = str(item.get("provider") or "none")
+            model = str(item.get("model") or "")
+            prompt_tokens = max(0, int(item.get("prompt_tokens") or 0))
+            completion_tokens = max(0, int(item.get("completion_tokens") or 0))
+            sources.append(
                 {
-                    "session_id": session_id,
-                    "turn": turn,
                     "provider": provider,
                     "model": model,
-                    "retrieval_backend": str(
-                        self._usage_context.get("retrieval_backend") or "auto"
-                    ),
-                    "rerank_backend": str(self._usage_context.get("rerank_backend") or "none"),
-                    "output_strategy": str(
-                        self._usage_context.get("output_strategy") or "holdback"
-                    ),
                     "prompt_tokens": prompt_tokens,
                     "completion_tokens": completion_tokens,
                     "cost_usd": estimate_cost_usd(
                         provider, model, prompt_tokens, completion_tokens
                     ),
-                    "online": (prompt_tokens + completion_tokens) > 0,
-                    "latency_ms": round(latency_ms, 3),
+                    "online": bool(item.get("online"))
+                    or (prompt_tokens + completion_tokens) > 0,
                 }
             )
-        except Exception:
-            logger.warning("usage recording failed", exc_info=True)
+        return sources
 
     @staticmethod
     async def _wait_for_worker(worker: asyncio.Task[object]) -> tuple[object, bool]:
@@ -183,4 +256,6 @@ class SessionManager:
             try:
                 return await asyncio.shield(worker), cancelled
             except asyncio.CancelledError:
+                if worker.cancelled():
+                    raise
                 cancelled = True

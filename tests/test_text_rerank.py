@@ -13,11 +13,13 @@ import json
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Thread
+from types import SimpleNamespace
 
 from agent.capability_probe import CapabilityProfile
+from agent.reranker import Reranker
 from agent.runtime_controller import RuntimeController
 from config.env_config import EnvConfig
-from llm.rerank import RerankClient, RerankState
+from llm.rerank import RerankClient, RerankResult, RerankState
 
 
 def test_rerank_client_disabled_without_config():
@@ -48,7 +50,8 @@ def test_rerank_client_parses_results_without_requests_dependency(monkeypatch):
             self.end_headers()
             self.wfile.write(
                 b'{"results": [{"index": 1, "relevance_score": 0.91}, '
-                b'{"index": 0, "relevance_score": 0.32}]}'
+                b'{"index": 0, "relevance_score": 0.32}], '
+                b'"usage": {"total_tokens": 37}}'
             )
 
         def log_message(self, format, *args):
@@ -73,6 +76,7 @@ def test_rerank_client_parses_results_without_requests_dependency(monkeypatch):
         # 按分数降序：index 1 优先
         assert [r.index for r in results] == [1, 0]
         assert abs(results[0].score - 0.91) < 1e-6
+        assert rc.last_usage == {"prompt_tokens": 37, "completion_tokens": 0}
         assert request_count == 2
         assert authorization_seen is True
     finally:
@@ -151,6 +155,51 @@ def test_rerank_client_base_url_resolution(monkeypatch):
     # 完整 base_url 优先
     rc2 = RerankClient(api_key="k", workspace_id="ws-abc", base_url="https://custom.example/v1")
     assert rc2._base_url == "https://custom.example/v1"
+
+
+def test_text_reranker_propagates_qwen_usage_to_agent_response() -> None:
+    class FakeTextClient:
+        available = True
+        last_usage = {"prompt_tokens": 37, "completion_tokens": 0}
+        status = SimpleNamespace(model="qwen3-rerank")
+
+        def rerank(self, query, documents, top_n=None):
+            return [RerankResult(index=1, score=0.9), RerankResult(index=0, score=0.5)]
+
+    class FakeRetriever:
+        products = {
+            "A": {"title": "Alpha", "features": []},
+            "B": {"title": "Beta", "features": []},
+        }
+
+        def product(self, asin):
+            return self.products.get(asin)
+
+    env = EnvConfig.from_env(
+        overrides={"llm": {"rerank_enabled": True, "rerank_backend": "text"}},
+        environ={},
+    )
+    reranker = Reranker(env=env)
+    reranker._rerank_client = FakeTextClient()
+
+    ranked = reranker._text_rerank(
+        ["A", "B"],
+        FakeRetriever(),
+        SimpleNamespace(active=[]),
+        SimpleNamespace(query_terms=[]),
+    )
+
+    assert ranked == ["B", "A"]
+    assert reranker.last_usage == {"prompt_tokens": 37, "completion_tokens": 0}
+    assert reranker.last_usage_sources == [
+        {
+            "provider": "dashscope",
+            "model": "qwen3-rerank",
+            "prompt_tokens": 37,
+            "completion_tokens": 0,
+            "online": True,
+        }
+    ]
 
 
 def test_runtime_controller_text_rerank_decision():

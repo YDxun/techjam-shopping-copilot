@@ -1,7 +1,10 @@
 import asyncio
 import copy
+import subprocess
+import sys
 import threading
 import time
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
@@ -89,6 +92,22 @@ def test_agent_calls_are_global_serialized_across_sessions() -> None:
         )
         assert agent.max_active == 1
         assert sorted(call[2] for call in agent.calls) == [1, 1]
+
+    asyncio.run(scenario())
+
+
+def test_fresh_session_boundary_shares_agent_serialization() -> None:
+    async def scenario() -> None:
+        agent = FakeAgent()
+        original = SessionManager(agent, FakeCatalog(), top_k=10)
+        fresh = original.fresh()
+        left = await original.create_session()
+        right = await fresh.create_session()
+        await asyncio.gather(
+            original.send_message(left.session_id, uuid4(), "left"),
+            fresh.send_message(right.session_id, uuid4(), "right"),
+        )
+        assert agent.max_active == 1
 
     asyncio.run(scenario())
 
@@ -219,3 +238,34 @@ def test_non_catalog_presentation_failure_is_cached_without_reinvoking_agent() -
         assert len(agent.calls) == 1
 
     asyncio.run(scenario())
+
+
+def test_wait_for_cancelled_worker_propagates_without_busy_loop() -> None:
+    script = """
+import asyncio
+
+from webapp.service import SessionManager
+
+
+async def scenario():
+    worker = asyncio.create_task(asyncio.sleep(60))
+    worker.cancel()
+    try:
+        await SessionManager._wait_for_worker(worker)
+    except asyncio.CancelledError:
+        return
+    raise AssertionError("cancelled worker did not propagate cancellation")
+
+
+asyncio.run(scenario())
+"""
+    try:
+        completed = subprocess.run(
+            [sys.executable, "-c", script],
+            check=False,
+            cwd=Path.cwd(),
+            timeout=2.0,
+        )
+    except subprocess.TimeoutExpired:
+        pytest.fail("_wait_for_worker did not terminate within two seconds")
+    assert completed.returncode == 0

@@ -93,6 +93,7 @@ class Agent(BaseAgent):
         self.router = IntentRouter(env=self.env)
         self._rewrite_guard = RewriteGuard(llm_available=self.profile.llm_available)
         self.session_logs: dict[str, dict[str, object]] = {}
+        self.last_usage_sources: list[dict[str, object]] = []
 
     # ------------------------------------------------------------------
     def reset(self, session_id: str, user_profile: dict) -> None:
@@ -130,6 +131,7 @@ class Agent(BaseAgent):
     # ------------------------------------------------------------------
     def respond(self, session_id: str, user_message: str, turn: int, top_k: int) -> dict:
         """每轮对话主流程（Pillar I~IV 编排）。"""
+        self.last_usage_sources = []
         try:
             return self._respond_impl(session_id, user_message, turn, top_k)
         except Exception as exc:  # 兜底：任何异常都不向评估器抛错（官方按 miss 计）
@@ -246,6 +248,19 @@ class Agent(BaseAgent):
                 turn_result.completion_tokens + self.reranker.last_usage["completion_tokens"]
             ),
         }
+        sources: list[dict[str, object]] = []
+        if turn_result.prompt_tokens or turn_result.completion_tokens:
+            sources.append(
+                {
+                    "provider": self.llm_client.status.provider,
+                    "model": self.llm_client.status.model,
+                    "prompt_tokens": turn_result.prompt_tokens,
+                    "completion_tokens": turn_result.completion_tokens,
+                    "online": True,
+                }
+            )
+        sources.extend(getattr(self.reranker, "last_usage_sources", []))
+        self.last_usage_sources = sources
         response = {
             "message": message,
             "ask_attribute": decision.ask_attribute if decision.should_ask else None,

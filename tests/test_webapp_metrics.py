@@ -1,7 +1,9 @@
 import asyncio
 import json
 from pathlib import Path
+from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 
 from tests.test_webapp_catalog import write_rows
@@ -14,7 +16,10 @@ from webapp.service import SessionManager
 
 def test_estimate_cost_usd_known_and_unknown_models() -> None:
     assert estimate_cost_usd("deepseek", "deepseek-chat", 1_000_000, 0) == 0.27
+    assert estimate_cost_usd("deepseek", "deepseek-v4-flash", 1_000_000, 0) == 0.44
+    assert estimate_cost_usd("deepseek", "deepseek-v4-flash", 0, 1_000_000) == 1.32
     assert estimate_cost_usd("openai", "gpt-4o-mini", 0, 1_000_000) == 0.60
+    assert estimate_cost_usd("dashscope", "qwen3-rerank", 1_000_000, 0) == 0.10
     assert estimate_cost_usd("unknown", "model", 1_000_000, 1_000_000) == 0.0
     assert estimate_cost_usd("deepseek", "deepseek-chat", 0, 0) == 0.0
 
@@ -120,6 +125,60 @@ def test_session_manager_records_usage_event(tmp_path: Path) -> None:
         assert event["online"] is True
         assert event["cost_usd"] > 0
         assert event["latency_ms"] >= 0
+
+    asyncio.run(scenario())
+
+
+def test_combined_usage_sources_are_costed_independently() -> None:
+    class MixedUsageAgent(FakeAgent):
+        last_usage_sources: list[dict[str, object]] = []
+
+        def respond(self, session_id: str, user_message: str, turn: int, top_k: int) -> dict:
+            response = super().respond(session_id, user_message, turn, top_k)
+            response["usage"] = {"prompt_tokens": 1_000_000, "completion_tokens": 1_000_000}
+            self.last_usage_sources = [
+                {
+                    "provider": "deepseek",
+                    "model": "deepseek-v4-flash",
+                    "prompt_tokens": 600_000,
+                    "completion_tokens": 1_000_000,
+                },
+                {
+                    "provider": "dashscope",
+                    "model": "qwen3-rerank",
+                    "prompt_tokens": 400_000,
+                    "completion_tokens": 0,
+                },
+            ]
+            return response
+
+    async def scenario() -> None:
+        recorder = UsageRecorder()
+        manager = SessionManager(
+            MixedUsageAgent(),
+            FakeCatalog(),
+            top_k=10,
+            usage_recorder=recorder,
+            usage_context={"provider": "deepseek", "model": "deepseek-v4-flash"},
+        )
+        session = await manager.create_session()
+        response = await manager.send_message(session.session_id, uuid4(), "mixed")
+
+        event = recorder.recent()[0]
+        assert event["provider"] == "mixed"
+        assert event["cost_usd"] == pytest.approx(1.624)
+        assert [item["provider"] for item in event["usage_sources"]] == [
+            "deepseek",
+            "dashscope",
+        ]
+        assert response["agent_response"]["usage"]["estimated_cost_usd"] == pytest.approx(
+            1.624
+        )
+        summary = recorder.summary()
+        assert {item["provider"] for item in summary["per_provider"]} == {
+            "deepseek",
+            "dashscope",
+        }
 
     asyncio.run(scenario())
 

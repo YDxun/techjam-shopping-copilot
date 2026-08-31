@@ -165,6 +165,34 @@ function normalizeProducts(value) {
   return products;
 }
 
+function normalizeUsageSources(value) {
+  if (value === undefined) {
+    return [];
+  }
+  if (!Array.isArray(value)) {
+    return null;
+  }
+  const sources = [];
+  for (const item of value) {
+    if (!isPlainObject(item) || typeof item.provider !== "string"
+      || typeof item.model !== "string"
+      || !isSafeNonNegativeInteger(item.prompt_tokens)
+      || !isSafeNonNegativeInteger(item.completion_tokens)
+      || typeof item.cost_usd !== "number" || !Number.isFinite(item.cost_usd)
+      || item.cost_usd < 0) {
+      return null;
+    }
+    sources.push({
+      provider: item.provider,
+      model: item.model,
+      prompt_tokens: item.prompt_tokens,
+      completion_tokens: item.completion_tokens,
+      cost_usd: item.cost_usd,
+    });
+  }
+  return sources;
+}
+
 function normalizeAssistantPayload(value, sessionId) {
   if (!isPlainObject(value) || value.session_id !== sessionId || !isUuid(value.session_id)
     || !isUuid(value.message_id) || !Number.isSafeInteger(value.turn) || value.turn < 1
@@ -174,11 +202,17 @@ function normalizeAssistantPayload(value, sessionId) {
   const response = value.agent_response;
   const recommendations = normalizeRecommendations(response.recommendations);
   const products = normalizeProducts(value.products);
+  const usageSources = normalizeUsageSources(response.usage?.sources);
+  const estimatedCost = response.usage?.estimated_cost_usd;
   if (typeof response.message !== "string"
     || (response.ask_attribute !== null && typeof response.ask_attribute !== "string")
     || !isPlainObject(response.usage)
     || !isSafeNonNegativeInteger(response.usage.prompt_tokens)
     || !isSafeNonNegativeInteger(response.usage.completion_tokens)
+    || usageSources === null
+    || (estimatedCost !== undefined && estimatedCost !== null
+      && (typeof estimatedCost !== "number"
+      || !Number.isFinite(estimatedCost) || estimatedCost < 0))
     || recommendations === null || products === null) {
     return null;
   }
@@ -193,6 +227,8 @@ function normalizeAssistantPayload(value, sessionId) {
       usage: {
         prompt_tokens: response.usage.prompt_tokens,
         completion_tokens: response.usage.completion_tokens,
+        estimated_cost_usd: estimatedCost ?? null,
+        sources: usageSources,
       },
     },
     products,
@@ -239,6 +275,34 @@ function normalizeConversationMessages(saved) {
     }
   }
   return messages;
+}
+
+function normalizeStoredConversation(value) {
+  if (!isPlainObject(value) || !isUuid(value.id) || !Array.isArray(value.messages)
+    || (value.sessionId !== null && !isUuid(value.sessionId))) {
+    return null;
+  }
+  let messages;
+  if (value.sessionId === null) {
+    if (value.messages.length > 0) {
+      return null;
+    }
+    messages = [];
+  } else {
+    messages = normalizeConversationMessages(value);
+    if (messages === null) {
+      return null;
+    }
+  }
+  const now = new Date().toISOString();
+  return {
+    id: value.id,
+    title: typeof value.title === "string" ? value.title.slice(0, 48) : "",
+    createdAt: typeof value.createdAt === "string" ? value.createdAt : now,
+    updatedAt: typeof value.updatedAt === "string" ? value.updatedAt : now,
+    sessionId: value.sessionId,
+    messages,
+  };
 }
 
 function stateFromConversation(conversation) {
@@ -293,12 +357,9 @@ function restoreActiveConversation() {
     if (!Array.isArray(list)) {
       return emptyState();
     }
-    conversations = list.filter(
-      (item) => isPlainObject(item)
-        && typeof item.id === "string"
-        && (item.sessionId === null || isUuid(item.sessionId))
-        && Array.isArray(item.messages),
-    );
+    conversations = list
+      .map(normalizeStoredConversation)
+      .filter((item) => item !== null);
     const activeRaw = JSON.parse(localStorage.getItem(ACTIVE_CONVERSATION_KEY) || "null");
     const active = conversations.find((item) => item.id === activeRaw) || conversations[0] || null;
     if (!active) {
@@ -317,9 +378,10 @@ function showNotice(message) {
 }
 
 function setComposerEnabled(enabled) {
-  messageInput.disabled = !enabled;
-  sendButton.disabled = !enabled;
-  newChatButton.disabled = !serviceReady || state.pending;
+  const interactionEnabled = enabled && !runtimeState.applying;
+  messageInput.disabled = !interactionEnabled;
+  sendButton.disabled = !interactionEnabled;
+  newChatButton.disabled = !serviceReady || state.pending || runtimeState.applying;
 }
 
 function renderPromptExamples() {
@@ -551,7 +613,7 @@ function renderUserMessage(message) {
     retry.className = "retry-message";
     retry.type = "button";
     retry.textContent = "Retry";
-    retry.disabled = state.pending;
+    retry.disabled = state.pending || runtimeState.applying;
     retry.addEventListener("click", () => {
       const submission = retryMessage(message.messageId);
       if (submission) {
@@ -579,12 +641,9 @@ function renderAssistantMessage(message) {
     badge.textContent = "online";
     usageNote.append(badge);
     const totalTokens = usage.prompt_tokens + usage.completion_tokens;
-    const cost = estimateCost(
-      runtimeState.info?.active?.provider || "",
-      runtimeState.info?.active?.model || "",
-      usage.prompt_tokens,
-      usage.completion_tokens,
-    );
+    const cost = typeof usage.estimated_cost_usd === "number"
+      ? usage.estimated_cost_usd
+      : null;
     usageNote.append(document.createTextNode(
       cost !== null
         ? `${totalTokens} tokens ≈ $${cost.toFixed(6)} (paid API call)`
@@ -623,6 +682,9 @@ function renderConversation() {
   conversation.setAttribute("aria-busy", String(state.pending));
   welcome.hidden = state.messages.length > 0;
   setComposerEnabled(Boolean(state.sessionId) && !state.pending);
+  configApply.disabled = state.pending || runtimeState.applying;
+  configReset.disabled = state.pending || runtimeState.applying;
+  historyButton.disabled = runtimeState.applying;
 }
 
 async function replaceExpiredSession() {
@@ -684,6 +746,9 @@ async function submitExistingMessage(text, messageId) {
 }
 
 async function sendMessage(text) {
+  if (runtimeState.applying) {
+    return;
+  }
   const messageId = crypto.randomUUID();
   state.messages.push({role: "user", text, messageId, status: "pending"});
   return submitExistingMessage(text, messageId);
@@ -693,15 +758,15 @@ function retryMessage(messageId) {
   const failed = state.messages.find(
     (item) => item.role === "user" && item.messageId === messageId,
   );
-  if (!failed || state.pending) {
+  if (!failed || state.pending || runtimeState.applying) {
     return;
   }
   failed.status = "pending";
   return submitExistingMessage(failed.text, failed.messageId);
 }
 
-async function newChat() {
-  if (state.pending || !serviceReady) {
+async function newChat({allowDuringConfig = false} = {}) {
+  if (state.pending || !serviceReady || (runtimeState.applying && !allowDuringConfig)) {
     return;
   }
   state.pending = true;
@@ -866,15 +931,6 @@ const onlineConfirmText = document.querySelector("#online-confirm-text");
 const onlineConfirmOk = document.querySelector("#online-confirm-ok");
 const onlineConfirmCancel = document.querySelector("#online-confirm-cancel");
 
-// Approximate per-1M-token pricing (USD); a rough product estimate, not authoritative.
-const COST_PER_MTOKEN = {
-  "deepseek:deepseek-chat": {input: 0.27, output: 1.10},
-  "deepseek:deepseek-reasoner": {input: 0.55, output: 2.19},
-  "openai:gpt-4o-mini": {input: 0.15, output: 0.60},
-  "openai:gpt-4.1-mini": {input: 0.40, output: 1.60},
-  "openai:gpt-4o": {input: 2.50, output: 10.00},
-};
-
 function setConfigStatus(message) {
   configStatus.textContent = message || "";
   configStatus.hidden = !message;
@@ -894,20 +950,13 @@ function isOnlineConfig(config) {
   return rerank === "auto" || rerank === "text" || rerank === "chat" || Boolean(config.llm_intent_enabled);
 }
 
-function estimateCost(provider, model, promptTokens, completionTokens) {
-  const rates = COST_PER_MTOKEN[`${provider}:${model}`];
-  if (!rates) {
-    return null;
-  }
-  return (promptTokens / 1e6) * rates.input + (completionTokens / 1e6) * rates.output;
-}
-
 function populateSelect(select, options, selectedValue) {
   select.replaceChildren();
   for (const [value, meta] of Object.entries(options)) {
     const option = document.createElement("option");
     option.value = value;
     option.textContent = isPlainObject(meta) && meta.label ? meta.label : value;
+    option.disabled = isPlainObject(meta) && meta.configured === false;
     if (value === selectedValue) {
       option.selected = true;
     }
@@ -993,9 +1042,16 @@ function renderConfigPanel(info) {
   toggleCategory.checked = Boolean(active.category_expand_enabled);
   toggleParaphrase.checked = Boolean(active.paraphrase_enabled);
   configApiKey.value = ""; // never restore keys into the DOM
-  setConfigStatus(active.api_key_set
-    ? "Online LLM active (key kept in memory on the server)."
-    : "Offline default \u00b7 zero cost.");
+  if (active.offline && active.qwen_api_key_set
+    && ["text", "auto"].includes(active.rerank_backend)) {
+    setConfigStatus("qwen rerank is configured but unavailable; offline fallback is active.");
+  } else if (active.offline) {
+    setConfigStatus("Offline default \u00b7 zero cost.");
+  } else if (active.qwen_api_key_set && provider === "none") {
+    setConfigStatus("Online qwen rerank active (DASHSCOPE_API_KEY from server environment).");
+  } else {
+    setConfigStatus("Online LLM active (key kept in memory on the server).");
+  }
 }
 
 function collectConfig() {
@@ -1046,12 +1102,17 @@ async function applyConfig(config, {confirmedOnline = false} = {}) {
   if (runtimeState.applying) {
     return;
   }
+  if (state.pending) {
+    setConfigStatus("Finish the current message before changing configuration.");
+    return;
+  }
   if (isOnlineConfig(config) && !confirmedOnline) {
     runtimeState.pendingConfig = config;
     showOnlineConfirm(config);
     return;
   }
   runtimeState.applying = true;
+  setComposerEnabled(false);
   configApply.disabled = true;
   configReset.disabled = true;
   setConfigStatus("Building engine\u2026 first switch can take ~30s.");
@@ -1060,14 +1121,15 @@ async function applyConfig(config, {confirmedOnline = false} = {}) {
     renderConfigPanel(info);
     setConfigStatus("Configuration applied. Starting a new chat.");
     if (info.sessions_reset) {
-      await newChat();
+      await newChat({allowDuringConfig: true});
     }
   } catch (error) {
     setConfigStatus("Could not apply the configuration. Check the API key and try again.");
   } finally {
     runtimeState.applying = false;
-    configApply.disabled = false;
-    configReset.disabled = false;
+    configApply.disabled = state.pending;
+    configReset.disabled = state.pending;
+    renderConversation();
   }
 }
 
@@ -1182,6 +1244,10 @@ function renderHistory() {
 }
 
 function openHistory() {
+  if (runtimeState.applying) {
+    setConfigStatus("Finish applying the configuration before opening history.");
+    return;
+  }
   renderHistory();
   historyDrawer.hidden = false;
   historyBackdrop.hidden = false;
@@ -1196,6 +1262,10 @@ function closeHistory() {
 }
 
 function openConversation(conversationId) {
+  if (runtimeState.applying) {
+    setConfigStatus("Finish applying the configuration before switching conversations.");
+    return;
+  }
   const conversation = conversations.find((item) => item.id === conversationId);
   if (!conversation) {
     return;
@@ -1214,6 +1284,10 @@ function openConversation(conversationId) {
 }
 
 function deleteConversation(conversationId) {
+  if (runtimeState.applying) {
+    setConfigStatus("Finish applying the configuration before changing history.");
+    return;
+  }
   const index = conversations.findIndex((item) => item.id === conversationId);
   if (index === -1) {
     return;
@@ -1253,7 +1327,7 @@ document.addEventListener("keydown", (event) => {
 composer.addEventListener("submit", (event) => {
   event.preventDefault();
   const text = messageInput.value;
-  if (state.pending || !text.trim()) {
+  if (state.pending || runtimeState.applying || !text.trim()) {
     return;
   }
   messageInput.value = "";

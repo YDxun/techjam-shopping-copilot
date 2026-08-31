@@ -124,6 +124,113 @@ def test_runtime_routes_503_without_manager(tmp_path: Path) -> None:
         assert client.post("/api/runtime/config", json={}).status_code == 503
 
 
+def test_concurrent_runtime_switch_publishes_the_managers_latest_runtime(
+    tmp_path: Path,
+) -> None:
+    first_runtime, _ = make_runtime(tmp_path)
+    second_runtime = WebRuntime(
+        SessionManager(FakeAgent(), first_runtime.catalog, top_k=10),
+        first_runtime.catalog,
+    )
+
+    class RacingManager:
+        def __init__(self) -> None:
+            self.active = first_runtime
+            self.first_started = threading.Event()
+            self.second_started = threading.Event()
+            self.release_first = threading.Event()
+
+        def switch(self, cfg: dict[str, object]) -> tuple[WebRuntime, str]:
+            if cfg["retrieval_backend"] == "bm25":
+                self.active = first_runtime
+                self.first_started.set()
+                assert self.release_first.wait(timeout=2.0)
+                time.sleep(0.05)
+                return first_runtime, "first"
+            self.active = second_runtime
+            self.second_started.set()
+            return second_runtime, "second"
+
+        def runtime_info(self) -> dict[str, object]:
+            return {"active": {"config_key": "current"}}
+
+    manager = RacingManager()
+    app = create_app(runtime=first_runtime)
+    app.state.runtime_container.manager = manager
+    responses: list[int] = []
+
+    with TestClient(app) as client:
+        first = threading.Thread(
+            target=lambda: responses.append(
+                client.post(
+                    "/api/runtime/config", json={"retrieval_backend": "bm25"}
+                ).status_code
+            )
+        )
+        second = threading.Thread(
+            target=lambda: responses.append(
+                client.post(
+                    "/api/runtime/config", json={"retrieval_backend": "hybrid"}
+                ).status_code
+            )
+        )
+        first.start()
+        assert manager.first_started.wait(timeout=1.0)
+        second.start()
+        manager.second_started.wait(timeout=0.2)
+        manager.release_first.set()
+        first.join(timeout=2.0)
+        second.join(timeout=2.0)
+
+    assert sorted(responses) == [200, 200]
+    assert app.state.runtime_container.runtime is manager.active
+
+
+def test_cancelled_runtime_switch_still_publishes_completed_runtime(tmp_path: Path) -> None:
+    initial, _ = make_runtime(tmp_path)
+    replacement = WebRuntime(
+        SessionManager(FakeAgent(), initial.catalog, top_k=10),
+        initial.catalog,
+    )
+
+    class BlockingManager:
+        def __init__(self) -> None:
+            self.active = initial
+            self.started = threading.Event()
+            self.release = threading.Event()
+            self.finished = threading.Event()
+
+        def switch(self, cfg: dict[str, object]) -> tuple[WebRuntime, str]:
+            self.started.set()
+            assert self.release.wait(timeout=2.0)
+            self.active = replacement
+            self.finished.set()
+            return replacement, "replacement"
+
+        def runtime_info(self) -> dict[str, object]:
+            return {"active": {"config_key": "replacement"}}
+
+    async def scenario() -> None:
+        manager = BlockingManager()
+        app = create_app(runtime=initial)
+        app.state.runtime_container.manager = manager
+        endpoint = next(
+            route.endpoint
+            for route in app.routes
+            if getattr(route, "path", None) == "/api/runtime/config"
+        )
+        task = asyncio.create_task(endpoint({"retrieval_backend": "hybrid"}))
+        assert await asyncio.to_thread(manager.started.wait, 1.0)
+        task.cancel()
+        manager.release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert manager.finished.is_set()
+        assert app.state.runtime_container.runtime is manager.active
+
+    asyncio.run(scenario())
+
+
 def test_initialize_runtime_validates_selected_catalog_and_disables_duplicate_agent_check(
     tmp_path: Path,
 ) -> None:

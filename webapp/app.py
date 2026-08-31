@@ -75,6 +75,20 @@ async def wait_for_initializer(task: asyncio.Task[None]) -> None:
         raise asyncio.CancelledError
 
 
+async def wait_for_runtime_switch(
+    task: asyncio.Task[tuple[object, str]],
+) -> tuple[tuple[object, str], bool]:
+    """Finish a thread-backed switch so manager and published runtime stay consistent."""
+    cancelled = False
+    while True:
+        try:
+            return await asyncio.shield(task), cancelled
+        except asyncio.CancelledError:
+            if task.cancelled():
+                raise
+            cancelled = True
+
+
 def error_response(status: int, code: str, message: str) -> JSONResponse:
     return JSONResponse(status_code=status, content={"error": {"code": code, "message": message}})
 
@@ -128,6 +142,7 @@ def create_app(
     runtime: WebRuntime | None = None,
 ) -> FastAPI:
     container = RuntimeContainer()
+    runtime_switch_lock = asyncio.Lock()
     active_initializer = initializer or initialize_runtime
 
     @asynccontextmanager
@@ -264,17 +279,22 @@ def create_app(
         cfg.setdefault("category_expand", True)
         cfg.setdefault("paraphrase", True)
         cfg.setdefault("llm_intent_enabled", False)
-        try:
-            built, _key = await asyncio.to_thread(manager.switch, cfg)
-            container.runtime = built
-        except Exception:
-            logger.exception("runtime config switch failed")
-            return error_response(
-                500, "config_failed", "Could not build runtime for the selected config."
-            )
-        info = manager.runtime_info()
-        info["sessions_reset"] = True
-        return info
+        async with runtime_switch_lock:
+            cancelled = False
+            try:
+                worker = asyncio.create_task(asyncio.to_thread(manager.switch, cfg))
+                (built, _key), cancelled = await wait_for_runtime_switch(worker)
+                container.runtime = built
+            except Exception:
+                logger.exception("runtime config switch failed")
+                return error_response(
+                    500, "config_failed", "Could not build runtime for the selected config."
+                )
+            info = manager.runtime_info()
+            info["sessions_reset"] = True
+            if cancelled:
+                raise asyncio.CancelledError
+            return info
 
     @app.get("/api/metrics", response_model=None)
     async def get_metrics() -> dict[str, object] | JSONResponse:

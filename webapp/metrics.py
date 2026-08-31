@@ -24,11 +24,14 @@ logger = logging.getLogger(__name__)
 
 # Approximate USD per 1M tokens. Product estimate for transparency; not authoritative.
 COST_PER_MTOKEN: dict[str, dict[str, float]] = {
+    # Conservative peak/cache-miss estimate; actual DeepSeek V4 pricing varies by time/cache.
+    "deepseek:deepseek-v4-flash": {"input": 0.44, "output": 1.32},
     "deepseek:deepseek-chat": {"input": 0.27, "output": 1.10},
     "deepseek:deepseek-reasoner": {"input": 0.55, "output": 2.19},
     "openai:gpt-4o-mini": {"input": 0.15, "output": 0.60},
     "openai:gpt-4.1-mini": {"input": 0.40, "output": 1.60},
     "openai:gpt-4o": {"input": 2.50, "output": 10.00},
+    "dashscope:qwen3-rerank": {"input": 0.10, "output": 0.0},
 }
 
 
@@ -85,21 +88,26 @@ class UsageRecorder:
         online = sum(1 for e in events if e.get("online"))
         per_provider: dict[str, dict[str, Any]] = {}
         for event in events:
-            provider = event.get("provider") or "none"
-            bucket = per_provider.setdefault(
-                provider,
-                {
-                    "provider": provider,
-                    "turns": 0,
-                    "prompt_tokens": 0,
-                    "completion_tokens": 0,
-                    "cost_usd": 0.0,
-                },
-            )
-            bucket["turns"] += 1
-            bucket["prompt_tokens"] += int(event.get("prompt_tokens") or 0)
-            bucket["completion_tokens"] += int(event.get("completion_tokens") or 0)
-            bucket["cost_usd"] += float(event.get("cost_usd") or 0.0)
+            raw_sources = event.get("usage_sources")
+            sources = raw_sources if isinstance(raw_sources, list) and raw_sources else [event]
+            for source in sources:
+                if not isinstance(source, dict):
+                    continue
+                provider = source.get("provider") or "none"
+                bucket = per_provider.setdefault(
+                    provider,
+                    {
+                        "provider": provider,
+                        "turns": 0,
+                        "prompt_tokens": 0,
+                        "completion_tokens": 0,
+                        "cost_usd": 0.0,
+                    },
+                )
+                bucket["turns"] += 1
+                bucket["prompt_tokens"] += int(source.get("prompt_tokens") or 0)
+                bucket["completion_tokens"] += int(source.get("completion_tokens") or 0)
+                bucket["cost_usd"] += float(source.get("cost_usd") or 0.0)
         return {
             "total_turns": len(events),
             "online_turns": online,

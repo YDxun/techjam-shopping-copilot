@@ -67,6 +67,7 @@ class Reranker:
         self.env = env or EnvConfig.from_env()
         self.llm_client = llm_client if llm_client is not None else DisabledLLMClient()
         self.last_usage: dict = {"prompt_tokens": 0, "completion_tokens": 0}
+        self.last_usage_sources: list[dict[str, object]] = []
         self._bge = None  # lazily loaded bge-reranker instance (None = not loaded / failed)
         self._rerank_client = None  # lazily loaded qwen3-rerank MaaS client
         self._rerank_breaker = PhaseCircuitBreaker(
@@ -92,6 +93,7 @@ class Reranker:
         use_llm_rerank: bool = False,
     ) -> list[str]:
         self.last_usage = {"prompt_tokens": 0, "completion_tokens": 0}
+        self.last_usage_sources = []
         if not candidates:
             return []
         max_rrf = max((c.get("rrf", 0.0) for c in candidates), default=1.0) or 1.0
@@ -511,6 +513,15 @@ class Reranker:
         if not any(docs):
             return []
         results = client.rerank(query, docs, top_n=len(submitted))
+        self.last_usage = dict(client.last_usage)
+        self.last_usage_sources.append(
+            {
+                "provider": "dashscope",
+                "model": client.status.model,
+                **self.last_usage,
+                "online": True,
+            }
+        )
         if not results:
             return []
         ranked = [submitted[r.index] for r in results if 0 <= r.index < len(submitted)]
@@ -550,10 +561,24 @@ class Reranker:
             logger.warning("[reranker] LLM rerank failed, fallback to rule order: %s", exc)
             return []
 
-        self.last_usage = {
+        call_usage = {
             "prompt_tokens": result.usage.prompt_tokens,
             "completion_tokens": result.usage.completion_tokens,
         }
+        self.last_usage = {
+            "prompt_tokens": self.last_usage["prompt_tokens"] + call_usage["prompt_tokens"],
+            "completion_tokens": (
+                self.last_usage["completion_tokens"] + call_usage["completion_tokens"]
+            ),
+        }
+        self.last_usage_sources.append(
+            {
+                "provider": result.provider,
+                "model": result.model,
+                **call_usage,
+                "online": True,
+            }
+        )
         if not result.success:
             return []
 

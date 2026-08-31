@@ -28,9 +28,10 @@ Unit prices (public reference prices, per token; actual prices depend on the ven
 
 | Service | Input $/1M | Output $/1M |
 |---|---|---|
+| DeepSeek `deepseek-v4-flash` (peak/cache-miss conservative estimate) | ~0.44 | ~1.32 |
 | DeepSeek `deepseek-chat` | ~0.27 | ~1.10 |
 | OpenAI `gpt-4o-mini` | ~0.15 | ~0.60 |
-| qwen3-rerank (Alibaba Cloud MaaS) | per call | -- |
+| qwen3-rerank (Alibaba Cloud MaaS) | ~0.10 | 0 |
 
 Per-session estimates (extrapolated from the 200-session measurements):
 - **LLM intent recognition (cascaded)**: the public set's rules are high-confidence, so the LLM rarely triggers (10-session test: 777 prompt / 150 completion);

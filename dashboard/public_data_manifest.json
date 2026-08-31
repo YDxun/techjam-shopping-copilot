@@ -1,0 +1,16 @@
+{
+  "dashboard_id": "evaluation-copilot-v1",
+  "agent_commit": "4dab398a82b399076b7d201009ea9ab3bdc7909a",
+  "official_sessions": 200,
+  "result_boundaries": [
+    "official_public_200",
+    "self_built_generalization_proxy",
+    "self_built_robustness"
+  ],
+  "contains_catalog_rows": false,
+  "contains_raw_conversations": false,
+  "contains_local_paths": false,
+  "contains_secrets": false,
+  "runtime_api_required": false,
+  "model_download_required": false
+}

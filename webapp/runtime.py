@@ -51,22 +51,22 @@ DEFAULT_PROVIDERS = {
     },
 }
 RERANK_BACKENDS = {
-    "none": {"label": "Off (rule order)"},
-    "auto": {"label": "Auto (qwen3-rerank → chat → rule)"},
-    "text": {"label": "qwen3-rerank (MaaS, needs key)"},
-    "chat": {"label": "Chat LLM (needs key)"},
+    "none": {"label": "Off"},
+    "auto": {"label": "Auto (qwen3 → chat → rule)"},
+    "text": {"label": "qwen3-rerank (MaaS)"},
+    "chat": {"label": "Chat LLM"},
 }
 RETRIEVAL_BACKENDS = {
-    "auto": {"label": "Auto (BLaIR dense if available)"},
+    "auto": {"label": "Auto (BLaIR if available)"},
     "bm25": {"label": "BM25 (offline)"},
     "dense": {"label": "Dense (BLaIR)"},
-    "hybrid": {"label": "Hybrid (BM25 + BLaIR)"},
+    "hybrid": {"label": "Hybrid (BM25 + dense)"},
 }
 OUTPUT_STRATEGIES = {
-    "holdback": {"label": "Hold-back (best MRR, default)", "emit_gate": True},
-    "full": {"label": "Full Top-10 every turn", "emit_gate": False},
+    "holdback": {"label": "Hold-back (default)", "emit_gate": True},
+    "full": {"label": "Full Top-10", "emit_gate": False},
     "confident": {
-        "label": "Hold-back + confidence gate",
+        "label": "Hold-back + confidence",
         "emit_gate": True,
         "emit_fp_confident": 3,
         "emit_margin_confident": 0.10,

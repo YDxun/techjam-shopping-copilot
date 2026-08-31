@@ -38,11 +38,12 @@ textarea:disabled {
 .sidebar {
   position: fixed;
   inset: 0 auto 0 0;
-  width: 324px;
+  width: clamp(340px, 24vw, 420px);
   padding: 24px 22px;
   overflow-y: auto;
   overflow-x: hidden;
   overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   background: var(--surface-muted);
   border-right: 1px solid var(--border);
 }
@@ -70,7 +71,7 @@ textarea:disabled {
 
 .app-main {
   min-height: 100vh;
-  margin-left: 324px;
+  margin-left: clamp(340px, 24vw, 420px);
 }
 
 .app-main > header,
@@ -449,9 +450,14 @@ textarea:disabled {
 
 .config-panel {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
   border-top: 1px solid var(--border);
   padding-top: 16px;
+}
+
+.config-panel > * {
+  min-width: 0;
 }
 
 .config-panel h2 {
@@ -467,7 +473,7 @@ textarea:disabled {
 }
 
 .config-panel label {
-  margin-top: 10px;
+  margin-top: 12px;
   color: var(--text-muted);
   font-size: 0.82rem;
   font-weight: 650;
@@ -477,11 +483,23 @@ textarea:disabled {
 .config-panel input[type="password"] {
   width: 100%;
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 8px 11px;
+  border-radius: 9px;
+  padding: 9px 12px;
   background: var(--surface);
   font: inherit;
   font-size: 0.9rem;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.config-panel select {
+  cursor: pointer;
+}
+
+.config-panel select:focus,
+.config-panel input[type="password"]:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
 .config-panel select:disabled,
@@ -526,6 +544,7 @@ textarea:disabled {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
   margin-top: 0 !important;
   padding: 8px 10px;
   border: 1px solid transparent;
@@ -536,6 +555,12 @@ textarea:disabled {
   white-space: nowrap;
   cursor: pointer;
   transition: background 140ms ease, border-color 140ms ease;
+}
+
+.toggle-row-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .toggle-row:hover {
@@ -550,23 +575,38 @@ textarea:disabled {
   accent-color: var(--accent);
 }
 
+.toggle-row:has(input:checked) {
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  border-color: color-mix(in srgb, var(--accent) 32%, var(--border));
+}
+
 .config-actions {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 8px;
   margin-top: 12px;
 }
 
 .config-actions button {
+  min-width: 0;
   border-radius: 8px;
   padding: 9px 8px;
   font-size: 0.82rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 #config-apply {
   border: 1px solid var(--accent);
   color: var(--surface);
   background: var(--accent);
+}
+
+#config-apply:hover,
+#config-apply:focus-visible {
+  background: color-mix(in srgb, var(--accent) 88%, black);
+  border-color: color-mix(in srgb, var(--accent) 88%, black);
 }
 
 #config-reset {

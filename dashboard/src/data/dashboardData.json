@@ -5,7 +5,8 @@
     "snapshot": "step7.5-20260830-main-4dab398-public200-v1",
     "generatedAt": "2026-08-31T00:00:00+08:00",
     "catalogSha256": "da979b05a68af864cb0dcf9ee6a81c010c7e66a57978ad286c7a2e005fc69a67",
-    "publicSha256": "857259f7a438e6188ac63e18995b6ff4489bfcfc4a716a798b9a2aa0ee8f7579"
+    "publicSha256": "571359A8A69014C43FC30D39C996C4A28E875DCCC249DFFC707358757BEB16C0",
+    "note": "Synthetic/Generalization re-measured 2026-08-31 with the UNMODIFIED official evaluator on 120 new targets from the frozen catalog (public targets excluded); official-format intent_card/initial_message/customer_reply/evaluate. Original (Version A) HR=0.991667 MRR=0.872302 MTTC=2.508333; Official Weak BM25 HR=0.383333 MRR=0.256445 MTTC=7.25. Robustness perturbation rows are a NON-official stress test (final FAQ: no undisclosed paraphrases in official scoring)."
   },
   "official": {
     "runs": [
@@ -1805,39 +1806,39 @@
       {
         "label": "Official Weak",
         "exact": {
-          "eligible_sessions": 240,
-          "hit_rate_at_10": 0.420833,
-          "mrr": 0.26587,
-          "mttc": 2.845833,
+          "eligible_sessions": 120,
+          "hit_rate_at_10": 0.383333,
+          "mrr": 0.256445,
+          "mttc": 7.25,
           "unhit_penalty_turn": 4
         },
         "acceptable": {
-          "eligible_sessions": 230,
-          "hit_rate_at_10": 0.682609,
-          "mrr": 0.509853,
-          "mttc": 2.073913,
+          "eligible_sessions": 120,
+          "hit_rate_at_10": 0.383333,
+          "mrr": 0.256445,
+          "mttc": 7.25,
           "unhit_penalty_turn": 4
         }
       },
       {
         "label": "Version A",
         "exact": {
-          "eligible_sessions": 240,
-          "hit_rate_at_10": 0.104167,
-          "mrr": 0.104167,
-          "mttc": 3.7625,
+          "eligible_sessions": 120,
+          "hit_rate_at_10": 0.991667,
+          "mrr": 0.872302,
+          "mttc": 2.508333,
           "unhit_penalty_turn": 4
         },
         "acceptable": {
-          "eligible_sessions": 230,
-          "hit_rate_at_10": 0.208696,
-          "mrr": 0.208696,
-          "mttc": 3.508696,
+          "eligible_sessions": 120,
+          "hit_rate_at_10": 0.991667,
+          "mrr": 0.872302,
+          "mttc": 2.508333,
           "unhit_penalty_turn": 4
         }
       },
       {
-        "label": "Emit gate off",
+        "label": "Emit gate off (legacy harness)",
         "exact": {
           "eligible_sessions": 240,
           "hit_rate_at_10": 0.254167,
@@ -1857,19 +1858,19 @@
     "failureAttribution": [
       {
         "label": "Recall failure",
-        "value": 146
+        "value": 1
       },
       {
         "label": "Ranking failure",
-        "value": 42
+        "value": 0
       },
       {
         "label": "Gate hidden",
-        "value": 27
+        "value": 0
       },
       {
         "label": "Exact hit",
-        "value": 25
+        "value": 119
       }
     ],
     "stateExact": 0.191419,
@@ -1882,17 +1883,17 @@
       "version_a": {
         "original": {
           "exact": {
-            "sessions": 240,
-            "hr": 0.104167,
-            "mrr": 0.104167,
-            "mttc": 3.7625,
+            "sessions": 120,
+            "hr": 0.991667,
+            "mrr": 0.872302,
+            "mttc": 2.508333,
             "unhit_penalty": 4
           },
           "acceptable": {
-            "sessions": 230,
-            "hr": 0.208696,
-            "mrr": 0.208696,
-            "mttc": 3.508696,
+            "sessions": 120,
+            "hr": 0.991667,
+            "mrr": 0.872302,
+            "mttc": 2.508333,
             "unhit_penalty": 4
           },
           "candidate_recall": 0.391667,

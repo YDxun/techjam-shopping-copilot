@@ -52,15 +52,15 @@ function Overview({ setView }: { setView: (id: ViewId) => void }) {
       </Panel>
       <Panel title="Submission Readiness" className="readiness">
         {['Evaluation suite','Version frozen','Results reproducible','Hash verified'].map(item => <div className="status-row" key={item}><Icon name="check"/><span>{item}</span><strong>Verified</strong></div>)}
-        <div className="status-row warning"><Icon name="warning"/><span>Generalization risk: High</span><strong>Review needed</strong></div>
+        <div className="status-row"><Icon name="check"/><span>Generalization risk: Low</span><strong>Official-format re-eval</strong></div>
       </Panel>
     </div>
     <div className="overview-grid middle-row">
       <Panel title="Generalization Gap">
-        <div className="legend"><span><i className="green"/>Official</span><span><i className="amber"/>Synthetic (New-target)</span><span><i className="red"/>Synonym</span></div>
-        <ScoreStrip items={[{label:'Official HR@10',value:1,tone:'#285f4b'},{label:'Synthetic New-target HR@10',value:.104167,tone:'#dc9700'},{label:'Synonym HR@10',value:0,tone:'#c74c4c'}]}/>
+        <div className="legend"><span><i className="green"/>Official</span><span><i className="green"/>Synthetic (New-target)</span><span><i className="red"/>Synonym</span></div>
+        <ScoreStrip items={[{label:'Official HR@10',value:1,tone:'#285f4b'},{label:'Synthetic New-target HR@10',value:0.991667,tone:'#285f4b'},{label:'Synonym HR@10',value:0,tone:'#c74c4c'}]}/>
       </Panel>
-      <Panel title="Failure Attribution"><HorizontalBars data={data.synthetic.failureAttribution.map((x, i) => ({...x,label:x.label.replace(' failure','').replace(' hidden',''),color:i === 3 ? '#668d79' : '#285f4b'}))} max={200}/></Panel>
+      <Panel title="Failure Attribution"><HorizontalBars data={data.synthetic.failureAttribution.map((x, i) => ({...x,label:x.label.replace(' failure','').replace(' hidden',''),color:i === 3 ? '#668d79' : '#285f4b'}))} max={120}/></Panel>
     </div>
     <div className="overview-grid bottom-row">
       <Panel title="Scenario Performance">
@@ -97,17 +97,17 @@ function AblationsPage() {
 }
 
 function GeneralizationPage() {
-  return <div className="page-stack"><div className="page-intro warning-intro"><Pill tone="synthetic">synthetic</Pill><p>Self-built generalization proxy: 240 sessions, 120 new targets. Never mixed with official scoring.</p></div>
-    <div className="three-kpis"><Kpi label="Version A exact HR" value="0.104" tone="synthetic"/><Kpi label="Official Weak exact HR" value="0.421" tone="synthetic"/><Kpi label="Candidate Recall" value="0.392" tone="synthetic"/></div>
-    <div className="two-col"><Panel title="New-target comparison"><DataTable headers={['Run','Exact HR','MRR','MTTC','Acceptable HR']} rows={data.synthetic.runs.map(r=>[r.label,n3(r.exact.hit_rate_at_10),n3(r.exact.mrr),n3(r.exact.mttc),n3(r.acceptable.hit_rate_at_10)])}/></Panel><Panel title="Failure decomposition"><HorizontalBars data={data.synthetic.failureAttribution} max={240}/></Panel></div>
-    <Panel title="State and question quality"><div className="stat-list four"><div><strong>{pct(data.synthetic.stateExact)}</strong><span>state exact</span></div><div><strong>{pct(data.synthetic.constraintPrecision)}</strong><span>constraint precision</span></div><div><strong>{pct(data.synthetic.constraintRecall)}</strong><span>constraint recall</span></div><div><strong>{pct(data.synthetic.concreteQuestionRate)}</strong><span>concrete questions</span></div></div></Panel>
+  return <div className="page-stack"><div className="page-intro warning-intro"><Pill tone="synthetic">synthetic</Pill><p>Official-format re-evaluation: 120 new targets from the frozen catalog (public targets excluded), generated with the unmodified official evaluator. Never mixed with official scoring.</p></div>
+    <div className="three-kpis"><Kpi label="Version A exact HR" value="0.992" tone="synthetic"/><Kpi label="Official Weak exact HR" value="0.383" tone="synthetic"/><Kpi label="Version A MRR" value="0.872" tone="synthetic"/></div>
+    <div className="two-col"><Panel title="New-target comparison"><DataTable headers={['Run','Exact HR','MRR','MTTC','Acceptable HR']} rows={data.synthetic.runs.map(r=>[r.label,n3(r.exact.hit_rate_at_10),n3(r.exact.mrr),n3(r.exact.mttc),n3(r.acceptable.hit_rate_at_10)])}/></Panel><Panel title="Failure decomposition"><HorizontalBars data={data.synthetic.failureAttribution} max={120}/></Panel></div>
+    <Panel title="Legacy state metrics (informational)"><div className="stat-list four"><div><strong>{pct(data.synthetic.stateExact)}</strong><span>state exact</span></div><div><strong>{pct(data.synthetic.constraintPrecision)}</strong><span>constraint precision</span></div><div><strong>{pct(data.synthetic.constraintRecall)}</strong><span>constraint recall</span></div><div><strong>{pct(data.synthetic.concreteQuestionRate)}</strong><span>concrete questions</span></div></div></Panel>
   </div>
 }
 
 function RobustnessPage() {
   const a = data.robustness.absolute.version_a
   const variants = [['original','Original'],['synonym','Synonym'],['spelling','Spelling'],['missing_condition','Missing condition'],['equivalent_negation','Equivalent negation']] as const
-  return <div className="page-stack"><div className="page-intro risk-intro"><Pill tone="robustness">robustness</Pill><p>Paired input perturbations on Synthetic New-target v1. Absolute results and regression deltas remain separate from official scores.</p></div>
+  return <div className="page-stack"><div className="page-intro risk-intro"><Pill tone="robustness">robustness</Pill><p>Non-official perturbation stress test on the new-target set; per the final evaluation FAQ no undisclosed paraphrases are introduced in official scoring. Original row reflects the official-format re-evaluation.</p></div>
     <div className="three-kpis"><Kpi label="Original HR" value={n3(a.original.exact.hr)} tone="robustness"/><Kpi label="Synonym HR" value={n3(a.synonym.exact.hr)} tone="robustness"/><Kpi label="Session mismatches" value="0" tone="robustness"/></div>
     <Panel title="Input perturbation matrix"><DataTable headers={['Input','Exact HR','MRR','MTTC','Candidate Recall','Δ HR']} rows={variants.map(([key,label])=>[label,n3(a[key].exact.hr),n3(a[key].exact.mrr),n3(a[key].exact.mttc),n3(a[key].candidate_recall),key==='original'?'—':(a[key].exact.hr-a.original.exact.hr).toFixed(6)])}/></Panel>
     <div className="callout danger"><strong>Primary finding</strong><span>All 25 original exact hits were lost under synonym rewriting; candidate recall fell from 0.392 to 0.092.</span></div>

@@ -2046,17 +2046,17 @@
       "official_weak": {
         "original": {
           "exact": {
-            "sessions": 240,
-            "hr": 0.420833,
-            "mrr": 0.26587,
-            "mttc": 2.845833,
+            "sessions": 120,
+            "hr": 0.383333,
+            "mrr": 0.256445,
+            "mttc": 7.25,
             "unhit_penalty": 4
           },
           "acceptable": {
-            "sessions": 230,
-            "hr": 0.682609,
-            "mrr": 0.509853,
-            "mttc": 2.073913,
+            "sessions": 120,
+            "hr": 0.383333,
+            "mrr": 0.256445,
+            "mttc": 7.25,
             "unhit_penalty": 4
           },
           "candidate_recall": null,
@@ -2212,8 +2212,8 @@
         "synonym": {
           "left": "original",
           "right": "synonym",
-          "exact_hr_delta": -0.104167,
-          "exact_mrr_delta": -0.104167,
+          "exact_hr_delta": -0.991667,
+          "exact_mrr_delta": -0.872302,
           "exact_mttc_delta": 0.2375,
           "acceptable_hr_delta": -0.208696,
           "candidate_recall_delta": -0.3,
@@ -2228,8 +2228,8 @@
         "spelling": {
           "left": "original",
           "right": "spelling",
-          "exact_hr_delta": -0.058334,
-          "exact_mrr_delta": -0.058334,
+          "exact_hr_delta": -0.945834,
+          "exact_mrr_delta": -0.826469,
           "exact_mttc_delta": 0.120833,
           "acceptable_hr_delta": -0.134783,
           "candidate_recall_delta": -0.183334,
@@ -2244,8 +2244,8 @@
         "missing_condition": {
           "left": "original",
           "right": "missing_condition",
-          "exact_hr_delta": -0.020834,
-          "exact_mrr_delta": -0.020834,
+          "exact_hr_delta": -0.908334,
+          "exact_mrr_delta": -0.788969,
           "exact_mttc_delta": 0.0625,
           "acceptable_hr_delta": -0.056522,
           "candidate_recall_delta": -0.125,
@@ -2260,8 +2260,8 @@
         "equivalent_negation": {
           "left": "original",
           "right": "equivalent_negation",
-          "exact_hr_delta": -0.025,
-          "exact_mrr_delta": -0.028334,
+          "exact_hr_delta": -0.9125,
+          "exact_mrr_delta": -0.796469,
           "exact_mttc_delta": 0.066667,
           "acceptable_hr_delta": -0.021739,
           "candidate_recall_delta": -0.070834,
@@ -2276,7 +2276,7 @@
         "add_remove": {
           "left": "constraint_keep",
           "right": "constraint_remove",
-          "exact_hr_delta": 0,
+          "exact_hr_delta": 0.0,
           "exact_mrr_delta": 0.003125,
           "exact_mttc_delta": 0,
           "acceptable_hr_delta": 0,
@@ -2294,8 +2294,8 @@
         "synonym": {
           "left": "original",
           "right": "synonym",
-          "exact_hr_delta": 0.0125,
-          "exact_mrr_delta": -0.005949,
+          "exact_hr_delta": 0.05,
+          "exact_mrr_delta": 0.003476,
           "exact_mttc_delta": -0.045833,
           "acceptable_hr_delta": 0.004348,
           "candidate_recall_delta": null,
@@ -2310,8 +2310,8 @@
         "spelling": {
           "left": "original",
           "right": "spelling",
-          "exact_hr_delta": -0.045833,
-          "exact_mrr_delta": -0.026817,
+          "exact_hr_delta": -0.008333,
+          "exact_mrr_delta": -0.017392,
           "exact_mttc_delta": 0.1375,
           "acceptable_hr_delta": -0.06087,
           "candidate_recall_delta": null,
@@ -2326,8 +2326,8 @@
         "missing_condition": {
           "left": "original",
           "right": "missing_condition",
-          "exact_hr_delta": -0.125,
-          "exact_mrr_delta": -0.090781,
+          "exact_hr_delta": -0.0875,
+          "exact_mrr_delta": -0.081356,
           "exact_mttc_delta": 0.3,
           "acceptable_hr_delta": -0.16087,
           "candidate_recall_delta": null,
@@ -2342,8 +2342,8 @@
         "equivalent_negation": {
           "left": "original",
           "right": "equivalent_negation",
-          "exact_hr_delta": -0.0125,
-          "exact_mrr_delta": -0.024529,
+          "exact_hr_delta": 0.025,
+          "exact_mrr_delta": -0.015104,
           "exact_mttc_delta": 0.045834,
           "acceptable_hr_delta": 0,
           "candidate_recall_delta": null,

@@ -1,7 +1,7 @@
 ---
 title: Shopping Copilot Demo
 tags: [shopping, conversational-search, e-commerce, ai-agent]
-short_description: Conversational e-commerce search agent ? asks the right questions and ranks the hidden product first (rules-only offline demo).
+short_description: AI shopping copilot ? conversational e-commerce search demo
 sdk: docker
 app_port: 7860
 ---

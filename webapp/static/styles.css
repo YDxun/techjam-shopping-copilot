@@ -467,7 +467,7 @@ textarea:disabled {
 }
 
 .config-panel label {
-  margin-top: 10px;
+  margin-top: 12px;
   color: var(--text-muted);
   font-size: 0.82rem;
   font-weight: 650;
@@ -477,11 +477,23 @@ textarea:disabled {
 .config-panel input[type="password"] {
   width: 100%;
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 8px 11px;
+  border-radius: 9px;
+  padding: 9px 12px;
   background: var(--surface);
   font: inherit;
   font-size: 0.9rem;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.config-panel select {
+  cursor: pointer;
+}
+
+.config-panel select:focus,
+.config-panel input[type="password"]:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
 .config-panel select:disabled,
@@ -550,6 +562,11 @@ textarea:disabled {
   accent-color: var(--accent);
 }
 
+.toggle-row:has(input:checked) {
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  border-color: color-mix(in srgb, var(--accent) 32%, var(--border));
+}
+
 .config-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -567,6 +584,12 @@ textarea:disabled {
   border: 1px solid var(--accent);
   color: var(--surface);
   background: var(--accent);
+}
+
+#config-apply:hover,
+#config-apply:focus-visible {
+  background: color-mix(in srgb, var(--accent) 88%, black);
+  border-color: color-mix(in srgb, var(--accent) 88%, black);
 }
 
 #config-reset {

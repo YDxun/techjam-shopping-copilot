@@ -24,8 +24,8 @@ data/offline_blair_embeds*.npy
 data/offline_blair_embeds_info.json
 program_documents/
 
-# æœ¬åœ°æäº¤åŒ…/å½’æ¡£ï¼Œä¸çº³å…¥ç‰ˆæœ¬åº“
+# ±¾µØÌá½»°ü/¹éµµ£¬²»ÄÉÈë°æ±¾¿â
 *.zip
 
-# é˜Ÿå‹æ‰“åŒ…çš„åŸå§‹æ•°æ®èµ„äº§ç›®å½•ï¼ˆå·²è’¸é¦åˆ° data/assets/ï¼‰
+# ¶ÓÓÑ´ò°üµÄÔ­Ê¼Êı¾İ×Ê²úÄ¿Â¼£¨ÒÑÕôÁóµ½ data/assets/£©
 new_data_porcess/

@@ -1,11 +1,3 @@
----
-title: Shopping Copilot Demo
-tags: [shopping, conversational-search, e-commerce, ai-agent]
-short_description: AI shopping copilot ? conversational e-commerce search demo
-sdk: docker
-app_port: 7860
----
-
 # TechJam2026 Shopping Copilot - Conversational Search & Recommendation Agent
 
 A complete engineering implementation for the TechJam2026 "Shopping Copilot: AI Conversational Search & Recommendation" competition,

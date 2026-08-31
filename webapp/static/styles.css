@@ -644,3 +644,244 @@ textarea:disabled {
   color: var(--surface);
   background: var(--accent);
 }
+
+/* ------------------------------------------------------------------ */
+/* Top navigation tabs                                                 */
+/* ------------------------------------------------------------------ */
+.top-nav {
+  display: flex;
+  gap: 6px;
+}
+
+.nav-tab {
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border));
+  border-radius: 999px;
+  padding: 8px 16px;
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  color: var(--accent);
+  font-size: 0.85rem;
+  font-weight: 650;
+  transition: background 160ms ease, color 160ms ease, border-color 160ms ease;
+}
+
+.nav-tab:hover {
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+  color: var(--accent);
+}
+
+.nav-tab.active {
+  color: var(--surface);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* ------------------------------------------------------------------ */
+/* In-app dashboard view (iframe, no page jump)                        */
+/* ------------------------------------------------------------------ */
+#view-dashboard {
+  height: calc(100vh - 84px);
+  padding-bottom: 16px;
+}
+
+.dashboard-shell {
+  width: 100%;
+  height: 100%;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgb(32 33 36 / 6%);
+}
+
+#dashboard-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: var(--surface);
+}
+
+/* ------------------------------------------------------------------ */
+/* Config panel: card + one-click Auto (LUT) recommendation           */
+/* ------------------------------------------------------------------ */
+.config-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+  box-shadow: 0 4px 16px rgb(32 33 36 / 5%);
+}
+
+.auto-button {
+  width: 100%;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  font-weight: 700;
+  font-size: 0.85rem;
+  transition: background 160ms ease, color 160ms ease;
+}
+
+.auto-button:hover,
+.auto-button:focus-visible {
+  color: var(--surface);
+  background: var(--accent);
+}
+
+/* Reset as outline text button instead of a solid white block */
+#config-reset {
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  background: transparent;
+}
+
+#config-reset:hover,
+#config-reset:focus-visible {
+  color: var(--text);
+  border-color: var(--text-muted);
+  background: var(--surface-muted);
+}
+
+/* ------------------------------------------------------------------ */
+/* Sidebar action buttons + conversation history                       */
+/* ------------------------------------------------------------------ */
+.sidebar-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.sidebar-actions button {
+  padding: 9px 8px;
+  font-size: 0.85rem;
+}
+
+#history-button.secondary-action {
+  border: 1px solid var(--border);
+  color: var(--accent);
+  background: var(--surface);
+}
+
+#history-button.secondary-action:hover,
+#history-button.secondary-action:focus-visible {
+  color: var(--surface);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+#history-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  background: rgb(0 0 0 / 28%);
+}
+
+#history-drawer {
+  position: fixed;
+  inset: 0 auto 0 0;
+  z-index: 40;
+  width: min(360px, calc(100vw - 48px));
+  padding: 20px;
+  overflow-y: auto;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  box-shadow: 12px 0 36px rgb(0 0 0 / 12%);
+}
+
+#history-backdrop[hidden],
+#history-drawer[hidden] {
+  display: none;
+}
+
+.drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.drawer-head h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.drawer-head button {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 12px;
+  background: var(--surface);
+}
+
+.history-empty {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.history-list {
+  display: grid;
+  gap: 8px;
+}
+
+.history-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: var(--surface);
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.history-item:hover,
+.history-item:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--border));
+  box-shadow: 0 4px 14px rgb(32 33 36 / 7%);
+}
+
+.history-item.active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 5%, var(--surface));
+}
+
+.history-item-body {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+  cursor: pointer;
+}
+
+.history-title {
+  overflow: hidden;
+  font-size: 0.88rem;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-meta {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.history-delete {
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 5px 9px;
+  color: var(--text-muted);
+  background: var(--surface);
+  font-size: 0.75rem;
+  flex-shrink: 0;
+}
+
+.history-delete:hover,
+.history-delete:focus-visible {
+  color: #b3382c;
+  border-color: #d9a49d;
+  background: #fdf1ef;
+}

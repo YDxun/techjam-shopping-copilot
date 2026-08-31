@@ -80,6 +80,43 @@ TOGGLES = {
 }
 
 
+# LUT config profile id -> frontend-applicable engine fields. The LUT records only
+# config_id + measured scores, so this map translates the recommended profile into the
+# controls the /api/runtime/config endpoint accepts. Unknown profiles are skipped.
+LUT_FRONTEND_MAP: dict[str, dict[str, Any]] = {
+    "rule_bm25": {
+        "retrieval_backend": "bm25",
+        "rerank_backend": "none",
+        "output_strategy": "holdback",
+        "llm_intent_enabled": False,
+    },
+    "hybrid_dense": {
+        "retrieval_backend": "hybrid",
+        "rerank_backend": "none",
+        "output_strategy": "holdback",
+        "llm_intent_enabled": False,
+    },
+    "fingerprint_combo": {
+        "retrieval_backend": "auto",
+        "rerank_backend": "none",
+        "output_strategy": "holdback",
+        "llm_intent_enabled": False,
+    },
+    "text_rerank": {
+        "retrieval_backend": "auto",
+        "rerank_backend": "text",
+        "output_strategy": "holdback",
+        "llm_intent_enabled": False,
+    },
+    "reranker_model": {
+        "retrieval_backend": "auto",
+        "rerank_backend": "auto",
+        "output_strategy": "holdback",
+        "llm_intent_enabled": False,
+    },
+}
+
+
 def config_fingerprint(cfg: dict[str, Any]) -> str:
     """Deterministic key for the agent cache (excluding secrets from the hash input)."""
     safe = {k: v for k, v in cfg.items() if k != "api_key"}
@@ -209,12 +246,16 @@ class RuntimeManager:
             network=_llm_configured(self.active_config),
         )
         rec = lut_utils.recommend(fp)
+        lut_config: dict[str, Any] | None = None
+        if rec is not None:
+            lut_config = LUT_FRONTEND_MAP.get(str(rec.get("config_id") or ""))
         provider = self.active_config.get("llm_provider") or "none"
         api_key = bool((self.active_config.get("api_key") or "").strip())
         return {
             "fingerprint": fp,
             "lut_recommendation": rec["config_id"] if rec else None,
             "lut_ts": rec.get("technical_score") if rec else None,
+            "lut_config": lut_config,
             "active": {
                 "config_key": self.active_key,
                 "provider": provider,

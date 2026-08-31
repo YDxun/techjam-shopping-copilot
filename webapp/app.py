@@ -176,8 +176,12 @@ def create_app(
         except Exception:
             logger.exception("unexpected unhandled web error")
             response = error_response(500, "internal_error", "An internal error occurred.")
+        # Allow the in-app /dashboard iframe to be embedded by this same origin
+        # (frame-ancestors 'self'); everything else stays clickjack-proof.
+        frame_ancestors = "'self'" if request.url.path.startswith("/dashboard") else "'none'"
         response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; img-src 'none'; object-src 'none'; frame-ancestors 'none'"
+            f"default-src 'self'; img-src 'none'; object-src 'none'; "
+            f"frame-ancestors {frame_ancestors}"
         )
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"

@@ -11,13 +11,15 @@
     <aside class="sidebar" aria-label="Application">
       <div class="brand">Shopping Copilot</div>
       <p>Your local conversational product finder.</p>
-      <button id="new-chat" type="button">New chat</button>
-      <a id="dashboard-link" href="/dashboard" target="_blank" rel="noopener">Evaluation Dashboard &#8599;</a>
+      <div class="sidebar-actions">
+        <button id="new-chat" type="button">New chat</button>
+        <button id="history-button" type="button" class="secondary-action">History</button>
+      </div>
 
       <section class="config-panel" aria-labelledby="config-title">
         <h2 id="config-title">Runtime configuration</h2>
-        <p class="config-hint">Pick the engine that fits your environment, or apply the Auto (LUT) recommendation. Online LLM features call a paid API.</p>
-        <div id="lut-recommendation" class="lut-banner" hidden></div>
+        <p class="config-hint">Pick an engine or use Auto (LUT). Online LLM features call a paid API.</p>
+        <button id="config-auto" class="auto-button" type="button" hidden>Apply Auto (LUT)</button>
 
         <label for="config-provider">LLM provider</label>
         <select id="config-provider"></select>
@@ -48,7 +50,7 @@
 
         <div class="config-actions">
           <button id="config-apply" type="button">Apply &amp; restart chat</button>
-          <button id="config-reset" type="button">Reset to default</button>
+          <button id="config-reset" type="button">Reset default</button>
         </div>
         <p id="config-status" class="config-status" role="status"></p>
       </section>
@@ -56,26 +58,60 @@
 
     <main class="app-main">
       <header>
-        <h1>Shopping Copilot</h1>
+        <nav class="top-nav" aria-label="Primary">
+          <button id="nav-chat" class="nav-tab active" type="button">Chat</button>
+          <button id="nav-dashboard" class="nav-tab" type="button">Evaluation Dashboard</button>
+        </nav>
         <span id="service-status">Local &#183; Loading</span>
       </header>
-      <section id="welcome" aria-labelledby="welcome-title">
-        <h2 id="welcome-title">What are you shopping for?</h2>
-        <div id="prompt-examples"></div>
+
+      <section id="view-chat">
+        <section id="welcome" aria-labelledby="welcome-title">
+          <h2 id="welcome-title">What are you shopping for?</h2>
+          <div id="prompt-examples"></div>
+        </section>
+        <section id="conversation" aria-live="polite"></section>
+        <p id="status-notice" role="status"></p>
+        <form id="composer">
+          <label class="sr-only" for="message-input">Shopping request</label>
+          <textarea
+            id="message-input"
+            maxlength="4000"
+            rows="1"
+            placeholder="Describe what you are looking for"
+          ></textarea>
+          <button id="send-message" type="submit">Send</button>
+        </form>
       </section>
-      <section id="conversation" aria-live="polite"></section>
-      <p id="status-notice" role="status"></p>
-      <form id="composer">
-        <label class="sr-only" for="message-input">Shopping request</label>
-        <textarea
-          id="message-input"
-          maxlength="4000"
-          rows="1"
-          placeholder="Describe what you are looking for"
-        ></textarea>
-        <button id="send-message" type="submit">Send</button>
-      </form>
+
+      <section id="view-dashboard" hidden>
+        <div class="dashboard-shell">
+          <iframe
+            id="dashboard-frame"
+            src="/dashboard/"
+            title="Evaluation Dashboard"
+            loading="eager"
+          ></iframe>
+        </div>
+      </section>
     </main>
+
+    <div id="history-backdrop" hidden></div>
+    <aside
+      id="history-drawer"
+      role="dialog"
+      aria-modal="true"
+      hidden
+      aria-hidden="true"
+      aria-labelledby="history-title"
+    >
+      <div class="drawer-head">
+        <h2 id="history-title" tabindex="-1">Conversation history</h2>
+        <button id="history-close" type="button">Close</button>
+      </div>
+      <p id="history-empty" class="history-empty" hidden>No saved conversations yet.</p>
+      <div id="history-list" class="history-list"></div>
+    </aside>
 
     <div id="drawer-backdrop" hidden></div>
     <aside

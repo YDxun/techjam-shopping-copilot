@@ -60,7 +60,9 @@ confirm dialog: “This enables online AI features … may incur cost”. Applyi
 rebuilds the engine when needed and starts a new chat (`sessions_reset=true`).
 
 The **Auto (LUT) banner** displays the recommendation for the current environment and
-its expected Technical Score; the default launch already uses that recommendation.
+its expected Technical Score, with a **Use recommended (Auto LUT)** button that fills
+the panel with the recommended engine fields and applies them in one click. The default
+launch already uses that recommendation.
 
 ## Real-time usage & cost recording (Live usage)
 
@@ -85,9 +87,10 @@ tokens, estimated cost), a per-provider breakdown, and a recent-turns table.
 ## Evaluation Dashboard
 
 If `dashboard/dist/` exists (built with `npm run build`), the dashboard is mounted at
-**/dashboard** and linked from the sidebar. It visualizes the public-200 evaluation
-(HR/MRR/MTTC/TS), the generalization-gap disclosure (rule-only vs LLM on paraphrased
-queries), and per-strategy A/B comparisons.
+**/dashboard** and opened in-app via the top **Evaluation Dashboard** tab (same-page
+iframe, no new browser tab). It visualizes the public-200 evaluation (HR/MRR/MTTC/TS),
+the generalization-gap disclosure (rule-only vs LLM on paraphrased queries), per-strategy
+A/B comparisons, and the Live usage view.
 
 ## HTTP API (subset used by the panel)
 

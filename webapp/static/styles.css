@@ -38,8 +38,11 @@ textarea:disabled {
 .sidebar {
   position: fixed;
   inset: 0 auto 0 0;
-  width: 224px;
-  padding: 24px 16px;
+  width: 284px;
+  padding: 24px 20px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
   background: var(--surface-muted);
   border-right: 1px solid var(--border);
 }
@@ -67,7 +70,7 @@ textarea:disabled {
 
 .app-main {
   min-height: 100vh;
-  margin-left: 224px;
+  margin-left: 284px;
 }
 
 .app-main > header,
@@ -446,7 +449,7 @@ textarea:disabled {
 
 .config-panel {
   display: grid;
-  gap: 6px;
+  gap: 8px;
   border-top: 1px solid var(--border);
   padding-top: 16px;
 }
@@ -459,14 +462,14 @@ textarea:disabled {
 .config-hint {
   margin: 0 0 8px !important;
   color: var(--text-muted);
-  font-size: 0.75rem;
-  line-height: 1.45;
+  font-size: 0.8rem;
+  line-height: 1.55;
 }
 
 .config-panel label {
-  margin-top: 8px;
+  margin-top: 10px;
   color: var(--text-muted);
-  font-size: 0.78rem;
+  font-size: 0.82rem;
   font-weight: 650;
 }
 
@@ -475,10 +478,10 @@ textarea:disabled {
   width: 100%;
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 7px 9px;
+  padding: 8px 11px;
   background: var(--surface);
   font: inherit;
-  font-size: 0.85rem;
+  font-size: 0.9rem;
 }
 
 .config-panel select:disabled,
@@ -491,10 +494,10 @@ textarea:disabled {
   margin-bottom: 6px;
   border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
   border-radius: 10px;
-  padding: 8px 10px;
+  padding: 8px 11px;
   background: color-mix(in srgb, var(--accent) 7%, var(--surface));
-  font-size: 0.78rem;
-  line-height: 1.45;
+  font-size: 0.8rem;
+  line-height: 1.5;
 }
 
 .lut-banner strong {
@@ -504,11 +507,11 @@ textarea:disabled {
 
 .toggle-group {
   display: grid;
-  gap: 6px;
+  gap: 7px;
   margin: 12px 0 4px;
   border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 8px 10px;
+  padding: 10px 12px;
 }
 
 .toggle-group legend {
@@ -525,7 +528,7 @@ textarea:disabled {
   margin-top: 0 !important;
   color: var(--text) !important;
   font-weight: 450 !important;
-  font-size: 0.82rem !important;
+  font-size: 0.85rem !important;
 }
 
 .toggle-row input {
@@ -541,8 +544,8 @@ textarea:disabled {
 
 .config-actions button {
   border-radius: 8px;
-  padding: 8px 6px;
-  font-size: 0.8rem;
+  padding: 9px 8px;
+  font-size: 0.82rem;
 }
 
 #config-apply {

@@ -38,8 +38,8 @@ textarea:disabled {
 .sidebar {
   position: fixed;
   inset: 0 auto 0 0;
-  width: 284px;
-  padding: 24px 20px;
+  width: 324px;
+  padding: 24px 22px;
   overflow-y: auto;
   overflow-x: hidden;
   overscroll-behavior: contain;
@@ -70,7 +70,7 @@ textarea:disabled {
 
 .app-main {
   min-height: 100vh;
-  margin-left: 284px;
+  margin-left: 324px;
 }
 
 .app-main > header,
@@ -507,11 +507,12 @@ textarea:disabled {
 
 .toggle-group {
   display: grid;
-  gap: 7px;
+  gap: 6px;
   margin: 12px 0 4px;
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 10px 12px;
+  border-radius: 12px;
+  padding: 12px;
+  background: var(--surface);
 }
 
 .toggle-group legend {
@@ -524,14 +525,28 @@ textarea:disabled {
 .toggle-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   margin-top: 0 !important;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 9px;
   color: var(--text) !important;
   font-weight: 450 !important;
   font-size: 0.85rem !important;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease;
+}
+
+.toggle-row:hover {
+  background: var(--surface-muted);
+  border-color: var(--border);
 }
 
 .toggle-row input {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
   accent-color: var(--accent);
 }
 

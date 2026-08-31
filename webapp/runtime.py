@@ -74,9 +74,9 @@ OUTPUT_STRATEGIES = {
 }
 TOGGLES = {
     "llm_intent": {"label": "LLM intent recognition (needs key)", "field": "llm_intent_enabled"},
-    "fingerprint": {"label": "Constraint-combination fingerprint", "field": "fingerprint"},
-    "category_expand": {"label": "Category-mapping expansion", "field": "asset_category_expand"},
-    "paraphrase": {"label": "Review-paraphrase robustness", "field": "asset_paraphrase"},
+    "fingerprint": {"label": "Constraint fingerprint", "field": "fingerprint"},
+    "category_expand": {"label": "Category expansion", "field": "asset_category_expand"},
+    "paraphrase": {"label": "Paraphrase robustness", "field": "asset_paraphrase"},
 }
 
 
